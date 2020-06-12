@@ -1,5 +1,29 @@
 import torch
+import random
 
+
+def generate_test_image(B, D, H, W, C, T):
+    """
+        B: batchsize
+        T: thickness, the max number of non-empty voxels on Depth
+        H, W, D: height,width, depth
+        C, channel
+    """
+    feature = torch.randn(B, T, H, W, C)
+    indice_map = [[[dict() for x in range(H)] for y in range(W)] for b in range(B)]
+    # map from i to spatial indice
+    thick = torch.randint(T, (B, H, W))
+
+    for b in range(B):
+        for x in range(H):
+            for y in range(W):
+                thick = thick[b, x, y]
+                for i in range(thick):
+                    z = random.randint(D)
+                    while z not in indice_map[b, x, y][i]:
+                        z = random.randint(D)
+                    indice_map[b, x, y][i] = z
+    return DepthImage(feature, indice_map, thick)
 
 class DepthImage():
     """
@@ -18,31 +42,32 @@ class DepthImage():
         integer Tensor of shape [B, H, W]
             the quantized depth, non negative, start from 0
     """
-
-    def __init__(self, feature: torch.Tensor, depth: torch.Tensor):
+    def __init__(self, feature: torch.Tensor, depth):
         B, D, H, W, C = feature.shape
         Bd, Hd, Wd = depth.shape
+
         assert (B == Bd and H == Hd and W ==
-                Wd), "feature and depth dimension not match"
+                Wd), "feature and depth dimension not match, feature.shape={}, depth.shape={}".format(feature.shape, depth.shape)
         self.feature = feature
         self.depth = depth
+
 
     def dense(self, max_depth: int = 0, device=None):
         """Convert to dense 3D tensor
         return a 3D tensor of shape (batchsize, D, H, W, C)
-            where D == max_dpeth if specified
+            where D = max_dpeth if specified
         """
         B, D, H, W, C = self.feature.shape
         print("B, D, H, W, C", B, D, H, W, C)
         if max_depth == 0:
-            max_depth = int(torch.max(self.depth)) + D + 1
+            max_depth = int(torch.max(self.depth)) + D
         print("B, max_depth, H, W, C", B, max_depth, H, W, C)
         buffer = torch.zeros((B, max_depth, H, W, C), device=device)
         depth_idx = self.depth.reshape(B, 1, H, W, 1).expand(B, 1, H, W, C)
         for i in range(D):
             f_i = self.feature[:, i, :, :, :].reshape(B, 1, H, W, C)
             idx_i = depth_idx + i
-            buffer.scatter_add_(1, idx_i, f_i)
+            buffer.scatter_add_(1, idx_i.long(), f_i)
         return buffer
 
 
