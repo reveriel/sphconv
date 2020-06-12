@@ -1,5 +1,6 @@
 import torch
 import random
+import numpy as np
 
 
 def generate_test_image(B, D, H, W, C, T):
@@ -9,96 +10,108 @@ def generate_test_image(B, D, H, W, C, T):
         H, W, D: height,width, depth
         C, channel
     """
+    assert T <= D, "T must be less then D, got T={}, D={}".format(T, D)
     feature = torch.randn(B, T, H, W, C)
-    indice_map = [[[dict() for x in range(H)] for y in range(W)] for b in range(B)]
+    indice_map = np.ndarray((B, H, W), dtype=dict)
     # map from i to spatial indice
     thick = torch.randint(T, (B, H, W))
 
     for b in range(B):
         for x in range(H):
             for y in range(W):
-                thick = thick[b, x, y]
-                for i in range(thick):
-                    z = random.randint(D)
-                    while z not in indice_map[b, x, y][i]:
-                        z = random.randint(D)
-                    indice_map[b, x, y][i] = z
-    return DepthImage(feature, indice_map, thick)
+                max_t = thick[b, x, y]
+                indice_map[b, x, y] = dict()
+                for t in range(max_t):
+                    z = random.randint(0, D-1)
+                    while z in indice_map[b, x, y]:
+                        z = random.randint(0, D-1)
+                    indice_map[b, x, y][t] = z
+    return DepthImage(feature, indice_map, thick, D)
+
 
 class DepthImage():
     """
     two parts
 
     feature:
-        Tensor of shape [B, D, H, W, C]
+        Tensor of shape [B, T, H, W, C]
         TODO: C's position ?
+            T: thickness
             B: batchsize
-            D: Depth, the number of layers of depth image
-              the 'i'th layer's depth is self.depth[x,y] + i
             C: channel
             H,W, height and width, two spatial demension
+            D: Depth, the depth dimesion is stored compactly
 
-    depth:
-        integer Tensor of shape [B, H, W]
-            the quantized depth, non negative, start from 0
+    indice_map, a matrix of hashmap of shape [B, H, W]
+        stores indice_map for each spatial location
+        maps from indice on 'T' to spatial location on 'D'
+
+    thick: tensor of shape [B, H, W]
+        the max number of non empty voxels on 'D'
     """
-    def __init__(self, feature: torch.Tensor, depth):
-        B, D, H, W, C = feature.shape
-        Bd, Hd, Wd = depth.shape
 
-        assert (B == Bd and H == Hd and W ==
-                Wd), "feature and depth dimension not match, feature.shape={}, depth.shape={}".format(feature.shape, depth.shape)
+    def __init__(self, feature: torch.Tensor, indice_map, thick, D):
+        B, T, H, W, C = feature.shape
+        B_i, H_i, W_i = indice_map.shape
+        B_t, H_t, W_t = thick.shape
+        assert (B == B_i == B_t and H == H_i == H_t and W == W_i == W_t), \
+            "dimension not match, feature.shape={}, indice_map.shape={}, thick.shape={}"\
+            .format(feature.shape, (B_i, H_i, W_i), thick.shape)
+
         self.feature = feature
-        self.depth = depth
+        self.indice_map = indice_map
+        self.thick = thick
+        self.D = D
 
-
-    def dense(self, max_depth: int = 0, device=None):
+    def dense(self, device=None):
         """Convert to dense 3D tensor
         return a 3D tensor of shape (batchsize, D, H, W, C)
             where D = max_dpeth if specified
         """
-        B, D, H, W, C = self.feature.shape
-        print("B, D, H, W, C", B, D, H, W, C)
-        if max_depth == 0:
-            max_depth = int(torch.max(self.depth)) + D
-        print("B, max_depth, H, W, C", B, max_depth, H, W, C)
-        buffer = torch.zeros((B, max_depth, H, W, C), device=device)
-        depth_idx = self.depth.reshape(B, 1, H, W, 1).expand(B, 1, H, W, C)
-        for i in range(D):
-            f_i = self.feature[:, i, :, :, :].reshape(B, 1, H, W, C)
-            idx_i = depth_idx + i
-            buffer.scatter_add_(1, idx_i.long(), f_i)
-        return buffer
+        return to_dense(self.feature, self.indice_map, self.thick, self.D)
+
+
+def to_dense(feature, indice_map, thick, D, device=None):
+    """Convert to dense 3D tensor
+    return a 3D tensor of shape (batchsize, D, H, W, C)
+        where D = max_dpeth if specified
+    """
+    B, T, H, W, C = feature.shape
+    buffer = torch.zeros((B, D, H, W, C), device=device)
+    for b in range(B):
+        for x in range(H):
+            for y in range(W):
+                max_t = thick[b, x, y]
+                for t in range(max_t):
+                    z = indice_map[b, x, y][t]
+                    buffer[b, z, x, y] = feature[b, t, x, y]
+    return buffer
 
 
 def test_dense():
-    B, D, H, W, C = 2, 2, 3, 3, 1
-    feature = torch.randn(B, D, H, W, C)
-    depth = torch.randint(2, (B, H, W))
-    print(check(DepthImage(feature, depth)))
+    B, D, H, W, C, T = 2, 4, 3, 3, 1, 2
+    img = generate_test_image(B, D, H, W, C, T)
+    print(check(img))
 
 
 def check(input: DepthImage):
-    B, D, H, W, C = input.feature.shape
+    B, T, H, W, C = input.feature.shape
+    D = input.D
+
     dense = input.dense()
     # print("dense .shape =", dense.shape)
     # print("dense", dense.reshape((2, 4, 3, 3)))
     # print("depth = ", input.depth)
-    flag_pass = False
-    if abs(dense.sum() - input.feature.sum()) > 1e7:
-        return False
-    for bi in range(B):
-        for di in range(D):
-            for x in range(H):
-                for y in range(W):
-                    for ci in range(C):
-                        real_depth = input.depth[bi, x, y] + di
-                        if abs(dense[bi, real_depth, x, y, ci] - input.feature[bi, di, x, y, ci]) > 1e7:
-                            print("dense[", bi, real_depth, x, y, ci,
-                                  "] = ", dense[bi, real_depth, x, y, ci])
-                            print(
-                                "input.feature[", bi, x, y, ci, "] = ", input.feature[bi, di,  x, y, ci])
-                            return False
+    # if abs(dense.sum() - input.feature.sum()) > 1e7:
+    #     return False
+    for b in range(B):
+        for x in range(H):
+            for y in range(W):
+                max_t = input.thick[b, x, y]
+                for t in range(max_t):
+                    z = input.indice_map[b, x, y][t]
+                    if sum(abs(dense[b, z, x, y] - input.feature[b, t, x, y])) > 1e-6:
+                        return False
     return True
 
 
