@@ -154,14 +154,14 @@ def sphconv3d(feature, depth, weight, bias, stride, padding, dilation, groups):
     weight : [oC, iC, kD, kH, kW]
     """
 
-    B, Thick, iH, iW, iC = feature.shape
+    B, T, iH, iW, iC = feature.shape
     oC, iC, kD, kH, kW = weight.shape
     sD, sH, sW = stride
     padD, padH, padW = padding
     dD, dH, dW = dilation
     oH = int(math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1))
     oW = int(math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1))
-    iD = Thick # TODO
+    iD = T # TODO
     oD = iD + 2 * padD - (kD-1)
     oD = int(math.floor((iD + 2 * padD - dD * (kD - 1) - 1) / sD + 1))
 
@@ -196,10 +196,10 @@ def sphconv3d(feature, depth, weight, bias, stride, padding, dilation, groups):
     # usefull_feature = usefull_feature.reshape(B, iD, -1, iC)
 
     # print(usefull_feature.shape)
-    feature = feature.reshape(B, Thick * iH * iW,  iC)
+    feature = feature.reshape(B, T * iH * iW,  iC)
     weight = weight.permute(1, 0, 2, 3, 4).contiguous().reshape(iC, oC*kD*kH*kW)
     res = torch.matmul(feature, weight)  # B, iD*iH * iW , oC * kD*kH *kW
-    res = res.reshape(B, Thick, iH, iW, oC, kD, kH, kW)
+    res = res.reshape(B, T, iH, iW, oC, kD, kH, kW)
     print("res shape", res.shape)
     # then gather add
     of = torch.zeros(B, oD+2*(kD-padD), oH+2*(kH-padH), oW+2*(kW-padW), oC)
