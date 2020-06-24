@@ -22,7 +22,7 @@ def generate_test_image(B, C, D, H, W, T):
                 values, _ = torch.sort(depth[b, :, i, j])
                 depth[b, :, i, j] = values
 
-    return DepthImage(feature, depth, thick, D)
+    return DepthImage(feature, depth, thick, (B,C,D,H,W))
 
 
 class DepthImage():
@@ -41,34 +41,37 @@ class DepthImage():
 
     thick: tensor of shape [B, H, W]
         the max number of non empty voxels on 'D' dimension
+
+    shape: tuple contains (B,C,D,H,W)
     """
 
-    def __init__(self, feature: torch.Tensor, depth, thick, D):
-        B, _, T, H, W = feature.shape
+    def __init__(self, feature: torch.Tensor, depth, thick, shape):
+        B, C, D, H, W = shape
+        B_f, C_f, T_f, H_f, W_f = feature.shape
         B_d, T_d, H_d, W_d = depth.shape
         B_t, H_t, W_t = thick.shape
-        assert (B == B_d == B_t and H == H_d == H_t and W == W_d == W_t and
-                T == T_d), \
-            "dimension not match, feature.shape={}, depth.shape={}, thick.shape={}"\
-            .format(feature.shape, (B_d, H_d, W_d), thick.shape)
+        assert (B == B_d == B_t == B_f and H == H_d == H_t == H_f and
+         W == W_d == W_t == W_f and C == C_f and  T_d == T_f), \
+            "dimension not match, feature.shape={}, depth.shape={}, thick.shape={}\n\
+            shape={}".format(feature.shape, (B_d, H_d, W_d), thick.shape, shape)
 
         self.feature = feature
         self.depth = depth
         self.thick = thick
-        self.D = D
+        self.shape = shape
 
     def dense(self, device=None):
         """Convert to dense 3D tensor
         return a 3D tensor of shape (batchsize, D, H, W, C)
-            where D = max_dpeth if specified
         """
-        return to_dense(self.feature, self.depth, self.thick, self.D)
+        return to_dense(self.feature, self.depth, self.thick, self.shape[2])
+
 
 
 def to_dense(feature, depth, thick, D, device=None):
     """Convert to dense 3D tensor
     return a 3D tensor of shape (B, C, D, H, W)
-        where D = max_dpeth if specified
+        where D = max_depth
     """
     B, C, T, H, W = feature.shape
     buffer = torch.zeros((B, C, D, H, W), device=device)
@@ -89,7 +92,7 @@ def test_dense():
 
 def check(input: DepthImage):
     B, C, T, H, W = input.feature.shape
-    D = input.D
+    D = input.shape[2]
 
     dense = input.dense()
     # print("dense .shape =", dense.shape)

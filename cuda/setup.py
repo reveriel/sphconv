@@ -22,9 +22,9 @@ setup(
         #     'lltm_cuda.cpp',
         #     'lltm_cuda_kernel.cu',
         # ]),
-        CUDAExtension(name='gemm_cuda',
+        CUDAExtension(name='sphconv_cuda',
         sources=[
-            'conv_cuda.cpp',
+            'sphconv_cuda.cpp',
             'ConvolutionBuildingBlocks/winograd4x4.cu'],
         extra_compile_args={'cxx': ['-O3'],
                 'nvcc':['-O3',

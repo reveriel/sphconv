@@ -16,7 +16,17 @@ from python.DepthImage import DepthImage
 
 import unittest
 
+from cuda.conv import SphConv
+
 torch.manual_seed(42)
+
+# /////////////////////////////////////////////////
+# check the correctness of conv, against
+#   1. spconv
+#   2. torch.conv3d
+# ////////////////////////////////////////////////
+
+
 
 
 def check_equal(first, second, verbose) -> bool:
