@@ -22,7 +22,7 @@ def generate_test_image(B, C, D, H, W, T):
                 values, _ = torch.sort(depth[b, :, i, j])
                 depth[b, :, i, j] = values
 
-    return DepthImage(feature, depth, thick, (B,C,D,H,W))
+    return DepthImage(feature, depth, thick, (B, C, D, H, W))
 
 
 class DepthImage():
@@ -51,7 +51,7 @@ class DepthImage():
         B_d, T_d, H_d, W_d = depth.shape
         B_t, H_t, W_t = thick.shape
         assert (B == B_d == B_t == B_f and H == H_d == H_t == H_f and
-         W == W_d == W_t == W_f and C == C_f and  T_d == T_f), \
+                W == W_d == W_t == W_f and C == C_f and T_d == T_f), \
             "dimension not match, feature.shape={}, depth.shape={}, thick.shape={}\n\
             shape={}".format(feature.shape, (B_d, H_d, W_d), thick.shape, shape)
 
@@ -65,7 +65,6 @@ class DepthImage():
         return a 3D tensor of shape (batchsize, D, H, W, C)
         """
         return to_dense(self.feature, self.depth, self.thick, self.shape[2])
-
 
 
 def to_dense(feature, depth, thick, D, device=None):
@@ -105,9 +104,11 @@ def check(input: DepthImage):
             for y in range(W):
                 for t in range(input.thick[b, x, y]):
                     z = input.depth[b, t, x, y]
-                    if sum(abs(dense[b,:, z, x, y] - input.feature[b,:, t, x, y])) > 1e-6:
-                        print("dense[",b,":", z, x,y,"]=", dense[b,:,z,x,y])
-                        print("feature[",b,":", t, x,y,"]=", input.feature[b,:,t,x,y])
+                    if sum(abs(dense[b, :, z, x, y] - input.feature[b, :, t, x, y])) > 1e-6:
+                        print("dense[", b, ":", z, x, y, "]=",
+                              dense[b, :, z, x, y])
+                        print("feature[", b, ":", t, x, y, "]=",
+                              input.feature[b, :, t, x, y])
                         return False
     return True
 
