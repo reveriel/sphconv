@@ -1,0 +1,8 @@
+"voxel_generator":
+  {
+    "point_cloud_range": [0, -40, -3, 70.4, 40, 1],
+    "point_cloud_sphere_range":
+      [1.791759469228055, -45, 87, 4.254193263163997, 45, 103.4],
+    "voxel_size": [0.05, 0.05, 0.1],
+    "max_number_of_points_per_voxel": 1,
+  }
