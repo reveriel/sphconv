@@ -113,10 +113,21 @@ def xyz2RangeVoxel(points,
 # batch data
 
 def merge_batch(voxel_list: [RangeVoxel]) -> RangeVoxel:
-    """ Merge a list of RangeVoxel to a batch """
+    """ Merge a list of RangeVoxel to a batch.
 
+        must be of the same shape, I don't check it
 
+    """
+    feature_list = [ x.feature for x in voxel_list]
+    feature = torch.cat(feature_list, dim=0)
+    depth_list = [ x.depth for x in voxel_list]
+    depth = torch.cat(depth_list, dim=0)
+    thick_list = [ x.thick for x in voxel_list]
+    thick = torch.cat(thick_list, dim=0)
 
+    shape = voxel_list[0].shape
+    shape[0] = len(voxel_list)
 
+    return RangeVoxel(feature, depth, thick, shape=shape)
 
 

@@ -5,6 +5,8 @@ import inspect
 import spconv
 import numpy as np
 import sphconv
+import time
+from sphconv import RangeVoxel
 
 # simple CNN for benchmarks
 
@@ -89,9 +91,10 @@ class SingleLayerConv(nn.Module):
         print("spconv forward time", time.time() - t)
         ret = ret.dense()
 
-        N, C, D, H, W = ret.shape
-        ret = ret.view(N, C * D, H, W)
+        # N, C, D, H, W = ret.shape
+        # ret = ret.view(N, C * D, H, W)
         return ret
+
 
 class SingleLayerSphConv(nn.Module):
     def __init__(self,
@@ -99,8 +102,17 @@ class SingleLayerSphConv(nn.Module):
                  output_shape,
                  ):
 
-        self.middle_conv = spconv.SparseSequential(
+        self.convs = spconv.SparseSequential(
             sphconv.Conv3D(num_input_features, 16, 3, indice_key="subm0"),
         )
-    def forward(self, *input, **kwargs):
-        return super().forward(*input, **kwargs)
+
+    def forward(self, input: RangeVoxel):
+
+        t = time.time()
+        torch.cuda.synchronize()
+        ret = self.convs(input)
+        torch.cuda.synchronize()
+        print("sphconv forward time", time.time() - t)
+        ret = ret.dense()
+
+        return ret
