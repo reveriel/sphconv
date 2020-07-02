@@ -46,6 +46,8 @@ def get_velodyne_path(idx, prefix, training=True, relative_path=False, exist_che
                                relative_path, exist_check)
 
 # read point cloud bin file
+
+
 def read_pc_data(idx: int):
     velo_path = Path(get_velodyne_path(idx, KITTI_DATASET_ROOT))
     # velo_path = Path(KITTI_DATASET_ROOT) / velo_path
@@ -60,7 +62,6 @@ def read_pc_data(idx: int):
     return points
 
 
-
 def merge_second_batch(batch_list):
     example_merged = defaultdict(list)
     for example in batch_list:
@@ -69,8 +70,7 @@ def merge_second_batch(batch_list):
     ret = {}
     for key, elems in example_merged.items():
         if key in [
-                'voxels', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes'
-                ,'points'
+                'voxels', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes', 'points'
         ]:
             ret[key] = np.concatenate(elems, axis=0)
         elif key == 'metadata':
@@ -100,34 +100,85 @@ def merge_second_batch(batch_list):
             ret[key] = np.stack(elems, axis=0)
     return ret
 
+
 points = read_pc_data(3)
 
 # voxelize
 
 # voxel_config =
 
-with open(VOXEL_CONFIG, 'r') as stream:
-    try:
-        data = yaml.safe_load(stream)
-        print(data)
-        voxel_config = data['voxel_generator']
-    except yaml.YAMLError as exc:
-        print(exc)
 
-voxel_generator = VoxelGeneratorV3(
-    voxel_size=list(voxel_config["voxel_size"]),
-    point_cloud_range=list(voxel_config["point_cloud_range"]),
-    point_cloud_sphere_range=list(voxel_config["point_cloud_sphere_range"]),
-    max_num_points=voxel_config['max_number_of_points_per_voxel'],
-    max_voxels=20000)
+def points2voxels(points, voxel_generator):
+    """Convert points to voxels, for spconv.
+
+    Args:
+        points (np.tensor of shape [M, NDIM]),
+            points from one frame, M is the number of points.
+
+        voxel_generator: see spconv.VoxelGenerator
+
+    Return voxels and its coordinate
+
+    """
+    res = voxel_generator.generate(points, 20000)
+    voxels = res["voxels"]
+    coordinates = res["coordinates"]
+    num_points = res["num_points_per_voxel"]
+    # num_voxels = np.array([voxels.shape[0]], dtype=np.int64)
+
+    # print(voxels)
+    # print(coordinates[])
+    print(res)
+
+    return voxels, coordinates
 
 
-res = voxel_generator.generate(points, 20000)
-voxels = res["voxels"]
-coordinates = res["coordinates"]
-num_points = res["num_points_per_voxel"]
-num_voxels = np.array([voxels.shape[0]], dtype=np.int64)
+def create_voxel_generator(config_file_path: str):
+    """Create a **spherical** voxel generator based on a config file.
 
-# print(voxels)
-# print(coordinates[])
-print(res)
+    Args:
+        config_file_path (str), a yaml file
+
+    """
+    with open(config_file_path, 'r') as stream:
+        try:
+            data = yaml.safe_load(stream)
+            print(data)
+            voxel_config = data['voxel_generator']
+        except yaml.YAMLError as exc:
+            print(exc)
+
+    voxel_generator = VoxelGeneratorV3(
+        voxel_size=list(voxel_config["voxel_size"]),
+        point_cloud_range=list(voxel_config["point_cloud_range"]),
+        point_cloud_sphere_range=list(
+            voxel_config["point_cloud_sphere_range"]),
+        max_num_points=voxel_config['max_number_of_points_per_voxel'],
+        max_voxels=20000)
+
+    return voxel_generator
+
+
+def get_range_voxels(idx, batch_size=1):
+    """ Read point cloud from KITTI, return batched RangeVoxels
+
+    Args:
+    ----
+        idx (int): the start idx to read from
+        batch_size (int): the number of file to read. consecutive
+
+    """
+
+    pass
+
+
+def get_voxels(idx, batch_size=1):
+    """ Read point cloud from KITTI, return batched voxels, for spconv
+
+    Args:
+    ----
+        idx (int): the start idx to read from
+        batch_size (int): the number of file to read. consecutive
+
+    """
+    pass

@@ -16,6 +16,8 @@ import python.conv
 import unittest
 
 import sphconv
+from sphconv import RangeVoxel
+from kitti_reader import get_range_voxels, get_voxels
 import spconv
 
 torch.manual_seed(42)
@@ -37,13 +39,17 @@ configs = {
     'groups': 1
 }
 
-def run(configs):
-    input_sph = get_range_image(0)
-    input_sp = get_voxel(0)
-    # weight =
+
+def run(conv_configs, batch_size=1):
+    """
+    """
+
+    input_sph = get_range_voxels(0, batch_size=batch_size)
+    input_sp = get_voxels(0, batch_size=batch_size)
 
     conv = sphconv.Conv3D(**configs)
     conv_ref = spconv.SparseConv3d(**configs)
+
 
 
 
@@ -81,10 +87,10 @@ def check_forward(variables, with_cuda, verbose):
 
     # python impl
     feature, depth, weight, bias, stride, padding, dilation, groups = variables
-    dense_output = DepthImage(*python.conv.sphconv3d(*variables)).dense()
+    dense_output = RangeVoxel(*python.conv.sphconv3d(*variables)).dense()
 
     # conv3d as ref
-    dense_input = DepthImage(feature, depth).dense()
+    dense_input = RangeVoxel(feature, depth).dense()
     print("dense_input.shape", dense_input.shape)
     ref_output = F.conv3d(dense_input.permute(0, 4, 1, 2, 3).contiguous(), weight, bias=bias, stride=stride,
                           padding=padding, dilation=dilation, groups=groups)
