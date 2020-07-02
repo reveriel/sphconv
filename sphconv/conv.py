@@ -13,7 +13,7 @@ import sphconv_cuda
 class SphConvFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, feature, depth, thick,
-                weights, bias, stride, padding, dilation, groups):
+                weight, bias, stride, padding, dilation, groups):
         sD, sH, sW = bias
         padD, padH, padW = padding
         dD, dH, dW = dilation
@@ -22,14 +22,14 @@ class SphConvFunction(torch.autograd.Function):
             feature,
             depth,
             thick,
-            weights,
+            weight,
             bias,
             sD, sH, sW,
             padD, padH, padW,
             dD, dH, dW)
 
         variables = [feature, depth, thick,
-                     weights, bias, stride, padding, dilation, groups]
+                     weight, bias, stride, padding, dilation, groups]
         ctx.save_for_backward(*variables)
 
         return outputs
@@ -37,16 +37,16 @@ class SphConvFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, gradOutput):
 
-        feature, depth, thick, weights, bias, stride, padding, dilation, groups = ctx.saved_tensors
+        feature, depth, thick, weight, bias, stride, padding, dilation, groups = ctx.saved_tensors
 
         sD, sH, sW = bias
         padD, padH, padW = padding
         dD, dH, dW = dilation
 
-        feature_bp, weights_bp, bias_bp = sphconv_cuda.backward(
+        feature_bp, weight_bp, bias_bp = sphconv_cuda.backward(
             feature, depth, thick, gradOutput,
-            weights, sD, sH, sW, padD, padH, padW, dD, dH, dW, groups)
-        return feature_bp, None, None, weights_bp, bias_bp, None, None, None, None
+            weight, sD, sH, sW, padD, padH, padW, dD, dH, dW, groups)
+        return feature_bp, None, None, weight_bp, bias_bp, None, None, None, None
 
 
 class Convolution(SphModule):

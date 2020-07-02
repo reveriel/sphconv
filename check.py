@@ -12,11 +12,11 @@ import cpp.lltm
 
 import python.conv_baseline
 import python.conv
-from python.DepthImage import DepthImage
 
 import unittest
 
-from cuda.conv import SphConv
+import sphconv
+import spconv
 
 torch.manual_seed(42)
 
@@ -24,8 +24,26 @@ torch.manual_seed(42)
 # check the correctness of conv, against
 #   1. spconv
 #   2. torch.conv3d
+# use, same input, same weight
 # ////////////////////////////////////////////////
 
+configs = {
+    'in_channels': 1,
+    'out_channels': 1,
+    'kernel_size': 3,
+    'stride': 1,
+    'padding': 0,
+    'dilation': 1,
+    'groups': 1
+}
+
+def run(configs):
+    input_sph = get_range_image(0)
+    input_sp = get_voxel(0)
+    # weight =
+
+    conv = sphconv.Conv3D(**configs)
+    conv_ref = spconv.SparseConv3d(**configs)
 
 
 

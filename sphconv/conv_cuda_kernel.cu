@@ -21,7 +21,7 @@ __global__ void sphconv_cuda_forward_kernel(
         thick,
     const torch::GenericPackedTensorAccessor<scalar_t, 5, RestrictPtrTraits,
                                              size_t>
-        weights,
+        weight,
     const torch::GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits,
                                              size_t>
         bias,
@@ -94,7 +94,7 @@ __global__ void sphconv_cuda_forward_kernel(
  **/
 std::vector<torch::Tensor>
 sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
-                     torch::Tensor thick, torch::Tensor weights,
+                     torch::Tensor thick, torch::Tensor weight,
                      torch::Tensor bias, int64_t sD, int64_t sH, int64_t sW,
                      int64_t padD, int64_t padH, int64_t padW, int64_t dD,
                      int64_t dH, int64_t dW) {
@@ -105,7 +105,7 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
   T = feature.size(2);
   H = feature.size(3);
   W = feature.size(4);
-  K = weights.size(2);
+  K = weight.size(2);
 
   // assume we want to have each block to calcultate T output elements
   // (T + k - 1)^* inpuut elements are neededd ,
@@ -147,7 +147,7 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
                                           size_t>(),
             thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits,
                                           size_t>(),
-            weights.generic_packed_accessor<scalar_t, 5,
+            weight.generic_packed_accessor<scalar_t, 5,
                                             torch::RestrictPtrTraits, size_t>(),
             bias.generic_packed_accessor<scalar_t, 1, torch::RestrictPtrTraits,
                                          size_t>(),
@@ -165,13 +165,13 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
 std::vector<torch::Tensor>
 sphconv_cuda_backward(torch::Tensor feature, torch::Tensor depth,
                       torch::Tensor thick, torch::Tensor gradOutput,
-                      torch::Tensor weights,
+                      torch::Tensor weight,
                       torch::Tensor bias,
                       int64_t sD, int64_t sH, int64_t sW,
                       int64_t padD, int64_t padH, int64_t padW, int64_t dD,
                       int64_t dH, int64_t dW, int64_t groups) {
   auto d_feature = torch::zeros_like(feature);
-  auto d_weight = torch::zeros_like(weights);
+  auto d_weight = torch::zeros_like(weight);
   auto d_bias = torch::zeros_like(bias);
 
   return {d_feature, d_weight, d_bias};
