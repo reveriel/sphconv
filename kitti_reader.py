@@ -7,6 +7,7 @@ from pathlib import Path
 # from spconv import
 from spconv.utils import VoxelGeneratorV3
 
+from collections import defaultdict
 import yaml
 
 
@@ -58,6 +59,46 @@ def read_pc_data(idx: int):
     print(points.shape)
     return points
 
+
+
+def merge_second_batch(batch_list):
+    example_merged = defaultdict(list)
+    for example in batch_list:
+        for k, v in example.items():
+            example_merged[k].append(v)
+    ret = {}
+    for key, elems in example_merged.items():
+        if key in [
+                'voxels', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes'
+                ,'points'
+        ]:
+            ret[key] = np.concatenate(elems, axis=0)
+        elif key == 'metadata':
+            ret[key] = elems
+        elif key == "calib":
+            ret[key] = {}
+            for elem in elems:
+                for k1, v1 in elem.items():
+                    if k1 not in ret[key]:
+                        ret[key][k1] = [v1]
+                    else:
+                        ret[key][k1].append(v1)
+            for k1, v1 in ret[key].items():
+                ret[key][k1] = np.stack(v1, axis=0)
+        elif key == 'coordinates':
+            coors = []
+            for i, coor in enumerate(elems):
+                coor_pad = np.pad(
+                    coor, ((0, 0), (1, 0)), mode='constant', constant_values=i)
+                coors.append(coor_pad)
+            ret[key] = np.concatenate(coors, axis=0)
+        elif key == 'metrics':
+            ret[key] = elems
+        elif key in ['points']:
+            continue
+        else:
+            ret[key] = np.stack(elems, axis=0)
+    return ret
 
 points = read_pc_data(3)
 

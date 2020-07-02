@@ -6,55 +6,54 @@ from python.DepthImage import DepthImage
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
 
 import math
+from sphconv.modules import SphModule
 
 import sphconv_cuda
-
-
-class Test:
-    def print(self):
-        gemm_cuda.test()
-
 
 class SphConvFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, feature, depth, thick,
-                weights, bias, stride, padding, dilation, groups)
-    sD, sH, sW = bias
-    padD, padH, padW = padding
-    dD, dH, dW = dilation
+                weights, bias, stride, padding, dilation, groups):
+        sD, sH, sW = bias
+        padD, padH, padW = padding
+        dD, dH, dW = dilation
 
-    outputs = sphconv_cuda.forward(
-        feature,
-        depth,
-        thick,
-        weights,
-        bias,
-        sD, sH, sW,
-        padD, padH, padW,
-        dD, dH, dW)
+        outputs = sphconv_cuda.forward(
+            feature,
+            depth,
+            thick,
+            weights,
+            bias,
+            sD, sH, sW,
+            padD, padH, padW,
+            dD, dH, dW)
 
-    variables = [feature, depth, thick,
-                 weights, bias, stride, paddingg, dilation, groups]
-    ctx.save_for_backward(*variables)
+        variables = [feature, depth, thick,
+                     weights, bias, stride, padding, dilation, groups]
+        ctx.save_for_backward(*variables)
 
-    return outputs
+        return outputs
 
     @staticmethod
     def backward(ctx, gradOutput):
 
         feature, depth, thick, weights, bias, stride, padding, dilation, groups = ctx.saved_tensors
 
+        sD, sH, sW = bias
+        padD, padH, padW = padding
+        dD, dH, dW = dilation
+
         feature_bp, weights_bp, bias_bp = sphconv_cuda.backward(
             feature, depth, thick, gradOutput,
-            weights, sD, sH, sW, padD, padH, padW, dD, dH, dW)
+            weights, sD, sH, sW, padD, padH, padW, dD, dH, dW, groups)
         return feature_bp, None, None, weights_bp, bias_bp, None, None, None, None
 
 
-class SphConvBase(nn.Module):
+class Convolution(SphModule):
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, padding, dilation, groups,
                  bias, subm):
-        super(SphConvBase, self).__init__()
+        super(SphModule, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -101,9 +100,9 @@ class SphConvBase(nn.Module):
         return s.format(**self.__dict__)
 
 
-def SphConv(SphConvBase):
+def Conv3D(Convolution):
     """
-            Applies a 3D convolution on Depth Images
+            Applies a 3D convolution on Range Images
 
     Parameters:
         input: the input tensor of shape (minibatch, in_channels, iD, iH, iW)

@@ -7,24 +7,21 @@ import os
 import sys
 import glob
 
-
-
-
-# subprocess.run(["git", "submodule", "update", "--init", "cuda/cutlass"])
+# subprocess.run(["git", "submodule", "update", "--init", "sphconv/cutlass"])
 
 library_dirs = [CUDNN_LIB_DIR]
 include_dirs = [CUDNN_INCLUDE_DIR]
 
 setup(
-    name='lltm_cuda',
+    name='sphconv',
+    version='0.0.1',
+    author='Guo.Xing.',
+    author_email='reveriel@hotmail.com',
     ext_modules=[
-        # CUDAExtension('lltm_cuda', [
-        #     'lltm_cuda.cpp',
-        #     'lltm_cuda_kernel.cu',
-        # ]),
         CUDAExtension(name='sphconv_cuda',
         sources=[
-            'sphconv_cuda.cpp',
+            'conv_cuda.cpp',
+            'conv_cuda_kernel.cu',
             'ConvolutionBuildingBlocks/winograd4x4.cu'],
         extra_compile_args={'cxx': ['-O3'],
                 'nvcc':['-O3',
