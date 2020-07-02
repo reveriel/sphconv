@@ -1,7 +1,7 @@
 
 import numpy as np
 import torch
-from sphconv import DepthImage
+from sphconv import RangeVoxel
 
 def generate_test_image(B, C, D, H, W, T):
     """
@@ -22,5 +22,5 @@ def generate_test_image(B, C, D, H, W, T):
                 values, _ = torch.sort(depth[b, :, i, j])
                 depth[b, :, i, j] = values
 
-    return DepthImage(feature, depth, thick, (B, C, D, H, W))
+    return RangeVoxel(feature, depth, thick, (B, C, D, H, W))
 

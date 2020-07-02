@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from python.DepthImage import DepthImage
+
 
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
 
 import math
 from sphconv.modules import SphModule
+from sphconv import RangeVoxel
 
 import sphconv_cuda
 
@@ -143,7 +144,7 @@ def Conv3D(Convolution):
             in_channels, out_channels, kernel_size, stride, padding, dilation,
             groups, bias, subm)
 
-    def forward(self, input: DepthImage):
+    def forward(self, input: RangeVoxel):
         return SphConvFunction.apply(
             input.feature,
             input.depth,

@@ -1,9 +1,10 @@
 
-from test_utils import generate_test_image, check
+from sphconv.test_utils import generate_test_image, check
 
 
-class DepthImage(object):
-    """
+class RangeVoxel(object):
+    """ Voxels like RangeImage
+
     feature:
         Tensor of shape [B, C, T, H, W]
         TODO: C's position ?
@@ -20,9 +21,12 @@ class DepthImage(object):
         the max number of non empty voxels on 'D' dimension
 
     shape: tuple contains (B,C,D,H,W)
+
     """
 
     def __init__(self, feature: torch.Tensor, depth, thick, shape):
+        """
+        """
         B, C, D, H, W = shape
         B_f, C_f, T_f, H_f, W_f = feature.shape
         B_d, T_d, H_d, W_d = depth.shape
@@ -39,6 +43,7 @@ class DepthImage(object):
 
     def dense(self, device=None):
         """Convert to dense 3D tensor
+
         return a 3D tensor of shape (batchsize, D, H, W, C)
         """
         return to_dense(self.feature, self.depth, self.thick, self.shape[2])
@@ -46,6 +51,7 @@ class DepthImage(object):
 
 def to_dense(feature, depth, thick, D, device=None):
     """Convert to dense 3D tensor
+
     return a 3D tensor of shape (B, C, D, H, W)
         where D = max_depth
     """
@@ -62,11 +68,11 @@ def to_dense(feature, depth, thick, D, device=None):
 
 def test_dense():
     B, D, H, W, C, T = 2, 4, 3, 3, 1, 2
-    img = generate_test_image(B, D, H, W, C, T)
+    img = generate_test_image(B, C, D, H, W, T)
     print(check(img))
 
 
-def check(input: DepthImage):
+def check(input: RangeVoxel):
     B, C, T, H, W = input.feature.shape
     D = input.shape[2]
 
