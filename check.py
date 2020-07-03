@@ -50,7 +50,7 @@ def run(conv_configs, batch_size=1):
                           dilation=configs['dilation'],
                           groups=configs['groups'],
                           bias=configs['bias'],
-                          subm=configs['subm'])
+                          subm=configs['subm']).cuda()
     conv_ref = spconv.SparseConv3d(configs['in_channels'],
                                    configs['out_channels'],
                                    configs['kernel_size'],
@@ -58,7 +58,27 @@ def run(conv_configs, batch_size=1):
                                    padding=configs['padding'],
                                    dilation=configs['dilation'],
                                    groups=configs['groups'],
-                                   bias=configs['bias'])
+                                   bias=configs['bias']).cuda()
+
+    print("input sp = ")
+    print(input_sp)
+    print("===="*20)
+
+    res_ref = conv_ref(input_sp)
+
+    print("conv ref's result = ")
+    print(res_ref)
+    print("===="*20)
+
+    print("input sph = ")
+    print(input_sph)
+    print("===="*20)
+
+    res = conv(input_sph)
+
+    print("conv's result = ")
+    print(res)
+    print("===="*20)
 
 
 run(configs)

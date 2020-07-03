@@ -108,6 +108,6 @@ class Conv3d(Convolution):
             self.weight,
             self.bias,
             self.stride,
-            self.paddinig,
+            self.padding,
             self.dilation,
             self.groups)

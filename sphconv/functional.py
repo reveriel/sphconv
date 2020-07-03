@@ -39,7 +39,7 @@ class SphConvFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, feature, depth, thick,
                 weight, bias, stride, padding, dilation, groups):
-        sD, sH, sW = bias
+        sD, sH, sW = stride
         padD, padH, padW = padding
         dD, dH, dW = dilation
 

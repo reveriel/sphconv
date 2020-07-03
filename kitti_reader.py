@@ -1,10 +1,11 @@
 # read kitti point cloud
 # see
 #
+import torch
 import numpy as np
 import pathlib
 from pathlib import Path
-# from spconv import
+import spconv
 from spconv.utils import VoxelGeneratorV3
 from sphconv.data import xyz2RangeVoxel, merge_rangevoxel_batch
 
@@ -183,6 +184,39 @@ def get_range_voxels(idx, batch_size=1, range_voxel_config_path=RANGE_VOXEL_CONF
     print(batched)
     return batched
 
+def example_convert_to_torch(example, dtype=torch.float32,
+                             device=None) -> dict:
+    """ convert data from numpy to torch
+    """
+    device = device or torch.device("cuda:0")
+    example_torch = {}
+    float_names = [
+        "voxels", "anchors", "reg_targets", "reg_weights", "bev_map", "importance",
+        "feature"
+    ]
+    for k, v in example.items():
+        if k in float_names:
+            # slow when directly provide fp32 data with dtype=torch.half
+            example_torch[k] = torch.tensor(
+                v, dtype=torch.float32, device=device).to(dtype)
+        elif k in ["coordinates", "labels", "num_points"]:
+            example_torch[k] = torch.tensor(
+                v, dtype=torch.int32, device=device)
+        elif k in ["anchors_mask"]:
+            example_torch[k] = torch.tensor(
+                v, dtype=torch.uint8, device=device)
+        elif k == "calib":
+            calib = {}
+            for k1, v1 in v.items():
+                calib[k1] = torch.tensor(
+                    v1, dtype=dtype, device=device).to(dtype)
+            example_torch[k] = calib
+        elif k == "num_voxels":
+            example_torch[k] = torch.tensor(v)
+        else:
+            example_torch[k] = v
+    return example_torch
+
 
 def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
     """ Read point cloud from KITTI, return batched voxels, for spconv
@@ -201,5 +235,14 @@ def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
         voxels_list.append(voxels)
 
     batched = merge_second_batch(voxels_list)
-    print(batched)
-    return batched
+    batched = example_convert_to_torch(batched)
+
+    spatial_shape = voxel_generator.grid_size
+    print("grid_size = {}".format(spatial_shape))
+
+    res = spconv.SparseConvTensor(batched['voxels'],
+                            batched['coordinates'],
+                            spatial_shape,
+                            batch_size)
+    print(res)
+    return res
