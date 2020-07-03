@@ -6,13 +6,15 @@ import pathlib
 from pathlib import Path
 # from spconv import
 from spconv.utils import VoxelGeneratorV3
+from sphconv.data import xyz2RangeVoxel, merge_rangevoxel_batch
 
 from collections import defaultdict
 import yaml
 
 
 KITTI_DATASET_ROOT = "dataset/"
-VOXEL_CONFIG = 'config.yaml'
+VOXEL_CONFIG = 'voxel.yaml'
+RANGE_VOXEL_CONFIG = 'range_voxel.yaml'
 
 
 def get_image_index_str(img_idx):
@@ -42,6 +44,7 @@ def get_kitti_info_path(idx,
 
 
 def get_velodyne_path(idx, prefix, training=True, relative_path=False, exist_check=True):
+    """Get kitti's point cloud  path. eg. /dataset/training/velodyne/"""
     return get_kitti_info_path(idx, prefix, 'velodyne', '.bin', training,
                                relative_path, exist_check)
 
@@ -49,6 +52,7 @@ def get_velodyne_path(idx, prefix, training=True, relative_path=False, exist_che
 
 
 def read_pc_data(idx: int):
+    """Read the 'idx' th  point cloud file from kitti."""
     velo_path = Path(get_velodyne_path(idx, KITTI_DATASET_ROOT))
     # velo_path = Path(KITTI_DATASET_ROOT) / velo_path
     velo_reduced_path = velo_path.parent.parent / \
@@ -63,6 +67,7 @@ def read_pc_data(idx: int):
 
 
 def merge_second_batch(batch_list):
+    """Merge multiple pointcloud(already processed by point2voxel) to a batch."""
     example_merged = defaultdict(list)
     for example in batch_list:
         for k, v in example.items():
@@ -101,14 +106,7 @@ def merge_second_batch(batch_list):
     return ret
 
 
-points = read_pc_data(3)
-
-# voxelize
-
-# voxel_config =
-
-
-def points2voxels(points, voxel_generator):
+def point2voxel(points, voxel_generator):
     """Convert points to voxels, for spconv.
 
     Args:
@@ -118,19 +116,30 @@ def points2voxels(points, voxel_generator):
         voxel_generator: see spconv.VoxelGenerator
 
     Return voxels and its coordinate
+        a dictionary, with "voxels" and "coordinates" etc.
 
     """
     res = voxel_generator.generate(points, 20000)
-    voxels = res["voxels"]
-    coordinates = res["coordinates"]
-    num_points = res["num_points_per_voxel"]
+    # voxels = res["voxels"]
+    # coordinates = res["coordinates"]
+    # num_points = res["num_points_per_voxel"]
     # num_voxels = np.array([voxels.shape[0]], dtype=np.int64)
 
     # print(voxels)
     # print(coordinates[])
-    print(res)
+    # print(res)
 
-    return voxels, coordinates
+    return res
+
+
+def read_config_file(config_file_path: str):
+    with open(config_file_path, 'r') as stream:
+        try:
+            data = yaml.safe_load(stream)
+            print(data)
+        except yaml.YAMLError as exc:
+            print(exc)
+    return data
 
 
 def create_voxel_generator(config_file_path: str):
@@ -140,13 +149,8 @@ def create_voxel_generator(config_file_path: str):
         config_file_path (str), a yaml file
 
     """
-    with open(config_file_path, 'r') as stream:
-        try:
-            data = yaml.safe_load(stream)
-            print(data)
-            voxel_config = data['voxel_generator']
-        except yaml.YAMLError as exc:
-            print(exc)
+    voxel_config = read_config_file(config_file_path)
+    voxel_config = voxel_config['voxel_generator']
 
     voxel_generator = VoxelGeneratorV3(
         voxel_size=list(voxel_config["voxel_size"]),
@@ -159,7 +163,7 @@ def create_voxel_generator(config_file_path: str):
     return voxel_generator
 
 
-def get_range_voxels(idx, batch_size=1):
+def get_range_voxels(idx, batch_size=1, range_voxel_config_path=RANGE_VOXEL_CONFIG):
     """ Read point cloud from KITTI, return batched RangeVoxels
 
     Args:
@@ -168,11 +172,19 @@ def get_range_voxels(idx, batch_size=1):
         batch_size (int): the number of file to read. consecutive
 
     """
+    range_config = read_config_file(range_voxel_config_path)
 
-    pass
+    rangeV_list = []
+    for i in range(idx, idx + batch_size):
+        points = read_pc_data(i)
+        rangeV = xyz2RangeVoxel(points, **range_config)
+        rangeV_list.append(rangeV)
+    batched = merge_rangevoxel_batch(rangeV_list)
+    print(batched)
+    return batched
 
 
-def get_voxels(idx, batch_size=1):
+def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
     """ Read point cloud from KITTI, return batched voxels, for spconv
 
     Args:
@@ -181,4 +193,13 @@ def get_voxels(idx, batch_size=1):
         batch_size (int): the number of file to read. consecutive
 
     """
-    pass
+    voxel_generator = create_voxel_generator(voxel_generator_config_path)
+    voxels_list = []
+    for i in range(idx, idx + batch_size):
+        points = read_pc_data(i)
+        voxels = point2voxel(points, voxel_generator=voxel_generator)
+        voxels_list.append(voxels)
+
+    batched = merge_second_batch(voxels_list)
+    print(batched)
+    return batched

@@ -2,14 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
 
 import math
+import sphconv
 from sphconv.modules import SphModule
-from sphconv import RangeVoxel
 
 import sphconv_cuda
+
 
 class SphConvFunction(torch.autograd.Function):
     @staticmethod

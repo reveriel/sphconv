@@ -7,12 +7,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-import python.lltm_baseline
-import cpp.lltm
-
-import python.conv_baseline
-import python.conv
-
 import unittest
 
 import sphconv
@@ -51,6 +45,7 @@ def run(conv_configs, batch_size=1):
     conv_ref = spconv.SparseConv3d(**configs)
 
 
+run(configs)
 
 
 def check_equal(first, second, verbose) -> bool:

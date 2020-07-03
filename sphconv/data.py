@@ -31,8 +31,8 @@ def xyz2RangeVoxel(points,
             M is the number of points, NDim is the number of features,
             asssume the first three are x,y,z coordinates.
 
-        vres (int) : vertical resolution, a 64 line lidar should
-            use v_res=64. Default to 64.
+        vres (int) : vertical resolution, a 64 line lidar is most suitted by
+            v_res=64. Default to 64.
         h_res (int) : horizontal resolution, Default to 512
         d_res (int) : resolution on depth dimension, Default to 512
 
@@ -60,7 +60,7 @@ def xyz2RangeVoxel(points,
     x = points[:, 0]
     y = points[:, 1]
     z = points[:, 2]
-    Channel = points.shape(1)
+    Channel = points.shape[1]
 
     x2y2 = x * x + y * y
     r = np.sqrt(x2y2 + z * z)
@@ -97,13 +97,13 @@ def xyz2RangeVoxel(points,
     # later points seems to be with bigger z, not universaly correct
     feature = torch.zeros((1, Channel, 1, v_res, h_res))
     for i in range(0, Channel):
-        feature[0, i, 1, theta_idx, phi_idx] = points[:, 0]
+        feature[0, i, 0, theta_idx, phi_idx] = torch.from_numpy(points[:, 0])
 
     # TODO, what about default depth ?
     # maybe we should ignore them / or use neigbour points' depth?
     # or rand ?
     depth = torch.zeros((1, 1, v_res, h_res), dtype=int)
-    depth[0, 0, theta_idx, phi_idx] = depth_idx
+    depth[0, 0, theta_idx, phi_idx] = torch.from_numpy(depth_idx.astype(int))
 
     thick = torch.ones((1, v_res, h_res), dtype=int)
 
@@ -112,7 +112,7 @@ def xyz2RangeVoxel(points,
 
 # batch data
 
-def merge_batch(voxel_list: [RangeVoxel]) -> RangeVoxel:
+def merge_rangevoxel_batch(voxel_list: [RangeVoxel]) -> RangeVoxel:
     """ Merge a list of RangeVoxel to a batch.
 
         must be of the same shape, I don't check it
@@ -125,9 +125,8 @@ def merge_batch(voxel_list: [RangeVoxel]) -> RangeVoxel:
     thick_list = [ x.thick for x in voxel_list]
     thick = torch.cat(thick_list, dim=0)
 
-    shape = voxel_list[0].shape
+    shape = list(voxel_list[0].shape)
     shape[0] = len(voxel_list)
 
     return RangeVoxel(feature, depth, thick, shape=shape)
-
 

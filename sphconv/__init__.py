@@ -1,6 +1,6 @@
 
-from sphconv.test_utils import generate_test_image, check
-
+import torch
+from sphconv.conv import Conv3D
 
 class RangeVoxel(object):
     """ Voxels like RangeImage
@@ -65,32 +65,3 @@ def to_dense(feature, depth, thick, D, device=None):
                     buffer[b, :, z, x, y] = feature[b, :, t, x, y]
     return buffer
 
-
-def test_dense():
-    B, D, H, W, C, T = 2, 4, 3, 3, 1, 2
-    img = generate_test_image(B, C, D, H, W, T)
-    print(check(img))
-
-
-def check(input: RangeVoxel):
-    B, C, T, H, W = input.feature.shape
-    D = input.shape[2]
-
-    dense = input.dense()
-    # print("dense .shape =", dense.shape)
-    # print("dense", dense.reshape((2, 4, 3, 3)))
-    # print("depth = ", input.depth)
-    # if abs(dense.sum() - input.feature.sum()) > 1e7:
-    #     return False
-    for b in range(B):
-        for x in range(H):
-            for y in range(W):
-                for t in range(input.thick[b, x, y]):
-                    z = input.depth[b, t, x, y]
-                    if sum(abs(dense[b, :, z, x, y] - input.feature[b, :, t, x, y])) > 1e-6:
-                        print("dense[", b, ":", z, x, y, "]=",
-                              dense[b, :, z, x, y])
-                        print("feature[", b, ":", t, x, y, "]=",
-                              input.feature[b, :, t, x, y])
-                        return False
-    return True
