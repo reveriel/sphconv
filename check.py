@@ -30,19 +30,35 @@ configs = {
     'stride': 1,
     'padding': 0,
     'dilation': 1,
-    'groups': 1
+    'groups': 1,
+    'bias': False,
+    'subm': False,
 }
 
 
 def run(conv_configs, batch_size=1):
-    """
-    """
+    """Check sphconv and spconv's results. """
 
     input_sph = get_range_voxels(0, batch_size=batch_size)
     input_sp = get_voxels(0, batch_size=batch_size)
 
-    conv = sphconv.Conv3D(**configs)
-    conv_ref = spconv.SparseConv3d(**configs)
+    conv = sphconv.Conv3d(configs['in_channels'],
+                          configs['out_channels'],
+                          configs['kernel_size'],
+                          stride=configs['stride'],
+                          padding=configs['padding'],
+                          dilation=configs['dilation'],
+                          groups=configs['groups'],
+                          bias=configs['bias'],
+                          subm=configs['subm'])
+    conv_ref = spconv.SparseConv3d(configs['in_channels'],
+                                   configs['out_channels'],
+                                   configs['kernel_size'],
+                                   stride=configs['stride'],
+                                   padding=configs['padding'],
+                                   dilation=configs['dilation'],
+                                   groups=configs['groups'],
+                                   bias=configs['bias'])
 
 
 run(configs)
