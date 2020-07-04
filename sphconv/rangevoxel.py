@@ -43,6 +43,7 @@ class RangeVoxel(object):
         """Convert to dense 3D tensor
 
         return a 3D tensor of shape (batchsize, D, H, W, C)
+
         """
         return to_dense(self.feature, self.depth, self.thick, self.shape[2])
 
@@ -52,6 +53,7 @@ def to_dense(feature, depth, thick, D, device=None):
 
     return a 3D tensor of shape (B, C, D, H, W)
         where D = max_depth
+
     """
     B, C, T, H, W = feature.shape
     buffer = torch.zeros((B, C, D, H, W), device=device)

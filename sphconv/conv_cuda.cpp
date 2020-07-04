@@ -11,7 +11,7 @@ std::vector<torch::Tensor> sphconv_cuda_forward(
     torch::Tensor depth,
     torch::Tensor thick,
     torch::Tensor weight,
-    torch::Tensor bias,
+    // torch::Tensor bias,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
@@ -23,7 +23,7 @@ std::vector<torch::Tensor> sphconv_cuda_backward(
     torch::Tensor thick,
     torch::Tensor gradOutput,
     torch::Tensor weights,
-    torch::Tensor bias,
+    // torch::Tensor bias,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
@@ -41,7 +41,7 @@ std::vector<torch::Tensor> sphconv_forward(
     torch::Tensor depth,
     torch::Tensor thick,
     torch::Tensor weights,
-    torch::Tensor bias,
+    // torch::Tensor bias,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
@@ -51,9 +51,9 @@ std::vector<torch::Tensor> sphconv_forward(
     CHECK_INPUT(depth);
     CHECK_INPUT(thick);
     CHECK_INPUT(weights);
-    CHECK_INPUT(bias);
+    // CHECK_INPUT(bias);
 
-    return sphconv_cuda_forward(feature, depth, thick, weights, bias,
+    return sphconv_cuda_forward(feature, depth, thick, weights,
                                 sD, sH, sW,
                                 padD, padH, padW,
                                 dD, dH, dW,
@@ -66,7 +66,7 @@ std::vector<torch::Tensor> sphconv_backward(
     torch::Tensor thick,
     torch::Tensor gradOutput,
     torch::Tensor weights,
-    torch::Tensor bias,
+    // torch::Tensor bias,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
@@ -80,7 +80,7 @@ std::vector<torch::Tensor> sphconv_backward(
                                  thick,
                                  gradOutput,
                                  weights,
-                                 bias,
+                                //  bias,
                                  sD, sH, sW,
                                  padD, padH, padW,
                                  dD, dH, dW,

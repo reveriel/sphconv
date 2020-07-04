@@ -9,7 +9,11 @@ from sphconv.functional import SphConvFunction
 from sphconv.rangevoxel import RangeVoxel
 
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
+
+
 class Convolution(SphModule):
+    """Base class for all convolutions."""
+
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, padding, dilation, groups,
                  bias, subm):
@@ -23,7 +27,6 @@ class Convolution(SphModule):
         self.padding = padding
         self.dilation = dilation
         self.groups = groups
-        self.bias = bias
         self.subm = subm
 
         self.weight = nn.Parameter(
@@ -31,8 +34,8 @@ class Convolution(SphModule):
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:
-            self.bias = None
-            # self.register_parameter('bias', None)
+            # self.bias = None
+            self.register_parameter('bias', None)
             # self.bias = torch.empty(0)
         self.reset_parameters()
 
@@ -62,8 +65,7 @@ class Convolution(SphModule):
 
 
 class Conv3d(Convolution):
-    """ a 3D convolution Module on Range Images
-        """
+    """ a 3D convolution Module on Range Images """
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=1, dilation=1, groups=1,
@@ -100,8 +102,22 @@ class Conv3d(Convolution):
             in_channels, out_channels, kernel_size, stride, padding, dilation,
             groups, bias, subm)
 
-    def forward(self, input:RangeVoxel):
-        return SphConvFunction.apply(
+    def forward(self, input: RangeVoxel):
+
+        batch_size, inChannel, iD, iH, iW = input.feature.shape
+
+        kD, kH, kW = self.kernel_size
+        sD, sH, sW = self.stride
+        padD, padH, padW = self.padding
+        dD, dH, dW = self.dilation
+
+        oD = math.floor((iD + 2 * padD - dD * (kD - 1) - 1) / sD + 1)
+        oH = math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1)
+        oW = math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1)
+
+        shape = (batch_size, self.out_channels, oD, oH, oW)
+
+        feature, depth, thick = SphConvFunction.apply(
             input.feature,
             input.depth,
             input.thick,
@@ -111,3 +127,4 @@ class Conv3d(Convolution):
             self.padding,
             self.dilation,
             self.groups)
+        return RangeVoxel(feature, depth, thick, shape=shape)

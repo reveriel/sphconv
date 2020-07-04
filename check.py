@@ -64,7 +64,8 @@ def run(conv_configs, batch_size=1):
     print(input_sp)
     print("===="*20)
 
-    res_ref = conv_ref(input_sp)
+    with torch.no_grad():
+        res_ref = conv_ref(input_sp)
 
     print("conv ref's result = ")
     print(res_ref)
@@ -74,7 +75,8 @@ def run(conv_configs, batch_size=1):
     print(input_sph)
     print("===="*20)
 
-    res = conv(input_sph)
+    with torch.no_grad():
+        res = conv(input_sph)
 
     print("conv's result = ")
     print(res)

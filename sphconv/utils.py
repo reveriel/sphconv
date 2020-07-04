@@ -4,6 +4,7 @@ from itertools import repeat, product
 
 
 def _triple(x):
+    """If x is a single number, repeat three times."""
     if isinstance(x, container_abcs.Iterable):
         return x
     return tuple(repeat(x, 3))
@@ -11,6 +12,7 @@ def _triple(x):
 
 # copy form pytorch
 def _calculate_fan_in_and_fan_out_hwio(tensor):
+    """Init convolution weight. Copied from pytorch."""
     dimensions = tensor.ndimension()
     if dimensions < 2:
         raise ValueError(
