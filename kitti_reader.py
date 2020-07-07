@@ -103,6 +103,9 @@ def merge_second_batch(batch_list):
         elif key in ['points']:
             continue
         else:
+            # print("elems.shape = ", elems.shape)
+            print("key = ", key)
+            continue
             ret[key] = np.stack(elems, axis=0)
     return ret
 
@@ -164,13 +167,40 @@ def create_voxel_generator(config_file_path: str):
     return voxel_generator
 
 
-def get_range_voxels(idx, batch_size=1, range_voxel_config_path=RANGE_VOXEL_CONFIG):
+def append_random_channels(rangeV, channel):
+    """ append some random data on channel dimmension"""
+    B, C, D, H, W = rangeV.shape
+    T = rangeV.feature.shape[2]
+    rangeV.feature = torch.cat(
+        rangeV.feature, torch.randn(B, channel, D, H, W), dim=1)
+    return rangeV
+
+
+def append_random_feature(points, channel):
+    """Append random data on dimmension of Channel.
+
+        points is numpy array
+        channel : the number of channel to append
+
+    """
+    N = points.shape[0]
+    # print("points.dytpe = ", points.dtype)
+    rand_feature = np.random.randn(N, channel).astype('f')
+    # print("rand_feature.dytpe = ", rand_feature.dtype)
+    return np.concatenate((points, rand_feature), axis=1)
+
+
+def get_range_voxels(idx,
+                     batch_size=1,
+                     channel=4,
+                     range_voxel_config_path=RANGE_VOXEL_CONFIG):
     """ Read point cloud from KITTI, return batched RangeVoxels
 
     Args:
     ----
         idx (int): the start idx to read from
         batch_size (int): the number of file to read. consecutive
+        channel (int): the number of channel
 
     """
     range_config = read_config_file(range_voxel_config_path)
@@ -178,11 +208,17 @@ def get_range_voxels(idx, batch_size=1, range_voxel_config_path=RANGE_VOXEL_CONF
     rangeV_list = []
     for i in range(idx, idx + batch_size):
         points = read_pc_data(i)
+        if channel > 4:
+            # already got 4 channels --- xyzr
+            points = append_random_feature(points, channel - 4)
+
         rangeV = xyz2RangeVoxel(points, **range_config)
         rangeV_list.append(rangeV)
+
     batched = merge_rangevoxel_batch(rangeV_list)
     print(batched)
     return batched
+
 
 def example_convert_to_torch(example, dtype=torch.float32,
                              device=None) -> dict:
@@ -218,7 +254,10 @@ def example_convert_to_torch(example, dtype=torch.float32,
     return example_torch
 
 
-def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
+def get_voxels(idx,
+               batch_size=1,
+               channel=4,
+               voxel_generator_config_path=VOXEL_CONFIG):
     """ Read point cloud from KITTI, return batched voxels, for spconv
 
     Args:
@@ -231,6 +270,11 @@ def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
     voxels_list = []
     for i in range(idx, idx + batch_size):
         points = read_pc_data(i)
+
+        if channel > 4:
+            # already got 4 channels --- xyzr
+            points = append_random_feature(points, channel - 4)
+
         voxels = point2voxel(points, voxel_generator=voxel_generator)
         voxels_list.append(voxels)
 
@@ -241,8 +285,8 @@ def get_voxels(idx, batch_size=1, voxel_generator_config_path=VOXEL_CONFIG):
     print("grid_size = {}".format(spatial_shape))
 
     res = spconv.SparseConvTensor(batched['voxels'],
-                            batched['coordinates'],
-                            spatial_shape,
-                            batch_size)
+                                  batched['coordinates'],
+                                  spatial_shape,
+                                  batch_size)
     print(res)
     return res

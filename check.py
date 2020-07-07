@@ -36,11 +36,13 @@ configs = {
 }
 
 
-def run(conv_configs, batch_size=1):
+def run(conv_configs, batch_size=1, channel=4):
     """Check sphconv and spconv's results. """
 
-    input_sph = get_range_voxels(0, batch_size=batch_size)
-    input_sp = get_voxels(0, batch_size=batch_size)
+    input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
+    print("input_sph shape =", input_sph.shape)
+    input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
+    print("input_sp shape =", input_sp.spatial_shape)
 
     conv = sphconv.Conv3d(configs['in_channels'],
                           configs['out_channels'],
@@ -60,16 +62,22 @@ def run(conv_configs, batch_size=1):
                                    groups=configs['groups'],
                                    bias=configs['bias']).cuda()
 
-    print("input sp = ")
+    print("input_sp = ")
     print(input_sp)
     print("===="*20)
 
+    # while ()
     with torch.no_grad():
         res_ref = conv_ref(input_sp)
 
     print("conv ref's result = ")
     print(res_ref)
     print("===="*20)
+    # exit(0)
+
+    # ==================================
+    #
+    # ===================================
 
     print("input sph = ")
     print(input_sph)
@@ -83,7 +91,7 @@ def run(conv_configs, batch_size=1):
     print("===="*20)
 
 
-run(configs)
+run(configs, 16, 8)
 
 
 def check_equal(first, second, verbose) -> bool:

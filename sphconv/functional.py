@@ -1,6 +1,6 @@
 import torch
 
-import sphconv_cuda
+# import sphconv_cuda
 
 
 class SphConvFunction(torch.autograd.Function):
