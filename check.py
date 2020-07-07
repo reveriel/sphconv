@@ -24,7 +24,7 @@ torch.manual_seed(42)
 # ////////////////////////////////////////////////
 
 configs = {
-    'in_channels': 1,
+    'in_channels': 8,
     'out_channels': 1,
     'kernel_size': 3,
     'stride': 1,

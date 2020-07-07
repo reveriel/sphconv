@@ -1,6 +1,6 @@
 import torch
 
-# import sphconv_cuda
+import sphconv_cuda
 
 
 class SphConvFunction(torch.autograd.Function):
@@ -40,7 +40,10 @@ class SphConvFunction(torch.autograd.Function):
         """
 
     @staticmethod
-    def forward(ctx, feature, depth, thick,
+    def forward(ctx,
+                feature,
+                depth,
+                thick,
                 weight,
                 bias,
                 stride,
@@ -77,20 +80,27 @@ class SphConvFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, d_featureOut, d_depthOut, d_thickOut):
 
-        feature, depth, thick, weight, bias, stride, padding, dilation, groups = ctx.saved_tensors
+        # bias
+        feature, depth, thick, \
+            weight, stride, padding, dilation, groups = ctx.saved_tensors
 
-        sD, sH, sW = bias
+        sD, sH, sW = stride
         padD, padH, padW = padding
         dD, dH, dW = dilation
 
-        d_feature, d_weight, d_bias = sphconv_cuda.backward(
+        # d_bias
+        d_feature, d_weight = sphconv_cuda.backward(
             feature,
             depth,
             thick,
             d_featureOut,
+            # bias,
             weight,
             sD, sH, sW,
             padD, padH, padW,
             dD, dH, dW,
             groups)
-        return d_feature, None, None, d_weight, d_bias, None, None, None, None
+
+        # no bias now
+        return d_feature, None, None, d_weight, None, None, None, None, None
+

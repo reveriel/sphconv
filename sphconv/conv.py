@@ -104,7 +104,12 @@ class Conv3d(Convolution):
 
     def forward(self, input: RangeVoxel):
 
-        batch_size, inChannel, iD, iH, iW = input.feature.shape
+        batch_size, inChannel, iD, iH, iW = input.shape
+        # print("forward input shape =", input.shape)
+        # print("self inch = ", self.in_channels)
+
+        assert (self.in_channels == inChannel), "input channel does not match \
+            Expect: {}, got {}".format(self.in_channels, inChannel)
 
         kD, kH, kW = self.kernel_size
         sD, sH, sW = self.stride
@@ -115,7 +120,7 @@ class Conv3d(Convolution):
         oH = math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1)
         oW = math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1)
 
-        shape = (batch_size, self.out_channels, oD, oH, oW)
+        new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
         feature, depth, thick = SphConvFunction.apply(
             input.feature,
@@ -127,4 +132,4 @@ class Conv3d(Convolution):
             self.padding,
             self.dilation,
             self.groups)
-        return RangeVoxel(feature, depth, thick, shape=shape)
+        return RangeVoxel(feature, depth, thick, shape=new_shape)

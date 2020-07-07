@@ -18,8 +18,8 @@ __global__ void sphconv_cuda_forward_kernel(
         thick,
     const torch::GenericPackedTensorAccessor<scalar_t, 5, RestrictPtrTraits, size_t>
         weight,
-    const torch::GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, size_t>
-        bias,
+    // const torch::GenericPackedTensorAccessor<scalar_t, 1, RestrictPtrTraits, size_t>
+    //     bias,
     torch::GenericPackedTensorAccessor<scalar_t, 5, RestrictPtrTraits, size_t>
         new_feature,
     torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
@@ -31,7 +31,8 @@ __global__ void sphconv_cuda_forward_kernel(
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW
-  ) {
+  )
+{
   // load tile to shared mem
   // input tile size = TILE + K
   //
@@ -95,20 +96,25 @@ __global__ void sphconv_cuda_forward_kernel(
  * bias : D
  **/
 std::vector<torch::Tensor>
-sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
-                     torch::Tensor thick, torch::Tensor weight,
-                     torch::Tensor bias, int64_t sD, int64_t sH, int64_t sW,
+sphconv_cuda_forward(torch::Tensor feature,
+                     torch::Tensor depth,
+                     torch::Tensor thick,
+                     torch::Tensor weight,
+                    //  torch::Tensor bias,
+                     int64_t sD, int64_t sH, int64_t sW,
                      int64_t padD, int64_t padH, int64_t padW, int64_t dD,
                      int64_t dH, int64_t dW,
                      int64_t groups
-                    ) {
+                    )
+{
   // input size
-  int64_t N, C, T, H, W, K;
+  int64_t N, C, T, H, W, oC, K;
   N = feature.size(0);
   C = feature.size(1);
   T = feature.size(2);
   H = feature.size(3);
   W = feature.size(4);
+  oC = weight.size(0);
   K = weight.size(2);
 
   // assume we want to have each block to calcultate T output elements
@@ -137,9 +143,12 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
 
   // output tensor
   // including new_feature
-  auto new_feature = torch::empty({N, C, T + 2, oH, oW});
-  auto new_depth = torch::empty({N, T + 2, oH, oW});
-  auto new_thick = torch::empty({N, oH, oW});
+  auto new_feature = torch::empty({N, oC, T + 2, oH, oW},
+                                torch::dtype(torch::kFloat32));
+  auto new_depth = torch::empty({N, T + 2, oH, oW},
+                                 torch::dtype(torch::kInt32));
+  auto new_thick = torch::empty({N, oH, oW},
+                                torch::dtype(torch::kInt32));
 
   AT_DISPATCH_FLOATING_TYPES(
       feature.type(), "sphconv_forward_cuda", ([&] {
@@ -150,7 +159,7 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
             depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
             thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
             weight.generic_packed_accessor<scalar_t, 5, torch::RestrictPtrTraits, size_t>(),
-            bias.generic_packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
+            // bias.generic_packed_accessor<scalar_t, 1, torch::RestrictPtrTraits, size_t>(),
             new_feature.generic_packed_accessor< scalar_t, 5, torch::RestrictPtrTraits, size_t>(),
             new_depth.generic_packed_accessor< int32_t, 4, torch::RestrictPtrTraits, size_t>(),
             new_thick.generic_packed_accessor< int32_t, 3, torch::RestrictPtrTraits, size_t>(),
@@ -161,20 +170,25 @@ sphconv_cuda_forward(torch::Tensor feature, torch::Tensor depth,
             dD, dH, dW
           );
       }));
+
   return {new_feature, new_depth, new_thick};
 }
 
 std::vector<torch::Tensor>
-sphconv_cuda_backward(torch::Tensor feature, torch::Tensor depth,
-                      torch::Tensor thick, torch::Tensor gradOutput,
+sphconv_cuda_backward(torch::Tensor feature,
+                      torch::Tensor depth,
+                      torch::Tensor thick,
+                      torch::Tensor gradOutput,
                       torch::Tensor weight,
-                      torch::Tensor bias,
+                      // torch::Tensor bias,
                       int64_t sD, int64_t sH, int64_t sW,
-                      int64_t padD, int64_t padH, int64_t padW, int64_t dD,
-                      int64_t dH, int64_t dW, int64_t groups) {
+                      int64_t padD, int64_t padH, int64_t padW,
+                      int64_t dD, int64_t dH, int64_t dW,
+                      int64_t groups)
+{
   auto d_feature = torch::zeros_like(feature);
   auto d_weight = torch::zeros_like(weight);
-  auto d_bias = torch::zeros_like(bias);
+  // auto d_bias = torch::zeros_like(bias);
 
-  return {d_feature, d_weight, d_bias};
+  return {d_feature, d_weight};
 }

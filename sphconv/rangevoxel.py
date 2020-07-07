@@ -29,10 +29,14 @@ class RangeVoxel(object):
         B_f, C_f, T_f, H_f, W_f = feature.shape
         B_d, T_d, H_d, W_d = depth.shape
         B_t, H_t, W_t = thick.shape
-        assert (B == B_d == B_t == B_f and H == H_d == H_t == H_f and
-                W == W_d == W_t == W_f and C == C_f and T_d == T_f), \
-            "dimension not match, feature.shape={}, depth.shape={}, thick.shape={}\n\
-            shape={}".format(feature.shape, (B_d, H_d, W_d), thick.shape, shape)
+        assert (B == B_d == B_t == B_f
+            and H == H_d == H_t == H_f
+            and W == W_d == W_t == W_f
+            and C == C_f
+            and T_d == T_f), \
+            "dimension not match, feature.shape={}, depth.shape={}, \
+                 thick.shape={},  shape={}".\
+                 format(feature.shape, depth.shape, thick.shape, shape)
 
         self.feature = feature
         self.depth = depth
@@ -47,6 +51,12 @@ class RangeVoxel(object):
         """
         return to_dense(self.feature, self.depth, self.thick, self.shape[2])
 
+    def cuda(self):
+        """Move to CUDA."""
+        self.feature = self.feature.cuda()
+        self.depth = self.depth.cuda()
+        self.thick = self.thick.cuda()
+        return self
 
 def to_dense(feature, depth, thick, D, device=None):
     """Convert to dense 3D tensor

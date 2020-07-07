@@ -18,25 +18,30 @@ setup(
     author='Guo.Xing.',
     author_email='reveriel@hotmail.com',
     ext_modules=[
-        CUDAExtension(name='sphconv_cuda',
-        sources=[
-            'conv_cuda.cpp',
-            'conv_cuda_kernel.cu',
-            'ConvolutionBuildingBlocks/winograd4x4.cu'],
-        extra_compile_args={'cxx': ['-O3'],
-                'nvcc':['-O3',
-                '-gencode', 'arch=compute_75,code=sm_75',
-                '-I./cutlass/include',
-                '-U__CUDA_NO_HALF_OPERATORS__',
-                '-U__CUDA_NO_HALF_CONVERSIONS__',
-                '--expt-relaxed-constexpr',
-                '--expt-extended-lambda',
-                '--use_fast_math']},
-        library_dirs=library_dirs,
-        include_dirs=include_dirs,
-        extra_link_args=['-lcudnn']
+        CUDAExtension(
+            name='sphconv_cuda',
+            sources=[
+                'conv_cuda.cpp',
+                'conv_cuda_kernel.cu',
+            ],
+            extra_compile_args={
+                'cxx': ['-O3'],
+                'nvcc':[
+                    # '-O3',
+                    '-lineno',
+                    '-g',
+                    '-gencode', 'arch=compute_75,code=sm_75',
+                    '-I./cutlass/include',
+                    '-U__CUDA_NO_HALF_OPERATORS__',
+                    '-U__CUDA_NO_HALF_CONVERSIONS__',
+                    '--expt-relaxed-constexpr',
+                    '--expt-extended-lambda',
+                    '--use_fast_math']},
+            library_dirs=library_dirs,
+            include_dirs=include_dirs,
+            extra_link_args=['-lcudnn']
         ),
     ],
-    cmdclass = {
+    cmdclass={
         'build_ext': BuildExtension
     })

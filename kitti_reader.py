@@ -168,7 +168,7 @@ def create_voxel_generator(config_file_path: str):
 
 
 def append_random_channels(rangeV, channel):
-    """ append some random data on channel dimmension"""
+    """Append some random data on channel dimmension"""
     B, C, D, H, W = rangeV.shape
     T = rangeV.feature.shape[2]
     rangeV.feature = torch.cat(
@@ -194,7 +194,7 @@ def get_range_voxels(idx,
                      batch_size=1,
                      channel=4,
                      range_voxel_config_path=RANGE_VOXEL_CONFIG):
-    """ Read point cloud from KITTI, return batched RangeVoxels
+    """Read point cloud from KITTI, return batched RangeVoxels.
 
     Args:
     ----
@@ -213,6 +213,7 @@ def get_range_voxels(idx,
             points = append_random_feature(points, channel - 4)
 
         rangeV = xyz2RangeVoxel(points, **range_config)
+        rangeV = rangeV.cuda()
         rangeV_list.append(rangeV)
 
     batched = merge_rangevoxel_batch(rangeV_list)
@@ -222,7 +223,7 @@ def get_range_voxels(idx,
 
 def example_convert_to_torch(example, dtype=torch.float32,
                              device=None) -> dict:
-    """ convert data from numpy to torch
+    """Convert data from numpy to torch, move to GPU.
     """
     device = device or torch.device("cuda:0")
     example_torch = {}

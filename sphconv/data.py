@@ -19,7 +19,8 @@ def xyz2RangeVoxel(points,
                    h_range=(-45, 45),
                    d_range=(6, 70.4),
                    log=True,
-                   verbose=False
+                   verbose=False,
+                   device=None
                    ) -> RangeVoxel:
     """ Convert points(xyz) to RangVoxels.
 
@@ -102,10 +103,10 @@ def xyz2RangeVoxel(points,
     # TODO, what about default depth ?
     # maybe we should ignore them / or use neigbour points' depth?
     # or rand ?
-    depth = torch.zeros((1, 1, v_res, h_res), dtype=int)
-    depth[0, 0, theta_idx, phi_idx] = torch.from_numpy(depth_idx.astype(int))
+    depth = torch.zeros((1, 1, v_res, h_res), dtype=torch.int32)
+    depth[0, 0, theta_idx, phi_idx] = torch.from_numpy(depth_idx.astype(np.int32))
 
-    thick = torch.ones((1, v_res, h_res), dtype=int)
+    thick = torch.ones((1, v_res, h_res), dtype=torch.int32)
 
     return RangeVoxel(feature, depth, thick, shape=(1, Channel, d_res, v_res, h_res))
 
@@ -113,7 +114,7 @@ def xyz2RangeVoxel(points,
 # batch data
 
 def merge_rangevoxel_batch(voxel_list: [RangeVoxel]) -> RangeVoxel:
-    """ Merge a list of RangeVoxel to a batch.
+    """ Merge a list of RangeVoxel to a batch. Move to GPU.
 
         must be of the same shape, I don't check it
 
