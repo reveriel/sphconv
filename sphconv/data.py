@@ -69,7 +69,7 @@ def xyz2RangeVoxel(points,
     phis = np.arcsin(y / np.sqrt(x2y2))
 
     delta_phi = np.radians(h_range[1] - h_range[0]) / h_res
-    delta_theta = np.radians(v_range[1] - v_range[1]) / v_res
+    delta_theta = np.radians(v_range[1] - v_range[0]) / v_res
 
     theta_idx = ((thetas - np.radians(v_range[0])) / delta_theta).astype(int)
     phi_idx = ((phis - np.radians(h_range[0])) / delta_phi).astype(int)
