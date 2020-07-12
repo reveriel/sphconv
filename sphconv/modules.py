@@ -38,7 +38,7 @@ class SphModule(nn.Module):
     pass
 
 
-class SphSequential(SphModule):
+class Sequential(SphModule):
     r"""A sequential container.
     Modules will be added to it in the order they are passed in the constructor.
     Alternatively, an ordered dict of modules can also be passed in.
@@ -71,7 +71,7 @@ class SphSequential(SphModule):
     """
 
     def __init__(self, *args, **kwargs):
-        super(SphSequential, self).__init__()
+        super(Sequential, self).__init__()
         if len(args) == 1 and isinstance(args[0], OrderedDict):
             for key, module in args[0].items():
                 self.add_module(key, module)
