@@ -15,7 +15,8 @@ std::vector<torch::Tensor> sphconv_cuda_forward(
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups);
+    int64_t groups,
+    int64_t D);
 
 std::vector<torch::Tensor> sphconv_cuda_backward(
     torch::Tensor feature,
@@ -45,7 +46,8 @@ std::vector<torch::Tensor> sphconv_forward(
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups)
+    int64_t groups,
+    int64_t D)
 {
     CHECK_INPUT(feature);
     CHECK_INPUT(depth);
@@ -57,7 +59,8 @@ std::vector<torch::Tensor> sphconv_forward(
                                 sD, sH, sW,
                                 padD, padH, padW,
                                 dD, dH, dW,
-                                groups);
+                                groups,
+                                D);
 }
 
 std::vector<torch::Tensor> sphconv_backward(

@@ -25,9 +25,15 @@ setup(
                 'conv_cuda_kernel.cu',
             ],
             extra_compile_args={
-                'cxx': ['-O3'],
+                'cxx': [
+                    # '-O3'
+                    ],
                 'nvcc':[
                     # '-O3',
+                    # '-fPIC',
+                    #  '--compiler-options',
+                    #  '"-fPIC -Wall -O2"',
+                     '--shared',
                     '-lineno',
                     '-g',
                     '-gencode', 'arch=compute_75,code=sm_75',

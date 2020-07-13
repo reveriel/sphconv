@@ -126,10 +126,11 @@ class Conv3d(Convolution):
             input.feature,
             input.depth,
             input.thick,
-            self.weight,
+            self.weight.data,
             self.bias,
             self.stride,
             self.padding,
             self.dilation,
-            self.groups)
+            self.groups,
+            iD)
         return RangeVoxel(feature, depth, thick, shape=new_shape)
