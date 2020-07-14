@@ -1,3 +1,4 @@
+// https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__);}
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
@@ -26,18 +27,26 @@ __device__ Index OutSpatial(Index k, Index x, Index s, Index d, Index pad)
   return (x + pad - k)/ s;
 }
 
-__global__ void helloCUDA(float f)
-{
-  printf("Hello thread %d, f=%f\n", threadIdx.x, f);
-}
 
+  // input tile size = TILE + K
+  //
+  // __shared__ feature_tile[N][C][T][H_TILE][W_TILE];
+  // TODO: make T varadic length
+
+  // constexpr int T = 8;
+  // const int INPUT_TILE_H = 4;
+  // const int INPUT_TILE_W = 16;
+  // __shared__ scalar_t depth_tile[T][INPUT_TILE_H][INPUT_TILE_W];
+  // TODO
+  // __shared__ Index thickMap[INPUT_TILE_H][INPUT_TILE_W];
+  // __shared__ Index Num[3x3x3][INPUT_TILE_H][INPUT_TILE_W];
+
+  ///// load tile to shared mem
 
 
 // template <typename scalar_t, typename Index>
-#define scalar_t float
-#define Index int32_t
-
-__global__ void sphconv_cuda_forward_kernel(
+template <typename Index>
+__global__ void sphconv_cuda_forward_kernel_1(
     // const torch::GenericPackedTensorAccessor<scalar_t, 5, RestrictPtrTraits, size_t>
     //     feature,
     const torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
@@ -72,48 +81,41 @@ __global__ void sphconv_cuda_forward_kernel(
     int oD, int oH, int oW
   )
 {
-  // input tile size = TILE + K
-  //
-  // __shared__ feature_tile[N][C][T][H_TILE][W_TILE];
-  // TODO: make T varadic length
-
-  // constexpr int T = 8;
-  // const int INPUT_TILE_H = 4;
-  // const int INPUT_TILE_W = 16;
-  // __shared__ scalar_t depth_tile[T][INPUT_TILE_H][INPUT_TILE_W];
-  // TODO
-  // __shared__ Index thickMap[INPUT_TILE_H][INPUT_TILE_W];
-  // __shared__ Index Num[3x3x3][INPUT_TILE_H][INPUT_TILE_W];
-
-  ///// load tile to shared mem
-
   // input index
+  // x y z ~ H W D
   int x = threadIdx.x + blockDim.x * blockIdx.x;
+  // printf("threadIdx.x(%d) + blockDim.x(%d) * blockIdx.x(%d) = x(%d)\n", threadIdx.x, blockDim.x, blockIdx.x, x);
   int y = threadIdx.y + blockDim.y * blockIdx.y;
   int k = threadIdx.z + blockDim.z * blockIdx.z;
-  printf("x, y, k =  %d, %d, %d\n", x, y, k);
-  int k0 = k /( KH * KW);
-  int k1 = (k / KW) % KH;
-  int k2 = k % KW;
+  // printf("x, y, k =  %d, %d, %d\n", x, y, k);
+  int kD = k / (KH * KW);
+  int kH = (k / KW) % KH;
+  int kW = k % KW;
+  // printf("k0, k1, k2 (k) = %d, %d, %d, (%d)\n", k0, k1, k2, k);
 
   for (int b = 0; b < N; b++) {
     for (int t = 0; t < thick[b][x][y]; t++)
     {
       Index z = depth[b][t][x][y];
-      Index oX = OutSpatial(k0, x, sD, dD, padD);
-      Index oY = OutSpatial(k1, y, sH, dH, padH);
-      Index oZ = OutSpatial(k2, z, sW, dW, padW);
+      Index oX = OutSpatial(kH, x, sH, dH, padH);
+      Index oY = OutSpatial(kW, y, sW, dW, padW);
+      Index oZ = OutSpatial(kD, z, sD, dD, padD);
       printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
       {
         Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
+        // printf("InRuleMap i = %d\n", i);
+        // if (i >= 32) continue;
         InRuleMap[b][k][x][y][i] = t;
         Index j = atomicAdd(&NumOut[b][k][oX][oY], Index(1));
+        // printf("OutRuleMap j = %d\n", j);
+        // if (j >= 32) continue;
         OutRuleMap[b][k][oX][oY][j] = oZ;
       } // if
     } // for t
   }// for b
 }
+
 
 
 /***
@@ -159,12 +161,15 @@ sphconv_cuda_forward(torch::Tensor feature,
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
 
+  printf("input spatial shape (D,H,W) = %d, %d, %d\n", D, H, W);
+  printf("output spatial shape (oD,oH,oW) = %d, %d, %d\n", oD, oH, oW);
+
   auto divUp = [](int x, int y) { return (x + y - 1) / y; };
   // number of tiles
 
   const int H_BLOCK = 4, W_BLOCK = 4;
   dim3 grid_size, block_size;
-  // grid_size.x = divUp(oH, H_TILE);
+  // grid_size. = divUp(oH, H_TILE);
   // grid_size.y = divUp(oW, W_TILE);
   grid_size.x = divUp(H, H_BLOCK);
   grid_size.y = divUp(W, W_BLOCK);
@@ -181,51 +186,62 @@ sphconv_cuda_forward(torch::Tensor feature,
   // output tensor
   // including new_feature
   auto new_feature = torch::empty({N, oC, T + 2, oH, oW},
-                                torch::dtype(torch::kFloat32));
+                                torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
   auto new_depth = torch::empty({N, T + 2, oH, oW},
-                                 torch::dtype(torch::kInt32));
+                                 torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
   auto new_thick = torch::empty({N, oH, oW},
-                                torch::dtype(torch::kInt32));
-  auto numIn = torch::full({N, kernel_volume, H, W},
-     /*value=*/ -1, torch::dtype(torch::kInt32));
-  auto numOut = torch::full({N, kernel_volume, oH, oW},
-     /*value=*/ -1, torch::dtype(torch::kInt32));
+                                torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  auto NumIn = torch::full({N, kernel_volume, H, W},
+     /*value=*/ 0, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  auto NumOut = torch::full({N, kernel_volume, oH, oW},
+     /*value=*/ 0, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-  auto InRuleMap = torch::full({N, kernel_volume, H, W, 2},
-    /*value=*/ -1, torch::dtype(torch::kInt32));
-  auto OutRuleMap = torch::full({N, kernel_volume, oH, oW, 8},
-    /*value=*/ -1, torch::dtype(torch::kInt32));
+  auto InRuleMap = torch::full({N, kernel_volume, H, W, T},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  auto OutRuleMap = torch::full({N, kernel_volume, oH, oW, (T * sD * sH * sW)},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-    printf("launch <<< %dx%dx%d, %dx%dx%d>>>\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>>\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
 
-  // AT_DISPATCH_FLOATING_TYPES(
-      // feature.type(), "sphconv_forward_cuda", ([&] {
-        sphconv_cuda_forward_kernel<<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
-            // feature.generic_packed_accessor<scalar_t, 5, torch::RestrictPtrTraits, size_t>(),
-            depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-            thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
-            // weight.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
-            // bias.generic_packed_accessor<float, 1, torch::RestrictPtrTraits, size_t>(),
-            // new_feature.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
-            // new_depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-            // new_thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
-            numIn.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-            numOut.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-            InRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
-            OutRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
-            N,
-            KD, KH, KW,
-            // INPUT_TILE_H, INPUT_TILE_W,
-            sD, sH, sW,
-            padD, padH, padW,
-            dD, dH, dW,
-            oD, oH, oW
-          );
-      // }));
+  sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
+      // feature.generic_packed_accessor<scalar_t, 5, torch::RestrictPtrTraits, size_t>(),
+      depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
+      thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
+      // weight.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
+      // bias.generic_packed_accessor<float, 1, torch::RestrictPtrTraits, size_t>(),
+      // new_feature.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
+      // new_depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
+      // new_thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
+      NumIn.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
+      NumOut.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
+      InRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
+      OutRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
+      N,
+      KD, KH, KW,
+      // INPUT_TILE_H, INPUT_TILE_W,
+      sD, sH, sW,
+      padD, padH, padW,
+      dD, dH, dW,
+      oD, oH, oW
+  );
 
-    // helloCUDA<<<10,10>>>(123.4f);
-    gpuErrchk(cudaPeekAtLastError());
-    gpuErrchk(cudaDeviceSynchronize());
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+
+  ////// create <del>hash</del>map
+  // auto CompactMap = torch::full({N, H, W, D},
+  //    /*value=*/-1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  // sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
+  //   CompactMap.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
+  //   OutRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
+  //   thick.generic_packed_accessor<int32_t, 3, RestrictPtrTraits, size_t()
+  // )
+
+
+
 
   return {new_feature, new_depth, new_thick};
 }
