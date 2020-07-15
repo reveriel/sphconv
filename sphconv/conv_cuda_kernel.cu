@@ -222,17 +222,18 @@ __global__ void sphconv_cuda_forward_kernel_4(
       Index oY = OutSpatial(kW, y, sW, dW, padW);
 
       for (int ic = 0; ic < in_channels; ic++) {
-        while (oc < out_channels) {
+        for (int i =0; i < NumIn[b][k][x][y]; i++) {
+          while (oc < out_channels) {
 
-          // input thick
-          it = InRuleMap[b][k][x][y][i];
-          // output thick
-          ot = OutRuleMap[b][k][x][y][i];
+            // input thick
+            it = InRuleMap[b][k][x][y][i];
+            // output thick
+            ot = OutRuleMap[b][k][x][y][i];
 
-          new_feature[b][oc][ot][oX][oY] = weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
-          oc += blockDim.z;
+            new_feature[b][oc][ot][oX][oY] = weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
+            oc += blockDim.z;
+          }
         }
-
       }
     }
   }
