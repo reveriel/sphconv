@@ -24,8 +24,8 @@ torch.manual_seed(42)
 # ////////////////////////////////////////////////
 
 configs = {
-    'in_channels': 8,
-    'out_channels': 1,
+    'in_channels': 64,
+    'out_channels': 64,
     'kernel_size': 3,
     'stride': 1,
     'padding': 0,
@@ -63,15 +63,15 @@ def run(conv_configs, batch_size=1, channel=4):
                                    bias=configs['bias']).cuda()
 
     print("input_sp = ")
-    print(input_sp)
+
     print("===="*20)
 
-    # while ()
-    with torch.no_grad():
-        res_ref = conv_ref(input_sp)
+    # with torch.no_grad():
+    #     res_ref = conv_ref(input_sp)
 
     print("conv ref's result = ")
-    print(res_ref)
+    # print(res_ref)
+    # print("conv ref spatial shape =", res_ref.spatial_shape)
     print("===="*20)
     # exit(0)
 
@@ -90,8 +90,7 @@ def run(conv_configs, batch_size=1, channel=4):
     print(res)
     print("===="*20)
 
-
-run(configs, 16, 8)
+run(configs, batch_size=1, channel=configs['in_channels'])
 
 
 def check_equal(first, second, verbose) -> bool:
@@ -296,4 +295,5 @@ class TestForward(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    # unittest.main()
+    pass
