@@ -20,7 +20,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
 using torch::RestrictPtrTraits;
 
 template <typename Index>
-__device__ Index OutSpatial(Index k, Index x, Index s, Index d, Index pad)
+__device__ __inline__ Index OutSpatial(Index k, Index x, Index s, Index d, Index pad)
 {
   // forgive me. do nothing with the dillation
   // TODO
@@ -47,23 +47,22 @@ __device__ Index OutSpatial(Index k, Index x, Index s, Index d, Index pad)
 // template <typename scalar_t, typename Index>
 template <typename Index>
 __global__ void sphconv_cuda_forward_kernel_1(
-    // const torch::GenericPackedTensorAccessor<scalar_t, 5, RestrictPtrTraits, size_t>
-    //     feature,
     const torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
         depth,
     const torch::GenericPackedTensorAccessor<Index, 3, RestrictPtrTraits, size_t>
         thick,
     torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
       NumIn,
-    // torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
-    //   NumOut,
+    torch::GenericPackedTensorAccessor<Index, 3, RestrictPtrTraits, size_t>
+      new_thick,
     torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
       InRuleMap,
     torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
       OutRuleMap,
+    torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
+      CompactMap,
     int N,
     int KD, int KH, int KW,
-    // int INPUT_TILE_H, int INPUT_TILE_W,
     int sD, int sH, int sW,
     int padD, int padH, int padW,
     int dD, int dH, int dW,
@@ -101,6 +100,13 @@ __global__ void sphconv_cuda_forward_kernel_1(
         // if (j >= 32) continue;
         // OutRuleMap[b][k][oX][oY][j] = oZ;
         OutRuleMap[b][k][x][y][i] = oZ;
+
+        // fill nonempty place with 1
+        CompactMap[b][oX][oY][oZ] = 1;
+
+        // new_thick, how many nonempty voxel
+        atomicAdd(&new_thick[b][oX][oY], 1);
+
       } // if
     } // for t
   }// for b
@@ -111,39 +117,38 @@ template <typename Index>
 __global__ void sphconv_cuda_forward_kernel_2(
     torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
       CompactMap,
-    torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
-      OutRuleMap,
-    torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
-      thick,
     torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
-      NumIn,
-      int N,
-      int kernel_volume,
-      )
+      new_depth,
+    int N,
+    int kernel_volume,
+    int oD)
 {
   int oX = threadIdx.x + blockDim.x * blockIdx.x;
   int oY = threadIdx.y + blockDim.y * blockIdx.y;
 
-  // fill compact map with 1
-  for (int b = 0; b < N; b++) {
-    for (int i = 0; i < NumIn[b][k][x][y]; i++) {
-      for (int k = 0; k < kernel_volume; k++) {
-        int oZ = OutRuleMap[b][k][oX][oY][i];
-        CompactMap[b][oX][oY][oZ] = 1;
-      }
-    }
-  }
-
   // scan (prefix sum) on CompactMap
   for (int b = 0; b < N; b++) {
-    for (int i = 0; i < NumIn[b][k][x][y]; i++) {
-      for (int z = 1; z < oD; z++) {
+    int ot = 0;
 
-        CompactMap[b][oX][oY][z+1] += CompactMap[b][oX][oY][z];
+    if (CompactMap[b][oX][oY][0] == 1) {
+      new_depth[b][ot][oX][oY] = 0;
+      ot += 1;
+    }
+
+    for (int z = 1; z < oD; z++) {
+
+      // if non empty
+      int non_empty = CompactMap[b][oX][oY][z];
+
+      // prefix sum
+      CompactMap[b][oX][oY][z] += CompactMap[b][oX][oY][z - 1];
+
+      if (non_empty) {
+        new_depth[b][ot][oX][oY] = CompactMap[b][oX][oY][z] - 1;
+        ot += 1;
       }
     }
   }
-
 }
 
 template <typename Index>
@@ -154,8 +159,9 @@ __global__ void sphconv_cuda_forward_kernel_3(
       OutRuleMap,
     const torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
       NumIn,
+    int N,
     int kernel_volume,
-    int KD, int kH, int kW,
+    int KD, int KH, int KW,
     int sH, int sW,
     int padH, int padW,
     int dH, int dW
@@ -165,13 +171,13 @@ __global__ void sphconv_cuda_forward_kernel_3(
   Index x = threadIdx.x + blockDim.x * blockIdx.x;
   Index y = threadIdx.y + blockDim.y * blockIdx.y;
 
-  // re assign OutRuleMap
+  // re-assign OutRuleMap
   for (int b = 0; b < N; b++) {
 
     for (int k = 0; k < kernel_volume; k++) {
 
       // get oX and oY
-      int kD = k / (KH * KW);
+      // int kD = k / (KH * KW);
       int kH = (k / KW) % KH;
       int kW = k % KW;
       Index oX = OutSpatial(kH, x, sH, dH, padH);
@@ -190,17 +196,26 @@ __global__ void sphconv_cuda_forward_kernel_3(
 
 template <typename Index>
 __global__ void sphconv_cuda_forward_kernel_4(
-  torch::GenericPackedTensorAccessor<float, 5, RestrictPtrTraits, size_t>
+  const torch::GenericPackedTensorAccessor<float, 5, RestrictPtrTraits, size_t>
     feature,
   torch::GenericPackedTensorAccessor<float, 5, RestrictPtrTraits, size_t>
     new_feature,
-  torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
+  const torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
     InRuleMap,
-  torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
+  const torch::GenericPackedTensorAccessor<Index, 5, RestrictPtrTraits, size_t>
     OutRuleMap,
+  const torch::GenericPackedTensorAccessor<Index, 4, RestrictPtrTraits, size_t>
+    NumIn,
+  const torch::GenericPackedTensorAccessor<float, 5, RestrictPtrTraits, size_t>
+    weight,
+  int N,
   int in_channels,
   int out_channels,
-
+  int kernel_volume,
+  int KD, int KH, int KW,
+  int sH, int sW,
+  int padH, int padW,
+  int dH, int dW
 ) {
   // gather
   // InRuleMap
@@ -222,13 +237,13 @@ __global__ void sphconv_cuda_forward_kernel_4(
       Index oY = OutSpatial(kW, y, sW, dW, padW);
 
       for (int ic = 0; ic < in_channels; ic++) {
-        for (int i =0; i < NumIn[b][k][x][y]; i++) {
+        for (int i = 0; i < NumIn[b][k][x][y]; i++) {
           while (oc < out_channels) {
 
             // input thick
-            it = InRuleMap[b][k][x][y][i];
+            int it = InRuleMap[b][k][x][y][i];
             // output thick
-            ot = OutRuleMap[b][k][x][y][i];
+            int ot = OutRuleMap[b][k][x][y][i];
 
             new_feature[b][oc][ot][oX][oY] = weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
             oc += blockDim.z;
@@ -321,38 +336,33 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto OutRuleMap = torch::full({N, kernel_volume, oH, oW, (T * sD * sH * sW)},
     /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
+  //// create <del>hash</del>map
+
+  auto CompactMap = torch::full({N, H, W, D},
+     /*value=*/-1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
   printf("launch <<< %dx%dx%d, %dx%dx%d>>>\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
 
   sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
-      // feature.generic_packed_accessor<scalar_t, 5, torch::RestrictPtrTraits, size_t>(),
       depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
       thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
-      // weight.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
-      // bias.generic_packed_accessor<float, 1, torch::RestrictPtrTraits, size_t>(),
-      // new_feature.generic_packed_accessor<float, 5, torch::RestrictPtrTraits, size_t>(),
-      // new_depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-      // new_thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
       NumIn.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
-      NumOut.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
+      new_thick.generic_packed_accessor<int32_t, 3, torch::RestrictPtrTraits, size_t>(),
       InRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
       OutRuleMap.generic_packed_accessor<int32_t, 5, torch::RestrictPtrTraits, size_t>(),
+      CompactMap.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
       N,
       KD, KH, KW,
-      // INPUT_TILE_H, INPUT_TILE_W,
       sD, sH, sW,
       padD, padH, padW,
       dD, dH, dW,
-      oD, oH, oW
-  );
+      oD, oH, oW);
 
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
 
-  //// create <del>hash</del>map
-  auto CompactMap = torch::full({N, H, W, D},
-     /*value=*/-1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   const int  oH_BLOCK = 8, oW_BLOCK = 32;
 
@@ -366,14 +376,63 @@ sphconv_cuda_forward(torch::Tensor feature,
 
   sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
     CompactMap.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
-    OutRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
-    thick.generic_packed_accessor<int32_t, 3, RestrictPtrTraits, size_t(),
-    NumOut.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t(),
+    new_depth.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
     N,
-    kernel_volume
-  );
+    kernel_volume,
+    oD);
 
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
 
+  grid_size.x = divUp(H, H_BLOCK);
+  grid_size.y = divUp(H, W_BLOCK);
+  grid_size.z = 1;
+
+  block_size.x = H_BLOCK;
+  block_size.y = W_BLOCK;
+  block_size.z = 1;
+
+  sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
+    CompactMap.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
+    OutRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
+    NumIn.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
+    N,
+    kernel_volume,
+    KD, KH, KW,
+    sH, sW,
+    padH, padW,
+    dH, dW);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+  grid_size.x = divUp(H, H_BLOCK);
+  grid_size.y = divUp(H, W_BLOCK);
+  grid_size.z = 1;
+
+  block_size.x = H_BLOCK;
+  block_size.y = W_BLOCK;
+  const int C_BLOCK = 16;
+  block_size.z = C_BLOCK;
+
+  sphconv_cuda_forward_kernel_4<int32_t><<<grid_size, block_size>>>(
+    feature.generic_packed_accessor<float, 5, RestrictPtrTraits, size_t>(),
+    new_feature.generic_packed_accessor<float, 5, RestrictPtrTraits, size_t>(),
+    InRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
+    OutRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
+    NumIn.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
+    weight.generic_packed_accessor<float, 5, RestrictPtrTraits, size_t>(),
+    N,
+    C,
+    oC,
+    kernel_volume,
+    KD, KH, KW,
+    sH, sW,
+    padH, padW,
+    dH, dW);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
 
   return {new_feature, new_depth, new_thick};
 }
