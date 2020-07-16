@@ -73,7 +73,7 @@ def read_pc_data(idx: int, channel:int):
         N = points.shape[0]
         # for reproducible tests
         np.random.seed(0);
-        rand_feature = np.random.randn(N, channel).astype('f')
+        rand_feature = np.random.randn(N, channel-4).astype('f')
         points = np.concatenate((points, rand_feature), axis=1)
 
     return points
