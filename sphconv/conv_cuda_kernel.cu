@@ -88,7 +88,7 @@ __global__ void sphconv_cuda_forward_kernel_1(
       Index oX = OutSpatial(kH, x, sH, dH, padH);
       Index oY = OutSpatial(kW, y, sW, dW, padW);
       Index oZ = OutSpatial(kD, z, sD, dD, padD);
-      printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
+      // printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
       {
         Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
@@ -341,7 +341,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto CompactMap = torch::full({N, H, W, D},
      /*value=*/-1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-  printf("launch <<< %dx%dx%d, %dx%dx%d>>>\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
 
   sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
       depth.generic_packed_accessor<int32_t, 4, torch::RestrictPtrTraits, size_t>(),
@@ -374,6 +374,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   block_size.y = oW_BLOCK;
   block_size.z = 1;
 
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_2\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
   sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
     CompactMap.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
     new_depth.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
@@ -392,6 +393,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   block_size.y = W_BLOCK;
   block_size.z = 1;
 
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_3\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
   sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
     CompactMap.generic_packed_accessor<int32_t, 4, RestrictPtrTraits, size_t>(),
     OutRuleMap.generic_packed_accessor<int32_t, 5, RestrictPtrTraits, size_t>(),
@@ -415,6 +417,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   const int C_BLOCK = 16;
   block_size.z = C_BLOCK;
 
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_4\n", grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
   sphconv_cuda_forward_kernel_4<int32_t><<<grid_size, block_size>>>(
     feature.generic_packed_accessor<float, 5, RestrictPtrTraits, size_t>(),
     new_feature.generic_packed_accessor<float, 5, RestrictPtrTraits, size_t>(),

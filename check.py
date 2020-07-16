@@ -40,9 +40,9 @@ def run(conv_configs, batch_size=1, channel=4):
     """Check sphconv and spconv's results. """
 
     input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
-    print("input_sph shape =", input_sph.shape)
+    print("input_sphconv shape =", input_sph.shape)
     input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
-    print("input_sp shape =", input_sp.spatial_shape)
+    print("input_spconv shape =", input_sp.spatial_shape)
 
     conv = sphconv.Conv3d(configs['in_channels'],
                           configs['out_channels'],
@@ -66,12 +66,13 @@ def run(conv_configs, batch_size=1, channel=4):
 
     print("===="*20)
 
-    # with torch.no_grad():
-    #     res_ref = conv_ref(input_sp)
+    with torch.no_grad():
+        res_ref:spconv.SparseConvTensor = conv_ref(input_sp)
 
     print("conv ref's result = ")
-    # print(res_ref)
-    # print("conv ref spatial shape =", res_ref.spatial_shape)
+    print(res_ref)
+    print("conv ref spatial shape =", res_ref.spatial_shape)
+    print("conv ref sum = ", torch.sum(res_ref.dense()))
     print("===="*20)
     # exit(0)
 
@@ -84,9 +85,11 @@ def run(conv_configs, batch_size=1, channel=4):
     print("===="*20)
 
     with torch.no_grad():
-        res = conv(input_sph)
+        res:RangeVoxel = conv(input_sph)
 
     print("conv's result = ")
+    print("conv's result sum = ", torch.sum(res.dense()))
+
     print(res)
     print("===="*20)
 
