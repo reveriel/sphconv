@@ -52,8 +52,12 @@ def get_velodyne_path(idx, prefix, training=True, relative_path=False, exist_che
 # read point cloud bin file
 
 
-def read_pc_data(idx: int):
-    """Read the 'idx' th  point cloud file from kitti."""
+def read_pc_data(idx: int, channel:int):
+    """Read the 'idx' th  point cloud file from kitti.
+
+        append random data so that data has 'channel' channels
+
+    """
     velo_path = Path(get_velodyne_path(idx, KITTI_DATASET_ROOT))
     # velo_path = Path(KITTI_DATASET_ROOT) / velo_path
     velo_reduced_path = velo_path.parent.parent / \
@@ -64,6 +68,14 @@ def read_pc_data(idx: int):
     points = np.fromfile(str(velo_path), dtype=np.float32,
                          count=-1).reshape([-1, 4])
     print(points.shape)
+    if channel > 4:
+        # append some random data
+        N = points.shape[0]
+        # for reproducible tests
+        np.random.seed(0);
+        rand_feature = np.random.randn(N, channel).astype('f')
+        points = np.concatenate((points, rand_feature), axis=1)
+
     return points
 
 
@@ -167,29 +179,6 @@ def create_voxel_generator(config_file_path: str):
     return voxel_generator
 
 
-def append_random_channels(rangeV, channel):
-    """Append some random data on channel dimmension"""
-    B, C, D, H, W = rangeV.shape
-    T = rangeV.feature.shape[2]
-    rangeV.feature = torch.cat(
-        rangeV.feature, torch.randn(B, channel, D, H, W), dim=1)
-    return rangeV
-
-
-def append_random_feature(points, channel):
-    """Append random data on dimmension of Channel.
-
-        points is numpy array
-        channel : the number of channel to append
-
-    """
-    N = points.shape[0]
-    # print("points.dytpe = ", points.dtype)
-    rand_feature = np.random.randn(N, channel).astype('f')
-    # print("rand_feature.dytpe = ", rand_feature.dtype)
-    return np.concatenate((points, rand_feature), axis=1)
-
-
 def get_range_voxels(idx,
                      batch_size=1,
                      channel=4,
@@ -207,10 +196,7 @@ def get_range_voxels(idx,
 
     rangeV_list = []
     for i in range(idx, idx + batch_size):
-        points = read_pc_data(i)
-        if channel > 4:
-            # already got 4 channels --- xyzr
-            points = append_random_feature(points, channel - 4)
+        points = read_pc_data(i, channel)
 
         rangeV = xyz2RangeVoxel(points, **range_config)
         rangeV = rangeV.cuda()
@@ -270,11 +256,7 @@ def get_voxels(idx,
     voxel_generator = create_voxel_generator(voxel_generator_config_path)
     voxels_list = []
     for i in range(idx, idx + batch_size):
-        points = read_pc_data(i)
-
-        if channel > 4:
-            # already got 4 channels --- xyzr
-            points = append_random_feature(points, channel - 4)
+        points = read_pc_data(i, channel)
 
         voxels = point2voxel(points, voxel_generator=voxel_generator)
         voxels_list.append(voxels)
