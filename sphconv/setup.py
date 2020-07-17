@@ -26,16 +26,16 @@ setup(
             ],
             extra_compile_args={
                 'cxx': [
-                    '-O2'
+                    '-O3'
                     ],
                 'nvcc':[
-                    # '-O2',
+                    '-O3',
                     # '-fPIC',
                     #  '--compiler-options',
                     #  '"-fPIC -Wall -O2"',
                      '--shared',
                     '-lineno',
-                    '-g',
+                    # '-g',
                     '-gencode', 'arch=compute_75,code=sm_75',
                     '-I./cutlass/include',
                     '-U__CUDA_NO_HALF_OPERATORS__',

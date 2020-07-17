@@ -100,10 +100,6 @@ __global__ void sphconv_cuda_forward_kernel_1(
       // printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
       {
-        if (oX == 27 && oY == 0) {
-          printf("x y z=(%d,%d,%d), oX, oY ,oZ=(%d,%d,%d), kH,kW,kD=(%d,%d,%d)\n",
-               x,y,z,oX,oY,oZ, kH,kW,kD);
-        }
         // the returned i seems tobe the old value
         Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
         // printf("InRuleMap i = %d\n", i);
@@ -140,74 +136,29 @@ __global__ void sphconv_cuda_forward_kernel_2(
   Index oX = threadIdx.x + blockDim.x * blockIdx.x;
   Index oY = threadIdx.y + blockDim.y * blockIdx.y;
 
-  printf("Thread(%d,%d,%d,%d,%d,%d), oXY(%d,%d)\n",
-   threadIdx.x, threadIdx.y, threadIdx.z, blockIdx.x, blockIdx.y, blockIdx.z,
-   oX, oY);
-
-  // if (isThread(0,31,0,0,3,0)) {
-  //   printf("should oX,oY = (%3d,%3d)\n", oX, oY);
-  // }
-
-  // if (oX == 27 && oY == 0) {
-  //   printf("pre CompactMap[%d][%d][%d][%d] = %d\n",0, oX, oY, 3, CompactMap[0][oX][oY][3]);
-  // }
-
   if (oX >= oH || oY >= oW) return;
-
-  // printf(" oX,oY = (%3d,%3d)\n", oX, oY);
 
   // scan (prefix sum) on CompactMap
   for (Index b = 0; b < N; b++) {
-    // int ot = 0;
+    int ot = 0;
 
-    // if (CompactMap[b][oX][oY][0] == 1) {
-    //   new_depth[b][ot][oX][oY] = 0;
-    //   ot += 1;
-    // }
+    if (CompactMap[b][oX][oY][0] == 1) {
+      new_depth[b][ot][oX][oY] = 0;
+      ot += 1;
+    }
 
     Index *a = CompactMap[b][oX][oY].data();
     for (Index oZ = 1; oZ < oD; oZ++) {
-
-      // if (isThread(3,0,0,3,0,0)) {
-
-      //   if (oX == 27 && oY == 0) {
-      //     printf("pre2 CompactMap[%d][%d][%d][%d] = %d\n",0, oX, oY, 3,
-      //     CompactMap[0][oX][oY][3]);
-      //   }
-      //   printf("b, ot, oX, oY, oZ = %d, %d, %d, %d, %d\n", b, ot, oX, oY,
-      //   oZ); printf("CompactMap[b][oX][oY][oZ] = %d\n",
-      //   CompactMap[b][oX][oY][oZ]);
-      // }
-
-      // if (oX == 27 && oY == 0) {
-      //   printf("pre3 CompactMap[%d][%d][%d][%d] = %d\n",0, oX, oY, 3,
-      //   CompactMap[0][oX][oY][3]);
-      // }
       // if non empty
-      // int non_empty = CompactMap[b][oX][oY][oZ];
-
-      // if (oX == 27 && oY == 0) {
-      //   printf("pre4 CompactMap[%d][%d][%d][%d] = %d\n",0, oX, oY, 3,
-      //   CompactMap[0][oX][oY][3]);
-      // }
+      int non_empty = a[oZ];
 
       // prefix sum
-      // Index tmp = CompactMap[b][oX][oY][oZ];
-      // CompactMap[b][oX][oY][oZ] = tmp + CompactMap[b][oX][oY][oZ - 1];
-      // CompactMap[b][oX][oY][oZ] += CompactMap[b][oX][oY][oZ - 1];
-
       a[oZ] += a[oZ - 1];
 
-      // if (isThread(3,0,0,3,0,0)) {
-      //   printf("b, ot, oX, oY, oZ = %d, %d, %d, %d, %d, after\n", b, ot,
-      //   oX, oY, oZ); printf("CompactMap[b][oX][oY][oZ] = %d        ,
-      //   after\n", CompactMap[b][oX][oY][oZ]);
-      // }
-
-      // if (non_empty) {
-      //   new_depth[b][ot][oX][oY] = CompactMap[b][oX][oY][oZ] - 1;
-      //   ot += 1;
-      // }
+      if (non_empty) {
+        new_depth[b][ot][oX][oY] = a[oZ] - 1;
+        ot += 1;
+      }
     } // for oZ
   } // for b
 }
@@ -410,15 +361,9 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto OutRuleMap = torch::full({N, kernel_volume, H, W, T},
     /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-  auto options =
-    torch::TensorOptions().dtype(torch::kInt32).layout(torch::kStrided)
-      .device(torch::kCUDA, 0).requires_grad(false);
-
   //// create <del>hash</del>map
   auto CompactMap = torch::full({N, oH, oW, oD},0, options);
-                  // torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
-  std::cout << "CompactMap's stride = " << CompactMap.strides() << std::endl;
-  std::cout << "CompactMap's size = " << CompactMap.sizes() << std::endl;
+                  torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
@@ -438,20 +383,8 @@ sphconv_cuda_forward(torch::Tensor feature,
       dD, dH, dW,
       oD, oH, oW);
 
-
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
-
-
-  // *(CompactMap[0][61][125][0].data_ptr<int32_t>()) = 1;
-
-  printf("======== print CompactMap ============\n");
-  for (int i = 0; i < oD; i++) {
-      printf("CompactMap[0][61][125][%d] @ %p = %d\n", i,
-          CompactMap[0][61][125][i].data_ptr<int32_t>(),
-          CompactMap[0][61][125][i].item<int32_t>());
-  }
-  printf("=================end print=============\n");
 
   const int  oH_BLOCK = 8, oW_BLOCK = 32;
 
@@ -474,14 +407,6 @@ sphconv_cuda_forward(torch::Tensor feature,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
-
-  printf("======== print CompactMap after k_2===\n");
-  for (int i =0; i < oD; i++) {
-      printf("CompactMap[0][61][125][%d] @ %p = %d\n", i,
-          CompactMap[0][61][125][i].data_ptr<int32_t>(),
-          CompactMap[0][61][125][i].item<int32_t>());
-  }
-  printf("=================end print=============\n");
 
   grid_size.x = divUp(H, H_BLOCK * 4);
   grid_size.y = divUp(H, W_BLOCK * 4);
