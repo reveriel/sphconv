@@ -34,9 +34,9 @@ class RangeVoxel(object):
             and W == W_d == W_t == W_f
             and C == C_f
             and T_d == T_f), \
-            "dimension not match, feature.shape={}, depth.shape={}, \
-                 thick.shape={},  shape={}".\
-                 format(feature.shape, depth.shape, thick.shape, shape)
+            "dimension not match, feature.shape={}, depth.shape={}," \
+                "thick.shape={},  shape={}".\
+                format(feature.shape, depth.shape, thick.shape, shape)
 
         self.feature = feature
         self.depth = depth
