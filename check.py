@@ -12,6 +12,7 @@ import unittest
 import sphconv
 from sphconv import RangeVoxel
 from kitti_reader import get_range_voxels, get_voxels
+from test_utils import RangeVoxel2SparseTensor
 import spconv
 
 torch.manual_seed(42)
@@ -41,7 +42,8 @@ def run(conv_configs, batch_size=1, channel=4):
 
     input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
     print("input_sphconv shape =", input_sph.shape)
-    input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
+    # input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
+    input_sp = RangeVoxel2SparseTensor(input_sph)
     print("input_spconv shape =", input_sp.spatial_shape)
 
     conv = sphconv.Conv3d(configs['in_channels'],
@@ -70,7 +72,7 @@ def run(conv_configs, batch_size=1, channel=4):
         res_ref:spconv.SparseConvTensor = conv_ref(input_sp)
 
     print("conv ref's result = ")
-    print(res_ref)
+    # print(res_ref)
     print("conv ref spatial shape =", res_ref.spatial_shape)
     print("conv ref sum = ", torch.sum(res_ref.dense()))
     print("===="*20)
@@ -90,7 +92,7 @@ def run(conv_configs, batch_size=1, channel=4):
     print("conv's result = ")
     print("conv's result sum = ", torch.sum(res.dense()))
 
-    print(res)
+    # print(res)
     print("===="*20)
 
 run(configs, batch_size=1, channel=configs['in_channels'])

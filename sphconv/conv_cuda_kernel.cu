@@ -208,7 +208,6 @@ __global__ void sphconv_cuda_forward_kernel_3(
 }
 
 
-
 template <typename Index>
 __global__ void sphconv_cuda_forward_kernel_4(
   const torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
@@ -362,7 +361,7 @@ sphconv_cuda_forward(torch::Tensor feature,
     /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   //// create <del>hash</del>map
-  auto CompactMap = torch::full({N, oH, oW, oD},0, options);
+  auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n",
