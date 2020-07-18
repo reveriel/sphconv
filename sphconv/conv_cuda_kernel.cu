@@ -14,6 +14,8 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
 
+
+
 #include <stdio.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -32,21 +34,119 @@ __device__ __inline__ Index OutSpatial(Index k, Index x, Index s, Index d, Index
   return (x + pad - k)/ s;
 }
 
+// Print a some tile, for debugging.
+template <typename T>
+void printTensor(at::Tensor A, std::string name, int batch_idx, int H_start,
+                 int H_end, int W_start, int W_end) {
 
-  // input tile size = TILE + K
-  //
-  // __shared__ feature_tile[N][C][T][H_TILE][W_TILE];
-  // TODO: make T varadic length
+  std::cout << "======= Tensor \"" << name << "\" at batch " << batch_idx
+            << " ======== BEGIN" << std::endl;
 
-  // constexpr int T = 8;
-  // const int INPUT_TILE_H = 4;
-  // const int INPUT_TILE_W = 16;
-  // __shared__ scalar_t depth_tile[T][INPUT_TILE_H][INPUT_TILE_W];
-  // TODO
-  // __shared__ Index thickMap[INPUT_TILE_H][INPUT_TILE_W];
-  // __shared__ Index Num[3x3x3][INPUT_TILE_H][INPUT_TILE_W];
+  int dim = A.dim();
+  if (dim == 3) {
 
-  ///// load tile to shared mem
+    for (int x = H_start; x < H_end; x++) {
+      std::cout << "  [ ";
+      for (int y = W_start; y < W_end - 1; y++) {
+        std::cout << A[batch_idx][x][y].item<T>() << ", ";
+      }
+      std::cout << A[batch_idx][x][W_end - 1].item<T>() << " ]" << std::endl;
+    }
+  } else if (dim == 4) {
+    int size1 = A.size(1);
+    for (int i = 0; i < size1; i++) {
+      std::cout << " [ == " << i << std::endl;
+      for (int x = H_start; x < H_end; x++) {
+        std::cout << "   [ ";
+        for (int y = W_start; y < W_end - 1; y++) {
+          std::cout << A[batch_idx][i][x][y].item<T>() << ", ";
+        }
+        std::cout << A[batch_idx][i][x][W_end - 1].item<T>() << " ]" << std::endl;
+      }
+      std::cout << " ] ==" << i << std::endl;
+    }
+  } else if (dim == 5) {
+    // we only print dim == 4 tensor, print channel 0
+    int size1 = A.size(1);
+    for (int i = 0; i < size1; i++) {
+      std::cout << " [ ==" << i << std::endl;
+      for (int x = H_start; x < H_end; x++) {
+        std::cout << "   [ ";
+        for (int y = W_start; y < W_end - 1; y++) {
+          std::cout << A[batch_idx][0][i][x][y].item<T>() << ", ";
+        }
+        std::cout << A[batch_idx][0][i][x][W_end - 1].item<T>() << " ]";
+      }
+      std::cout << " ] ==" << i << std::endl;
+    }
+  }
+
+  std::cout << "======= Tensor \"" << name << "\" at batch " << batch_idx
+            << " ======== END" << std::endl;
+}
+
+// Print a some tile, for debugging.
+// the second dimension is kernel
+template <typename T>
+void printTensor_k(at::Tensor A, std::string name, int batch_idx, int H_start,
+                 int H_end, int W_start, int W_end) {
+
+  std::cout << "======= Tensor \"" << name << "\" at batch " << batch_idx
+            << " ======== BEGIN" << std::endl;
+
+  int dim = A.dim();
+  if (dim == 4) {
+    int kernel_volume = A.size(1);
+    for (int k = 0; k < kernel_volume; k++) {
+      std::cout << " [ == " << k << std::endl;
+      for (int x = H_start; x < H_end; x++) {
+        std::cout << "   [ ";
+        for (int y = W_start; y < W_end - 1; y++) {
+          std::cout << A[batch_idx][k][x][y].item<T>() << ", ";
+        }
+        std::cout << A[batch_idx][k][x][W_end - 1].item<T>() << " ]" << std::endl;
+      }
+      std::cout << " ] ==" << k << std::endl;
+    }
+  } else if (dim == 5) {
+    // we only print dim == 4 tensor, print channel 0
+    int kernel_volume = A.size(1);
+    int len = A.size(4);
+    for (int k = 0; k < kernel_volume; k++) {
+      std::cout << " [ ==" << k << std::endl;
+      for (int x = H_start; x < H_end; x++) {
+        std::cout << "   [ ";
+        for (int y = W_start; y < W_end ; y++) {
+          std::cout << "(";
+          for (int i = 0; i < A.size(4); i++ ) {
+            std::cout << A[batch_idx][k][x][y][i].item<T>() << " ";
+          }
+          std::cout << "),";
+        }
+        std::cout <<  " ]";
+      }
+      std::cout << " ] ==" << k << std::endl;
+    }
+  }
+
+  std::cout << "======= Tensor \"" << name << "\" at batch " << batch_idx
+            << " ======== END" << std::endl;
+}
+
+// input tile size = TILE + K
+//
+// __shared__ feature_tile[N][C][T][H_TILE][W_TILE];
+// TODO: make T varadic length
+
+// constexpr int T = 8;
+// const int INPUT_TILE_H = 4;
+// const int INPUT_TILE_W = 16;
+// __shared__ scalar_t depth_tile[T][INPUT_TILE_H][INPUT_TILE_W];
+// TODO
+// __shared__ Index thickMap[INPUT_TILE_H][INPUT_TILE_W];
+// __shared__ Index Num[3x3x3][INPUT_TILE_H][INPUT_TILE_W];
+
+///// load tile to shared mem
 
 
 // template <typename scalar_t, typename Index>
@@ -58,8 +158,6 @@ __global__ void sphconv_cuda_forward_kernel_1(
         thick,
     torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
       NumIn,
-    torch::PackedTensorAccessor32<Index, 3, RestrictPtrTraits>
-      new_thick,
     torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
       InRuleMap,
     torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
@@ -115,7 +213,7 @@ __global__ void sphconv_cuda_forward_kernel_1(
         CompactMap[b][oX][oY][oZ] = Index(1);
 
         // new_thick, how many nonempty voxel
-        atomicAdd(&new_thick[b][oX][oY], Index(1));
+        // atomicAdd(&new_thick[b][oX][oY], Index(1));
 
       } // if
     } // for t
@@ -129,6 +227,8 @@ __global__ void sphconv_cuda_forward_kernel_2(
       CompactMap,
     torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
       new_depth,
+    torch::PackedTensorAccessor32<Index, 3, RestrictPtrTraits>
+      new_thick,
     int N,
     int kernel_volume,
     int oH, int oW, int oD)
@@ -143,7 +243,7 @@ __global__ void sphconv_cuda_forward_kernel_2(
     int ot = 0;
 
     if (CompactMap[b][oX][oY][0] == 1) {
-      new_depth[b][ot][oX][oY] = 0;
+      new_depth[b][0][oX][oY] = 0;
       ot += 1;
     }
 
@@ -160,6 +260,9 @@ __global__ void sphconv_cuda_forward_kernel_2(
         ot += 1;
       }
     } // for oZ
+
+    new_thick[b][oX][oY] = CompactMap[b][oX][oY][oD - 1];
+
   } // for b
 }
 
@@ -229,7 +332,8 @@ __global__ void sphconv_cuda_forward_kernel_4(
   int KD, int KH, int KW,
   int sH, int sW,
   int padH, int padW,
-  int dH, int dW
+  int dH, int dW,
+  int oH, int oW
 ) {
   // gather
   // InRuleMap
@@ -250,6 +354,8 @@ __global__ void sphconv_cuda_forward_kernel_4(
       Index oX = OutSpatial(kH, x, sH, dH, padH);
       Index oY = OutSpatial(kW, y, sW, dW, padW);
 
+      if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) return;
+
       for (int ic = 0; ic < in_channels; ic++) {
         for (int i = 0; i < NumIn[b][k][x][y]; i++) {
           while (oc < out_channels) {
@@ -258,8 +364,13 @@ __global__ void sphconv_cuda_forward_kernel_4(
             int it = InRuleMap[b][k][x][y][i];
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
+            printf("new_feature[%d][%d][%d][%d][%d] += "
+                   "weight[%d][%d][%d][%d][%d] * feature[%d][%d][%d][%d][%d]\n",
+                   b, oc, ot, oX, oY, oc, ic, kD, kH, kW, b, ic, it, x, y);
+            new_feature[b][oc][ot][oX][oY] +=
+                weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
+            printf(" = %d\n", new_feature[b][oc][ot][oX][oY]);
 
-            new_feature[b][oc][ot][oX][oY] += weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
             oc += blockDim.z;
           }
         }
@@ -364,13 +475,15 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n",
-    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+  printTensor<int>(depth, "depth", 0, 0, 3, 0, 3);
+  printTensor<int>(thick, "thick", 0, 0, 3, 0, 3);
+
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
+         grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
   sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
       depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
       thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
       NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-      new_thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
       InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
       OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
       CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
@@ -384,6 +497,12 @@ sphconv_cuda_forward(torch::Tensor feature,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  printTensor<int>(NumIn, "NumIn", 0, 0, 3, 0, 3);
+  printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, 3, 0, 3);
+  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, 3, 0, 3);
+  // printTensor<int>(CompactMap, "CompactMap", 0, 0, 3, 0, 3);
+
 
   const int  oH_BLOCK = 8, oW_BLOCK = 32;
 
@@ -400,12 +519,16 @@ sphconv_cuda_forward(torch::Tensor feature,
   sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
     CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
     new_depth.packed_accessor32<int32_t, 4, RestrictPtrTraits >(),
+    new_thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
     N,
     kernel_volume,
     oH, oW, oD);
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  printTensor<int>(new_depth, "depth", 0, 0, 1, 0, 1);
+  printTensor<int>(new_thick, "thick", 0, 0, 1, 0, 1);
 
   grid_size.x = divUp(H, H_BLOCK * 4);
   grid_size.y = divUp(H, W_BLOCK * 4);
@@ -432,6 +555,8 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, 3, 0, 3);
+
   grid_size.x = divUp(H, H_BLOCK);
   grid_size.y = divUp(H, W_BLOCK);
   grid_size.z = 1;
@@ -440,6 +565,9 @@ sphconv_cuda_forward(torch::Tensor feature,
   block_size.y = W_BLOCK;
   const int C_BLOCK = 16;
   block_size.z = C_BLOCK;
+
+  std::cout << "feature = " << feature << std::endl;
+  std::cout << "weight = " << weight << std::endl;
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_4\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
@@ -457,7 +585,8 @@ sphconv_cuda_forward(torch::Tensor feature,
     KD, KH, KW,
     sH, sW,
     padH, padW,
-    dH, dW);
+    dH, dW,
+    oH, oW);
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());

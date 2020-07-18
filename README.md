@@ -48,6 +48,44 @@ python create_data.py create_kitti_info_file --data_path=KITTI_DATASET_ROOT
 python create_data.py create_reduced_point_cloud --data_path=KITTI_DATASET_ROOT
 ```
 
+
+### Coordinate
+
+RangeVoxel
+
+```
+    x  ▲          z
+       │       /
+       │      /
+       │     /
+┌────┐ │    /   ┌────┐
+│ H  │ │   /    │ D  │
+└────┘ │  /     └────┘
+       │ /
+       │/
+       *──────────▶
+                     y
+           ┌────┐
+           │ W  │
+           └────┘
+```
+
+lidar coordinate
+
+```
+        z  ▲          x
+           │       /
+           │      /
+           │     /
+           │    /
+           │   /
+           │  /
+           │ /
+           │/
+◀──────────*
+  y
+```
+
 ## reference
 
 - [Peter Goldsborough](https://github.com/goldsborough) for pytorch extension

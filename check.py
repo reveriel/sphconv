@@ -25,8 +25,8 @@ torch.manual_seed(42)
 # ////////////////////////////////////////////////
 
 configs = {
-    'in_channels': 64,
-    'out_channels': 64,
+    'in_channels': 1,
+    'out_channels': 1,
     'kernel_size': 3,
     'stride': 1,
     'padding': 0,
@@ -36,11 +36,20 @@ configs = {
     'subm': False,
 }
 
+def generate_test_RangeVoxel() :
+    N, C, T, D,  H, W = 1, 1, 1, 3, 3, 3
+    feature = torch.ones((N, C, T, H, W))
+    depth = torch.zeros((N, T, H, W), dtype=torch.int32)
+    thick = torch.ones((N, H, W), dtype=torch.int32)
+    shape = (N, C, D, H, W)
+    return RangeVoxel(feature, depth, thick, shape).cuda()
+
 
 def run(conv_configs, batch_size=1, channel=4):
     """Check sphconv and spconv's results. """
 
-    input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
+    # input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
+    input_sph = generate_test_RangeVoxel()
     print("input_sphconv shape =", input_sph.shape)
     # input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
     input_sp = RangeVoxel2SparseTensor(input_sph)
@@ -55,6 +64,12 @@ def run(conv_configs, batch_size=1, channel=4):
                           groups=configs['groups'],
                           bias=configs['bias'],
                           subm=configs['subm']).cuda()
+
+    one_weight = torch.ones((configs['out_channels'], configs['in_channels'],
+        configs['kernel_size'], configs['kernel_size'], configs['kernel_size'] ))
+
+    conv.weight = torch.nn.Parameter(one_weight.cuda())
+
     conv_ref = spconv.SparseConv3d(configs['in_channels'],
                                    configs['out_channels'],
                                    configs['kernel_size'],
@@ -63,6 +78,8 @@ def run(conv_configs, batch_size=1, channel=4):
                                    dilation=configs['dilation'],
                                    groups=configs['groups'],
                                    bias=configs['bias']).cuda()
+
+    conv_ref.weight = torch.nn.Parameter(one_weight.cuda())
 
     print("input_sp = ")
 
@@ -220,10 +237,11 @@ class TestForward(unittest.TestCase):
                        'requires_grad': True}
 
     def test_one_one(self):
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
+        B, iC, iD, iH, iW = 1, 1, 3, 3, 3
+        T = 1;
         oC, kH, kW, kD = 1, 3, 3, 3
 
-        feature = torch.ones(B, iD, iH, iW, iC, **self.kwargs)
+        feature = torch.ones(B, iC, T, iH, iW, **self.kwargs)
         weight = torch.ones(oC, iC, kD, kH, kW, **self.kwargs)
         depth = torch.randint(1, (B, iH, iW), **self.kwargs)
         variables = [feature, depth, weight, None,
