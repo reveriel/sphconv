@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import argparse
+import random
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -25,8 +26,8 @@ torch.manual_seed(42)
 # ////////////////////////////////////////////////
 
 configs = {
-    'in_channels': 1,
-    'out_channels': 1,
+    'in_channels': 4,
+    'out_channels': 4,
     'kernel_size': 3,
     'stride': 1,
     'padding': 0,
@@ -36,7 +37,12 @@ configs = {
     'subm': False,
 }
 
-def generate_test_RangeVoxel(N, C, T, D, H, W, feature_option:str="", depth_option:str="") :
+
+def generate_test_RangeVoxel(N, C, T, D, H, W,
+                             feature_option: str = "",
+                             depth_option: str = "",
+                             thick_option: str = ""
+                             ):
     """Generate artificial data for testing.
 
         feature_option(str,optional):  "range"
@@ -53,11 +59,23 @@ def generate_test_RangeVoxel(N, C, T, D, H, W, feature_option:str="", depth_opti
         feature = torch.ones((N, C, T, H, W))
 
     if depth_option == "random":
-        depth = torch.randint(D, (N, T, H, W), dtype=torch.int32)
+        # no duplicates
+        depth_one_slice = list(range(D))
+        depth_all = []
+        for i in range(H * W):
+            random.shuffle(depth_one_slice)
+            depth_all.append(torch.tensor(depth_one_slice, dtype=torch.int32))
+        depth = torch.stack(depth_all, dim=1).reshape(1, D, H, W)[:,:T,:,:].expand(N, T, H, W)
+
     else:
         depth = torch.zeros((N, T, H, W), dtype=torch.int32)
 
-    thick = torch.ones((N, H, W), dtype=torch.int32)
+    if thick_option == "random":
+        thick = torch.randint(T+1, (N, H, W), dtype=torch.int32)
+        while torch.sum(thick) == 0:
+            thick = torch.randint(T+1, (N, H, W), dtype=torch.int32)
+    else:
+        thick = torch.ones((N, H, W), dtype=torch.int32)
 
     shape = (N, C, D, H, W)
     return RangeVoxel(feature, depth, thick, shape).cuda()
@@ -66,8 +84,7 @@ def generate_test_RangeVoxel(N, C, T, D, H, W, feature_option:str="", depth_opti
 def run(conv_configs, batch_size=1, channel=4):
     """Check sphconv and spconv's results. """
 
-    # input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
-    input_sph = generate_test_RangeVoxel()
+    input_sph = get_range_voxels(0, batch_size=batch_size, channel=channel)
     print("input_sphconv shape =", input_sph.shape)
     # input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
     input_sp = RangeVoxel2SparseTensor(input_sph)
@@ -386,6 +403,30 @@ class TestForward(unittest.TestCase):
 
         print("corrs = ", input_spconv.indices)
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+    def test6(self):
+        # add batch size, depth is random, thick too
+        rangeV = generate_test_RangeVoxel(
+            1, 1, 3, 3, 4, 5, depth_option="random", thick_option="")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+
+        print("corrs = ", input_spconv.indices)
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
 
 
 if __name__ == '__main__':

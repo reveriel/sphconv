@@ -77,9 +77,9 @@ def RangeVoxel2SparseTensor(input) -> spconv.SparseConvTensor :
     feature = input.feature
     depth = input.depth
     thick = input.thick
-    B,C,D,H,W = input.shape
+    B, C, D, H, W = input.shape
     T = feature.shape[2]
-    print("bcdhw", B,C,D,H,W)
+    print("bcdhw", B, C, D, H, W)
 
     spconv_feature = []
     spconv_indices = []
@@ -87,15 +87,14 @@ def RangeVoxel2SparseTensor(input) -> spconv.SparseConvTensor :
     for b in range(B):
         for x in range(H):
             for y in range(W):
-                for t in range(T):
-                    if thick[b,x,y] == t:
-                        continue
-                    z = depth[b,t,x,y]
+                for t in range(thick[b,x,y]):
+                    z = depth[b, t, x, y]
                     spconv_feature.append(feature[b, :, t, x, y])
-                    indice = torch.tensor(list([b,z,x,y]), dtype=torch.int32)
+                    indice = torch.tensor(
+                        list([b, z, x, y]), dtype=torch.int32)
                     spconv_indices.append(indice)
 
-    spatial_shape = (D,H,W)
+    spatial_shape = (D, H, W)
     spconv_feature = torch.stack(spconv_feature, dim=0)
     spconv_indices = torch.stack(spconv_indices, dim=0)
 
