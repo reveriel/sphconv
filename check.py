@@ -385,7 +385,7 @@ class TestForward(unittest.TestCase):
 
     def test6(self):
         # add batch size, depth is random
-        rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 5, depth_option="random")
+        rangeV = generate_test_RangeVoxel(1, 1, 1, 3, 4, 5, depth_option="random")
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
