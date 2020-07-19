@@ -377,14 +377,17 @@ __global__ void sphconv_cuda_forward_kernel_4(
             //        "weight[%d][%d][%d][%d][%d] * feature[%d][%d][%d][%d][%d]\n",
             //        b, oc, ot, oX, oY, oc, ic, k_D, k_H, k_W, b, ic, it, x, y);
 
-            new_feature[b][oc][ot][oX][oY] +=
-                weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y];
+            atomicAdd(&new_feature[b][oc][ot][oX][oY], weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y]);
+            // new_feature[b][oc][ot][oX][oY] +=
+            //     weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y];
 
             oc += blockDim.z;
           }// while
         } // for i
       } // for ic
-      NumIn[b][k][x][y] = 0;
+      // NumIn[b][k][x][y] = 0;
+
+      // __syncthreads();
     }
   }
 }
