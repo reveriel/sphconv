@@ -183,18 +183,18 @@ __global__ void sphconv_cuda_forward_kernel_1(
   if (x >= H || y >= W ) return;
 
   // printf("x, y, k =  %d, %d, %d\n", x, y, k);
-  int kD = k / (KH * KW);
-  int kH = (k / KW) % KH;
-  int kW = k % KW;
+  int k_D = k / (KH * KW);
+  int k_H = (k / KW) % KH;
+  int k_W = k % KW;
   // printf("k0, k1, k2 (k) = %d, %d, %d, (%d)\n", k0, k1, k2, k);
 
   for (int b = 0; b < N; b++) {
     for (int t = 0; t < thick[b][x][y]; t++)
     {
       Index z = depth[b][t][x][y];
-      Index oX = OutSpatial(kH, x, sH, dH, padH);
-      Index oY = OutSpatial(kW, y, sW, dW, padW);
-      Index oZ = OutSpatial(kD, z, sD, dD, padD);
+      Index oX = OutSpatial(k_H, x, sH, dH, padH);
+      Index oY = OutSpatial(k_W, y, sW, dW, padW);
+      Index oZ = OutSpatial(k_D, z, sD, dD, padD);
       // printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
       {
@@ -280,7 +280,8 @@ __global__ void sphconv_cuda_forward_kernel_3(
     int KD, int KH, int KW,
     int sH, int sW,
     int padH, int padW,
-    int dH, int dW
+    int dH, int dW,
+    int oH, int oW
 )
 {
 
@@ -300,6 +301,8 @@ __global__ void sphconv_cuda_forward_kernel_3(
       int kW = k % KW;
       Index oX = OutSpatial(kH, x, sH, dH, padH);
       Index oY = OutSpatial(kW, y, sW, dW, padW);
+
+      if (oX < 0 || oX > oH || oY < 0 || oY >= oW) continue;
 
       for (int i = 0; i < NumIn[b][k][x][y]; i++) {
         Index oZ = OutRuleMap[b][k][x][y][i];
@@ -321,7 +324,7 @@ __global__ void sphconv_cuda_forward_kernel_4(
     InRuleMap,
   const torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
     OutRuleMap,
-  const torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+  torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
     NumIn,
   const torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
     weight,
@@ -334,13 +337,10 @@ __global__ void sphconv_cuda_forward_kernel_4(
   int padH, int padW,
   int dH, int dW,
   int oH, int oW,
-  int H, int W
-) {
-  // gather
-  // InRuleMap
+  int H, int W)
+{
   Index x = threadIdx.x + blockDim.x * blockIdx.x;
   Index y = threadIdx.y + blockDim.y * blockIdx.y;
-  // int k = threadIdx.z + blockDim.z * blockIdx.z;
 
   if (x >= H || y >= W) return;
 
@@ -358,8 +358,16 @@ __global__ void sphconv_cuda_forward_kernel_4(
 
       for (int ic = 0; ic < in_channels; ic++) {
         for (int i = 0; i < NumIn[b][k][x][y]; i++) {
+
+          // if (oX == 0 && oY == 2) {
+          //   printf("x, y = %d, %d, k_D, k_H, k_W, k =%d,%d,%d,%d\n",
+          //   x,y, k_D, k_H, k_W, k);
+          //   printf("NumIn[%d][%d][%d][%d] = %d\n",
+          //   b, k ,x, y, NumIn[b][k][x][y]);
+          // }
           Index oc = threadIdx.z;
           while (oc < out_channels) {
+
 
             // input thickness
             int it = InRuleMap[b][k][x][y][i];
@@ -372,9 +380,10 @@ __global__ void sphconv_cuda_forward_kernel_4(
                 weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y];
 
             oc += blockDim.z;
-          }
-        }
-      }
+          }// while
+        } // for i
+        // NumIn[b][k][x][y] = 0;
+      } // for ic
     }
   }
 }
@@ -552,7 +561,8 @@ sphconv_cuda_forward(torch::Tensor feature,
     KD, KH, KW,
     sH, sW,
     padH, padW,
-    dH, dW);
+    dH, dW,
+    oH, oW);
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
@@ -560,12 +570,12 @@ sphconv_cuda_forward(torch::Tensor feature,
   printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
 
   grid_size.x = divUp(H, H_BLOCK);
-  grid_size.y = divUp(H, W_BLOCK);
+  grid_size.y = divUp(W, W_BLOCK);
   grid_size.z = 1;
 
   block_size.x = H_BLOCK;
   block_size.y = W_BLOCK;
-  const int C_BLOCK = 16;
+  int C_BLOCK = 1;
   block_size.z = C_BLOCK;
 
   std::cout << "feature = " << feature << std::endl;
@@ -594,6 +604,8 @@ sphconv_cuda_forward(torch::Tensor feature,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  // printTensor<int>(NumIn, "NumIn final", 0, 0, H, 0, W);
 
   return {new_feature, new_depth, new_thick};
 }
