@@ -36,11 +36,29 @@ configs = {
     'subm': False,
 }
 
-def generate_test_RangeVoxel() :
-    N, C, T, D,  H, W = 1, 1, 1, 3, 3, 3
-    feature = torch.ones((N, C, T, H, W))
-    depth = torch.zeros((N, T, H, W), dtype=torch.int32)
+def generate_test_RangeVoxel(N, C, T, D, H, W, feature_option:str="", depth_option:str="") :
+    """Generate artificial data for testing.
+
+        feature_option(str,optional):  "range"
+
+        depth_option(str,optional): "random"
+
+    """
+
+    # N, C, T, D, H, W = 1, 1, 1, 4, 4, 4
+    if feature_option == "range":
+        feature = torch.arange(
+            N * C * T * H * W, dtype=torch.float).reshape(N, C, T, H, W)
+    else:
+        feature = torch.ones((N, C, T, H, W))
+
+    if depth_option == "random":
+        depth = torch.randint(D, (N, T, H, W), dtype=torch.int32)
+    else:
+        depth = torch.zeros((N, T, H, W), dtype=torch.int32)
+
     thick = torch.ones((N, H, W), dtype=torch.int32)
+
     shape = (N, C, D, H, W)
     return RangeVoxel(feature, depth, thick, shape).cuda()
 
@@ -54,6 +72,7 @@ def run(conv_configs, batch_size=1, channel=4):
     # input_sp = get_voxels(0, batch_size=batch_size, channel=channel)
     input_sp = RangeVoxel2SparseTensor(input_sph)
     print("input_spconv shape =", input_sp.spatial_shape)
+    print("input_sp's coordinate = ", input_sp.indices)
 
     conv = sphconv.Conv3d(configs['in_channels'],
                           configs['out_channels'],
@@ -79,7 +98,10 @@ def run(conv_configs, batch_size=1, channel=4):
                                    groups=configs['groups'],
                                    bias=configs['bias']).cuda()
 
-    conv_ref.weight = torch.nn.Parameter(one_weight.cuda())
+    conv_ref.weight = torch.nn.Parameter(
+        torch.ones((configs['kernel_size'], configs['kernel_size'], configs['kernel_size'],
+        configs['in_channels'], configs['out_channels']
+        )).cuda())
 
     print("input_sp = ")
 
@@ -89,7 +111,7 @@ def run(conv_configs, batch_size=1, channel=4):
         res_ref:spconv.SparseConvTensor = conv_ref(input_sp)
 
     print("conv ref's result = ")
-    # print(res_ref)
+    print(res_ref.dense())
     print("conv ref spatial shape =", res_ref.spatial_shape)
     print("conv ref sum = ", torch.sum(res_ref.dense()))
     print("===="*20)
@@ -107,12 +129,14 @@ def run(conv_configs, batch_size=1, channel=4):
         res:RangeVoxel = conv(input_sph)
 
     print("conv's result = ")
-    print("conv's result sum = ", torch.sum(res.dense()))
+    res_dense = res.dense()
+    print(res_dense)
+    print("conv's result sum = ", torch.sum(res_dense))
 
     # print(res)
     print("===="*20)
 
-run(configs, batch_size=1, channel=configs['in_channels'])
+# run(configs, batch_size=1, channel=configs['in_channels'])
 
 
 def check_equal(first, second, verbose) -> bool:
@@ -219,104 +243,151 @@ oC, kH, kW, kD = 1, 3, 3, 3
 
 class TestForward(unittest.TestCase):
 
-    # if options.cuda:
-    #     import cuda.lltm
-    #     device = torch.device("cuda")
-    # else:
-    #     device = torch.device("cpu")
     def setUp(self):
+        pass
 
-        if options.cuda:
-            import cuda.lltm
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
+    def test1(self):
+        rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
 
-        self.kwargs = {'dtype': torch.float32,
-                       'device': device,
-                       'requires_grad': True}
+        conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
-    def test_one_one(self):
-        B, iC, iD, iH, iW = 1, 1, 3, 3, 3
-        T = 1;
-        oC, kH, kW, kD = 1, 3, 3, 3
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
 
-        feature = torch.ones(B, iC, T, iH, iW, **self.kwargs)
-        weight = torch.ones(oC, iC, kD, kH, kW, **self.kwargs)
-        depth = torch.randint(1, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        self.assertTrue(check_forward(
-            variables, options.cuda, options.verbose))
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
 
-    def test_one_range(self):
+        print("conv ref's result = ")
+        res_ref_dense = res_ref.dense()
+        print(res_ref_dense)
+        print("conv ref spatial shape =", res_ref.spatial_shape)
+        print("conv ref sum = ", torch.sum(res_ref.dense()))
 
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
-        oC, kH, kW, kD = 1, 3, 3, 3
 
-        feature = torch.ones(B, iD, iH, iW, iC, **self.kwargs)
-        weight = torch.arange(
-            oC*iC*kD*kH*kW, **self.kwargs).reshape(oC, iC, kD, kH, kW)
-        depth = torch.randint(1, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        self.assertTrue(check_forward(
-            variables, options.cuda, options.verbose))
+        print("conv's result = ")
+        res_dense = res.dense()
+        print(res_dense)
+        print("conv's result sum = ", torch.sum(res_dense))
 
-    def test_range_one(self):
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
-        oC, kH, kW, kD = 1, 3, 3, 3
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
 
-        feature = torch.arange(
-            B*iD*iH*iW*iC, **self.kwargs).reshape(B, iD, iH, iW, iC)
-        weight = torch.ones(oC, iC, kD, kH, kW, **self.kwargs)
-        depth = torch.randint(1, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        check_forward(variables, options.cuda, options.verbose)
 
-    def test_range_range(self):
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
-        oC, kH, kW, kD = 1, 3, 3, 3
+    def test2(self):
+        # add batch size
+        rangeV = generate_test_RangeVoxel(16, 1, 1, 4, 4, 4)
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
 
-        feature = torch.arange(
-            B*iD*iH*iW*iC, **self.kwargs).reshape(B, iD, iH, iW, iC)
-        weight = torch.arange(
-            oC*iC*kD*kH*kW, **self.kwargs).reshape(oC, iC, kD, kH, kW)
-        depth = torch.randint(1, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        self.assertTrue(check_forward(
-            variables, options.cuda, options.verbose))
+        conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
-    def test_rand_rand(self):
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
 
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
-        oC, kH, kW, kD = 1, 3, 3, 3
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
 
-        feature = torch.randn(B, iD, iH, iW, iC, **
-                              self.kwargs).reshape(B, iD, iH, iW, iC)
-        weight = torch.randn(oC, iC, kD, kH, kW, **
-                             self.kwargs).reshape(oC, iC, kD, kH, kW)
-        depth = torch.randint(1, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        self.assertTrue(check_forward(
-            variables, options.cuda, options.verbose))
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
 
-    def test_one_one_depth(self):
-        B, iD, iH, iW, iC = 1, 3, 3, 3, 1
-        oC, kH, kW, kD = 1, 3, 3, 3
+    def test3(self):
+        # add channel
+        iC = oC = 32
+        rangeV = generate_test_RangeVoxel(2, iC, 1, 4, 4, 4)
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
 
-        feature = torch.ones(B, iD, iH, iW, iC, **self.kwargs)
-        weight = torch.ones(oC, iC, kD, kH, kW, **self.kwargs)
-        depth = torch.randint(3, (B, iH, iW), **self.kwargs)
-        variables = [feature, depth, weight, None,
-                     (1, 1, 1), (1, 1, 1), (1, 1, 1), 1]
-        self.assertTrue(check_forward(
-            variables, options.cuda, options.verbose))
+        conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(oC, iC, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+    def test4(self):
+        # add channel, value is generated by arange
+        iC = oC = 32
+        rangeV = generate_test_RangeVoxel(2, iC, 1, 4, 4, 4, feature_option="range")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(oC, iC, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+    def test5(self):
+        # add channel, value is generated by arange, weight too
+        iC = oC = 32
+        rangeV = generate_test_RangeVoxel(2, iC, 1, 4, 4, 4, feature_option="range")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(
+            torch.arange(1 * 1 * 3 * 3 * 3, dtype=torch.float)
+            .reshape(1, 1, 3, 3, 3)
+            .expand(oC, iC, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(
+            torch.arange(3 * 3 * 3 * 1 * 1, dtype=torch.float)
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+    def test6(self):
+        # add batch size, depth is random
+        rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4, depth_option="random")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+
+        print("corrs = ", input_spconv.indices)
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
 
 
 if __name__ == '__main__':
-    # unittest.main()
+    unittest.main()
     pass

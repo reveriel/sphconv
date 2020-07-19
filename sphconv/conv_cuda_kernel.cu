@@ -304,7 +304,7 @@ __global__ void sphconv_cuda_forward_kernel_3(
       for (int i = 0; i < NumIn[b][k][x][y]; i++) {
         Index oZ = OutRuleMap[b][k][x][y][i];
 
-        OutRuleMap[b][k][x][y][i] = CompactMap[b][oX][oY][oZ];
+        OutRuleMap[b][k][x][y][i] = CompactMap[b][oX][oY][oZ] - 1;
       }
     }
   }
@@ -333,43 +333,43 @@ __global__ void sphconv_cuda_forward_kernel_4(
   int sH, int sW,
   int padH, int padW,
   int dH, int dW,
-  int oH, int oW
+  int oH, int oW,
+  int H, int W
 ) {
   // gather
   // InRuleMap
   Index x = threadIdx.x + blockDim.x * blockIdx.x;
   Index y = threadIdx.y + blockDim.y * blockIdx.y;
   // int k = threadIdx.z + blockDim.z * blockIdx.z;
-  // out put channel
-  int oc = threadIdx.z;
 
+  if (x >= H || y >= W) return;
 
-  for (int b = 0; b < N; b++) {
-    for (int k = 0; k < kernel_volume ; k++) {
+  for (Index b = 0; b < N; b++) {
+    for (Index k = 0; k < kernel_volume ; k++) {
 
-      int kD = k / (KH * KW);
-      int kH = (k / KW) % KH;
-      int kW = k % KW;
+      Index k_D = k / (KH * KW);
+      Index k_H = (k / KW) % KH;
+      Index k_W = k % KW;
 
-      Index oX = OutSpatial(kH, x, sH, dH, padH);
-      Index oY = OutSpatial(kW, y, sW, dW, padW);
+      Index oX = OutSpatial(k_H, x, sH, dH, padH);
+      Index oY = OutSpatial(k_W, y, sW, dW, padW);
 
-      if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) return;
+      if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) continue;
 
       for (int ic = 0; ic < in_channels; ic++) {
         for (int i = 0; i < NumIn[b][k][x][y]; i++) {
+          Index oc = threadIdx.z;
           while (oc < out_channels) {
 
             // input thickness
             int it = InRuleMap[b][k][x][y][i];
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
-            printf("new_feature[%d][%d][%d][%d][%d] += "
-                   "weight[%d][%d][%d][%d][%d] * feature[%d][%d][%d][%d][%d]\n",
-                   b, oc, ot, oX, oY, oc, ic, kD, kH, kW, b, ic, it, x, y);
+            // printf("new_feature[%d][%d][%d][%d][%d] += "
+            //        "weight[%d][%d][%d][%d][%d] * feature[%d][%d][%d][%d][%d]\n",
+            //        b, oc, ot, oX, oY, oc, ic, k_D, k_H, k_W, b, ic, it, x, y);
             new_feature[b][oc][ot][oX][oY] +=
-                weight[oc][ic][kD][kH][kW] * feature[b][ic][it][x][y];
-            printf(" = %d\n", new_feature[b][oc][ot][oX][oY]);
+                weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y];
 
             oc += blockDim.z;
           }
@@ -475,8 +475,8 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
-  printTensor<int>(depth, "depth", 0, 0, 3, 0, 3);
-  printTensor<int>(thick, "thick", 0, 0, 3, 0, 3);
+  printTensor<int>(depth, "depth", 0, 0, H, 0, W);
+  printTensor<int>(thick, "thick", 0, 0, H, 0, W);
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
          grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
@@ -498,9 +498,9 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
-  printTensor<int>(NumIn, "NumIn", 0, 0, 3, 0, 3);
-  printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, 3, 0, 3);
-  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, 3, 0, 3);
+  printTensor<int>(NumIn, "NumIn", 0, 0, H, 0, W);
+  printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
+  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
   // printTensor<int>(CompactMap, "CompactMap", 0, 0, 3, 0, 3);
 
 
@@ -527,8 +527,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
-  printTensor<int>(new_depth, "depth", 0, 0, 1, 0, 1);
-  printTensor<int>(new_thick, "thick", 0, 0, 1, 0, 1);
+  printTensor<int>(new_depth, "new_depth", 0, 0, oH, 0, oW);
+  printTensor<int>(new_thick, "new_thick", 0, 0, oH, 0, oW);
+
+  std::cout << "CompactMap = " << CompactMap << std::endl;
 
   grid_size.x = divUp(H, H_BLOCK * 4);
   grid_size.y = divUp(H, W_BLOCK * 4);
@@ -555,7 +557,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
-  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, 3, 0, 3);
+  printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
 
   grid_size.x = divUp(H, H_BLOCK);
   grid_size.y = divUp(H, W_BLOCK);
@@ -586,7 +588,9 @@ sphconv_cuda_forward(torch::Tensor feature,
     sH, sW,
     padH, padW,
     dH, dW,
-    oH, oW);
+    oH, oW,
+    H, W
+  );
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());

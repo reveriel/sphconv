@@ -92,7 +92,7 @@ def RangeVoxel2SparseTensor(input) -> spconv.SparseConvTensor :
                         continue
                     z = depth[b,t,x,y]
                     spconv_feature.append(feature[b, :, t, x, y])
-                    indice = torch.tensor(list([b,t,x,y]), dtype=torch.int32)
+                    indice = torch.tensor(list([b,z,x,y]), dtype=torch.int32)
                     spconv_indices.append(indice)
 
     spatial_shape = (D,H,W)
