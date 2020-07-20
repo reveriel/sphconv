@@ -14,8 +14,6 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
 
-
-
 #include <stdio.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -463,7 +461,7 @@ sphconv_cuda_forward(torch::Tensor feature,
   // output tensor
   // including new_feature
 
-  // int oT = ; // This is bad
+  // int oT = T + 8 ; // This is bad
   int oT = T * 3 * 9;  // This is even worse
 
   // the output RangeVoxel
@@ -488,8 +486,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
+#ifdef DEBUG
   printTensor<int>(depth, "depth", 0, 0, H, 0, W);
   printTensor<int>(thick, "thick", 0, 0, H, 0, W);
+#endif
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
          grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
@@ -511,11 +511,11 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+#ifdef DEBUG
   printTensor<int>(NumIn, "NumIn", 0, 0, H, 0, W);
   printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
   printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
-  // printTensor<int>(CompactMap, "CompactMap", 0, 0, 3, 0, 3);
-
+#endif
 
   const int  oH_BLOCK = 8, oW_BLOCK = 32;
 
@@ -540,10 +540,11 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+#ifdef DEBUG
   printTensor<int>(new_depth, "new_depth", 0, 0, oH, 0, oW);
   printTensor<int>(new_thick, "new_thick", 0, 0, oH, 0, oW);
-
   std::cout << "CompactMap = " << CompactMap << std::endl;
+#endif
 
   grid_size.x = divUp(H, H_BLOCK * 4);
   grid_size.y = divUp(W, W_BLOCK * 4);
@@ -571,7 +572,9 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+#ifdef DEBUG
   printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
+#endif
 
   grid_size.x = divUp(H, H_BLOCK);
   grid_size.y = divUp(W, W_BLOCK);
@@ -579,11 +582,24 @@ sphconv_cuda_forward(torch::Tensor feature,
 
   block_size.x = H_BLOCK;
   block_size.y = W_BLOCK;
-  int C_BLOCK = 1;
+
+  // choose C_BLOCK
+  int C_BLOCK = 4;
+  if (oC > 4 && oC <= 8) {
+    C_BLOCK = 8;
+  } else if (oC <= 16) {
+    C_BLOCK = 16;
+  } else {
+    C_BLOCK = 32;
+  }
+
   block_size.z = C_BLOCK;
 
+#ifdef DEBUG
   std::cout << "feature = " << feature << std::endl;
   std::cout << "weight = " << weight << std::endl;
+#endif
+
 
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_4\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
@@ -609,7 +625,9 @@ sphconv_cuda_forward(torch::Tensor feature,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+#ifdef DEBUG
   printTensor<int>(NumIn, "NumIn final", 0, 0, H, 0, W);
+#endif
 
   return {new_feature, new_depth, new_thick};
 }
