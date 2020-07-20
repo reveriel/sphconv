@@ -257,7 +257,7 @@ __global__ void sphconv_cuda_forward_kernel_2(
       a[oZ] += a[oZ - 1];
 
       if (non_empty) {
-        new_depth[b][ot][oX][oY] = a[oZ] - 1;
+        new_depth[b][ot][oX][oY] = oZ;
         ot += 1;
       }
     } // for oZ
@@ -398,8 +398,8 @@ __global__ void sphconv_cuda_forward_kernel_4(
  * feature : N C T H W
  * depth : N T H W
  * thick : N H W
- * weight : D C K K K
- * bias : D
+ * weight : oC iC K K K
+ * bias : oC
  **/
 std::vector<torch::Tensor>
 sphconv_cuda_forward(torch::Tensor feature,

@@ -499,7 +499,7 @@ class TestForward(unittest.TestCase):
         # I get 744.6298  spconv get 744.63086
         iC = 1
         oC = 1
-        rangeV = generate_test_RangeVoxel(1, iC, 1, 9, 3, 4, feature_option="range", depth_option="random", thick_option="random")
+        rangeV = generate_test_RangeVoxel(1, iC, 1, 9, 3, 4, feature_option="", depth_option="random", thick_option="random")
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
