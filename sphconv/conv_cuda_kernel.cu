@@ -1,5 +1,12 @@
+// #define DEBUG
+
 // https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
+#ifdef DEBUG
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__);}
+#else
+#define gpuErrchk(ans)
+#endif
+
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
 {
   if (code != cudaSuccess)
@@ -14,7 +21,6 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
 
-// #define DEBUG
 
 
 #include <stdio.h>
@@ -176,9 +182,9 @@ __global__ void sphconv_cuda_forward_kernel_1(
 {
   // input index
   // x y z ~ H W D
-  Index x = threadIdx.x + blockDim.x * blockIdx.x;
   // printf("threadIdx.x(%d) + blockDim.x(%d) * blockIdx.x(%d) = x(%d)\n", threadIdx.x, blockDim.x, blockIdx.x, x);
-  Index y = threadIdx.y + blockDim.y * blockIdx.y;
+  Index x = (threadIdx.x + blockDim.x * blockIdx.x) * sH;
+  Index y = (threadIdx.y + blockDim.y * blockIdx.y) * sH;
   Index k = threadIdx.z + blockDim.z * blockIdx.z;
 
   if (x >= H || y >= W ) return;
@@ -437,8 +443,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
 
+#ifdef DEBUG
   printf("input spatial shape (D,H,W) = %d, %d, %d\n", D, H, W);
   printf("output spatial shape (oD,oH,oW) = %d, %d, %d\n", oD, oH, oW);
+#endif
 
   // auto divUp = [](int a, int b) { return ((a % b) != 0) ? (a / b + 1) : (a / b); };
 
@@ -494,8 +502,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   printTensor<int>(thick, "thick", 0, 0, H, 0, W);
 #endif
 
+#ifdef DEBUG
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
          grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
+#endif
   sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
       depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
       thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
@@ -530,8 +540,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   block_size.y = oW_BLOCK;
   block_size.z = 1;
 
+#ifdef DEBUG
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_2\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
   sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
     CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
     new_depth.packed_accessor32<int32_t, 4, RestrictPtrTraits >(),
@@ -557,8 +569,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   block_size.y = W_BLOCK * 4;
   block_size.z = 1;
 
+#ifdef DEBUG
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_3\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
   sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
     CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
     OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
@@ -603,9 +617,10 @@ sphconv_cuda_forward(torch::Tensor feature,
   std::cout << "weight = " << weight << std::endl;
 #endif
 
-
+#ifdef DEBUG
   printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_4\n",
     grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
   sphconv_cuda_forward_kernel_4<int32_t><<<grid_size, block_size>>>(
     feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
     new_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),

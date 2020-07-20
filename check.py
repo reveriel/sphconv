@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import sys
 import argparse
+import time
 import random
 import numpy as np
 import torch
@@ -433,7 +434,7 @@ class TestForward(unittest.TestCase):
 
     def test8(self):
         # test real data
-        in_channel = 4
+        in_channel = 16
         out_channel = 16
         rangeV = get_range_voxels(0, batch_size=1, channel=in_channel)
 
@@ -447,17 +448,37 @@ class TestForward(unittest.TestCase):
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
-        with torch.no_grad():
-            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+        loop_time = 1
 
         with torch.no_grad():
-            res: RangeVoxel = conv(rangeV)
+            total_time = 0
+            for i in range(loop_time):
+                t_start = time.time()
+                res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+                torch.cuda.synchronize()
+                t_end = time.time()
+                total_time += t_end - t_start
+
+            print("spconv time : ", total_time / loop_time, "s")
+
+        with torch.no_grad():
+            total_time = 0
+            for i in range(loop_time):
+                t_start = time.time()
+                res: RangeVoxel = conv(rangeV)
+                torch.cuda.synchronize()
+                t_end = time.time()
+                total_time += t_end - t_start
+
+            print("sphconv time : ", total_time / loop_time, "s")
+
+        print("number of non empty voxels = ", len(input_spconv.indices))
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
 
-        # print("corrs = ", input_spconv.indices)
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
+        self.assertTrue(True)
 
 
     def test9(self):
@@ -566,6 +587,8 @@ class TestForward(unittest.TestCase):
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+
 
 if __name__ == '__main__':
     unittest.main()
