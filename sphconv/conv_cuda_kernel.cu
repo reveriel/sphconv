@@ -14,7 +14,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
 
-#define DEBUG
+// #define DEBUG
 
 
 #include <stdio.h>
