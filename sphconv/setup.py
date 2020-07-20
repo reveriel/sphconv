@@ -35,6 +35,7 @@ setup(
                     #  '"-fPIC -Wall -O2"',
                      '--shared',
                     '-lineno',
+                    # '-DDEBUG',
                     # '-g',
                     '-gencode', 'arch=compute_75,code=sm_75',
                     '-I./cutlass/include',
