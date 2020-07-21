@@ -1,6 +1,5 @@
 // #define DEBUG
 
-// https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
 #ifdef DEBUG
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__);}
 #else
@@ -405,7 +404,7 @@ __global__ void sphconv_cuda_forward_kernel_4(
  * bias : oC
  **/
 std::vector<torch::Tensor>
-sphconv_cuda_forward(torch::Tensor feature,
+conv_cuda_forward(torch::Tensor feature,
                      torch::Tensor depth,
                      torch::Tensor thick,
                      torch::Tensor weight,
@@ -414,7 +413,7 @@ sphconv_cuda_forward(torch::Tensor feature,
                      int64_t padD, int64_t padH, int64_t padW,
                      int64_t dD, int64_t dH, int64_t dW,
                      int64_t groups,
-                     int64_t D
+                     int64_t D, int64_t subm
                     )
 {
   // input size
@@ -648,7 +647,7 @@ sphconv_cuda_forward(torch::Tensor feature,
 }
 
 std::vector<torch::Tensor>
-sphconv_cuda_backward(torch::Tensor feature,
+conv_cuda_backward(torch::Tensor feature,
                       torch::Tensor depth,
                       torch::Tensor thick,
                       torch::Tensor gradOutput,
@@ -657,7 +656,7 @@ sphconv_cuda_backward(torch::Tensor feature,
                       int64_t sD, int64_t sH, int64_t sW,
                       int64_t padD, int64_t padH, int64_t padW,
                       int64_t dD, int64_t dH, int64_t dW,
-                      int64_t groups)
+                      int64_t groups, int64_t subm)
 {
   auto d_feature = torch::zeros_like(feature);
   auto d_weight = torch::zeros_like(weight);

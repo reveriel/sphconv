@@ -568,7 +568,6 @@ class TestForward(unittest.TestCase):
 
     def test12(self):
         # test  conv stride
-        # add batch size
         rangeV = generate_test_RangeVoxel(1, 1, 8, 9, 3, 4, feature_option="", depth_option="random", thick_option="random")
         # rangeV = generate_test_RangeVoxel(1, 1, 1, 3, 3, 3)
         input_spconv = RangeVoxel2SparseTensor(rangeV)

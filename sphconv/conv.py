@@ -132,5 +132,7 @@ class Conv3d(Convolution):
             self.padding,
             self.dilation,
             self.groups,
-            iD)
+            iD,
+            self.subm)
+
         return RangeVoxel(feature, depth, thick, shape=new_shape)

@@ -4,31 +4,7 @@
 #include <iostream>
 #include <vector>
 
-// CUDA forward declarations
-
-std::vector<torch::Tensor> sphconv_cuda_forward(
-    torch::Tensor feature,
-    torch::Tensor depth,
-    torch::Tensor thick,
-    torch::Tensor weight,
-    // torch::Tensor bias,
-    int64_t sD, int64_t sH, int64_t sW,
-    int64_t padD, int64_t padH, int64_t padW,
-    int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups,
-    int64_t D);
-
-std::vector<torch::Tensor> sphconv_cuda_backward(
-    torch::Tensor feature,
-    torch::Tensor depth,
-    torch::Tensor thick,
-    torch::Tensor gradOutput,
-    torch::Tensor weights,
-    // torch::Tensor bias,
-    int64_t sD, int64_t sH, int64_t sW,
-    int64_t padD, int64_t padH, int64_t padW,
-    int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups);
+#include "conv_cuda.h"
 
 // NOTE: AT_ASSERT has become AT_CHECK on master after 0.4.
 #define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")
@@ -37,7 +13,7 @@ std::vector<torch::Tensor> sphconv_cuda_backward(
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
-std::vector<torch::Tensor> sphconv_forward(
+std::vector<torch::Tensor>  conv_forward(
     torch::Tensor feature,
     torch::Tensor depth,
     torch::Tensor thick,
@@ -47,7 +23,8 @@ std::vector<torch::Tensor> sphconv_forward(
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
     int64_t groups,
-    int64_t D)
+    int64_t D,
+    int64_t subm)
 {
     CHECK_INPUT(feature);
     CHECK_INPUT(depth);
@@ -55,15 +32,15 @@ std::vector<torch::Tensor> sphconv_forward(
     CHECK_INPUT(weights);
     // CHECK_INPUT(bias);
 
-    return sphconv_cuda_forward(feature, depth, thick, weights,
+    return conv_cuda_forward(feature, depth, thick, weights,
                                 sD, sH, sW,
                                 padD, padH, padW,
                                 dD, dH, dW,
                                 groups,
-                                D);
+                                D, subm);
 }
 
-std::vector<torch::Tensor> sphconv_backward(
+std::vector<torch::Tensor> conv_backward(
     torch::Tensor feature,
     torch::Tensor depth,
     torch::Tensor thick,
@@ -73,12 +50,13 @@ std::vector<torch::Tensor> sphconv_backward(
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups)
+    int64_t groups,
+    int64_t subm)
 {
 
     CHECK_INPUT(gradOutput);
 
-    return sphconv_cuda_backward(feature,
+    return conv_cuda_backward(feature,
                                  depth,
                                  thick,
                                  gradOutput,
@@ -87,11 +65,18 @@ std::vector<torch::Tensor> sphconv_backward(
                                  sD, sH, sW,
                                  padD, padH, padW,
                                  dD, dH, dW,
-                                 groups);
+                                 groups,
+                                 subm);
 }
+
+
+
+
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("forward", &sphconv_forward, "LLTM forward (CUDA)");
-    m.def("backward", &sphconv_backward, "LLTM backward (CUDA)");
+    m.def("conv_forward", &conv_forward, "conv forward (CUDA)");
+    m.def("conv_backward", &conv_backward, "conv backward (CUDA)");
 }
+

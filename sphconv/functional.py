@@ -50,14 +50,15 @@ class ConvFunction(torch.autograd.Function):
                 padding,
                 dilation,
                 groups,
-                D):
+                D,
+                subm):
         sD, sH, sW = stride
         padD, padH, padW = padding
         dD, dH, dW = dilation
         # print("bias = ", bias)
 
         if bias is None:
-            feature_out, depth_out, thick_out = sphconv_cuda.forward(
+            feature_out, depth_out, thick_out = sphconv_cuda.conv_forward(
                 feature,
                 depth,
                 thick,
@@ -67,7 +68,8 @@ class ConvFunction(torch.autograd.Function):
                 padD, padH, padW,
                 dD, dH, dW,
                 groups,
-                D)
+                D,
+                subm)
         else:
             raise Exception("bias not immplemented yet")
 
@@ -91,7 +93,7 @@ class ConvFunction(torch.autograd.Function):
         dD, dH, dW = dilation
 
         # d_bias
-        d_feature, d_weight = sphconv_cuda.backward(
+        d_feature, d_weight = sphconv_cuda.conv_backward(
             feature,
             depth,
             thick,
@@ -101,7 +103,8 @@ class ConvFunction(torch.autograd.Function):
             sD, sH, sW,
             padD, padH, padW,
             dD, dH, dW,
-            groups)
+            groups,
+            subm)
 
         # no bias now
         return d_feature, None, None, d_weight, None, None, None, None, None, None
