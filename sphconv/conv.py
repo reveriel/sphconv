@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 import sphconv
 from sphconv.modules import SphModule
-from sphconv.functional import SphConvFunction
+from sphconv.functional import ConvFunction
 from sphconv.rangevoxel import RangeVoxel
 
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
@@ -122,7 +122,7 @@ class Conv3d(Convolution):
 
         new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
-        feature, depth, thick = SphConvFunction.apply(
+        feature, depth, thick = ConvFunction.apply(
             input.feature,
             input.depth,
             input.thick,

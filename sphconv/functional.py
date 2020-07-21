@@ -3,7 +3,7 @@ import torch
 import sphconv_cuda
 
 
-class SphConvFunction(torch.autograd.Function):
+class ConvFunction(torch.autograd.Function):
     """ Applies a 3D convolution on Range Images
 
     Args:
