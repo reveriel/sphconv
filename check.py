@@ -564,13 +564,13 @@ class TestForward(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
     def test12(self):
         # test  conv stride
         # add batch size
-        # rangeV = generate_test_RangeVoxel(1, 1, 8, 9, 3, 4, feature_option="", depth_option="random", thick_option="random")
-        rangeV = generate_test_RangeVoxel(1, 1, 1, 5, 5, 5)
+        rangeV = generate_test_RangeVoxel(1, 1, 8, 9, 3, 4, feature_option="", depth_option="random", thick_option="random")
+        # rangeV = generate_test_RangeVoxel(1, 1, 1, 3, 3, 3)
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0, stride=2).cuda()

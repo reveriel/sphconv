@@ -38,7 +38,9 @@ __device__ __inline__ Index OutSpatial(Index k, Index x, Index s, Index d, Index
 {
   // forgive me. do nothing with the dillation
   // TODO
-  return (x + pad - k)/ s;
+  if ((x + pad - k) % s == 0)
+    return (x + pad - k)/ s;
+  return -1;
 }
 
 // Print a some tile, for debugging.
@@ -183,8 +185,8 @@ __global__ void sphconv_cuda_forward_kernel_1(
   // input index
   // x y z ~ H W D
   // printf("threadIdx.x(%d) + blockDim.x(%d) * blockIdx.x(%d) = x(%d)\n", threadIdx.x, blockDim.x, blockIdx.x, x);
-  Index x = (threadIdx.x + blockDim.x * blockIdx.x) * sH;
-  Index y = (threadIdx.y + blockDim.y * blockIdx.y) * sH;
+  Index x = threadIdx.x + blockDim.x * blockIdx.x;
+  Index y = threadIdx.y + blockDim.y * blockIdx.y;
   Index k = threadIdx.z + blockDim.z * blockIdx.z;
 
   if (x >= H || y >= W ) return;
@@ -206,21 +208,16 @@ __global__ void sphconv_cuda_forward_kernel_1(
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
       {
         // the returned i seems tobe the old value
+        // count number of active input
         Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
-        // printf("InRuleMap i = %d\n", i);
-        // if (i >= 32) continue;
+
+        // from which thick
         InRuleMap[b][k][x][y][i] = t;
-        // Index j = atomicAdd(&NumOut[b][k][oX][oY], Index(1));
-        // printf("OutRuleMap j = %d\n", j);
-        // if (j >= 32) continue;
-        // OutRuleMap[b][k][oX][oY][j] = oZ;
+        // to which z coordinate, this value is used to calculate the output thick
         OutRuleMap[b][k][x][y][i] = oZ;
 
         // fill nonempty place with 1
         CompactMap[b][oX][oY][oZ] = Index(1);
-
-        // new_thick, how many nonempty voxel
-        // atomicAdd(&new_thick[b][oX][oY], Index(1));
 
       } // if
     } // for t

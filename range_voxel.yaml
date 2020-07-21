@@ -1,8 +1,8 @@
 
 # see sphconv/data.py : xyz2RangeVoxel
-v_res: 128
-h_res: 512
-d_res: 512
+v_res: 16
+h_res: 64
+d_res: 64
 v_range: [76.6, 103.4]
 h_range: [-45, 45]
 d_range: [6, 70.4]

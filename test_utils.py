@@ -89,6 +89,8 @@ def RangeVoxel2SparseTensor(input) -> spconv.SparseConvTensor :
             for y in range(W):
                 for t in range(thick[b,x,y]):
                     z = depth[b, t, x, y]
+                    # if z == 0:
+                    #     continue
                     spconv_feature.append(feature[b, :, t, x, y])
                     indice = torch.tensor(
                         list([b, z, x, y]), dtype=torch.int32)
