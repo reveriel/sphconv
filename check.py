@@ -607,12 +607,11 @@ class TestForward(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
     def test14(self):
-        # test subm
+        # test subm, more randomness
         # note! padding
-        # rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
         iC = oC = 4
         rangeV = generate_test_RangeVoxel(1, iC, 1, 9, 8, 4, feature_option="", depth_option="random", thick_option="random")
         input_spconv = RangeVoxel2SparseTensor(rangeV)
@@ -641,7 +640,7 @@ class TestForward(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
 
 

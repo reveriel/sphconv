@@ -193,12 +193,12 @@ __global__ void sphconv_cuda_forward_kernel_1(
   Index k_W = k % KW;
   // printf("k0, k1, k2 (k) = %d, %d, %d, (%d)\n", k0, k1, k2, k);
 
+  Index oX = OutSpatial(k_H, x, sH, dH, padH);
+  Index oY = OutSpatial(k_W, y, sW, dW, padW);
   for (int b = 0; b < N; b++) {
     for (int t = 0; t < thick[b][x][y]; t++)
     {
       Index z = depth[b][t][x][y];
-      Index oX = OutSpatial(k_H, x, sH, dH, padH);
-      Index oY = OutSpatial(k_W, y, sW, dW, padW);
       Index oZ = OutSpatial(k_D, z, sD, dD, padD);
       // printf("oX, oY, oZ =  %d, %d, %d\n", oX, oY, oZ);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW  && oZ >= 0 && oZ < oD)
@@ -454,12 +454,11 @@ __global__ void subm_conv_forward_kernel_2(
   Index k_D = k / (KH * KW);
   Index k_H = (k / KW) % KH;
   Index k_W = k % KW;
+  Index oX = OutSpatial(k_H, x, sH, dH, padH);
+  Index oY = OutSpatial(k_W, y, sW, dW, padW);
   for (int b = 0; b < N; b++) {
     for (int t = 0; t < thick[b][x][y]; t++) {
       Index z = depth[b][t][x][y];
-      // TODO : oX oY not changed
-      Index oX = OutSpatial(k_H, x, sH, dH, padH);
-      Index oY = OutSpatial(k_W, y, sW, dW, padW);
       Index oZ = OutSpatial(k_D, z, sD, dD, padD);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW && oZ >= 0 && oZ < oD) {
         
