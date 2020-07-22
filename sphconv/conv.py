@@ -116,11 +116,15 @@ class Conv3d(Convolution):
         padD, padH, padW = self.padding
         dD, dH, dW = self.dilation
 
-        oD = math.floor((iD + 2 * padD - dD * (kD - 1) - 1) / sD + 1)
-        oH = math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1)
-        oW = math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1)
+        if self.subm:
+            new_shape = (batch_size, self.out_channels, iD, iH, iW)
 
-        new_shape = (batch_size, self.out_channels, oD, oH, oW)
+        else:
+            oD = math.floor((iD + 2 * padD - dD * (kD - 1) - 1) / sD + 1)
+            oH = math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1)
+            oW = math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1)
+
+            new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
         feature, depth, thick = ConvFunction.apply(
             input.feature,

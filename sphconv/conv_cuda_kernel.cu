@@ -19,8 +19,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   (threadIdx.x  == thread_x && threadIdx.y == thread_y && threadIdx.z == thread_z \
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
-
-
+int divUp(int x, int y) { return (x + y - 1) / y; };
 
 #include <stdio.h>
 #include <cuda.h>
@@ -153,8 +152,6 @@ void printTensor_k(at::Tensor A, std::string name, int batch_idx, int H_start,
 // TODO
 // __shared__ Index thickMap[INPUT_TILE_H][INPUT_TILE_W];
 // __shared__ Index Num[3x3x3][INPUT_TILE_H][INPUT_TILE_W];
-
-///// load tile to shared mem
 
 
 // template <typename scalar_t, typename Index>
@@ -395,6 +392,94 @@ __global__ void sphconv_cuda_forward_kernel_4(
   }
 }
 
+// assign CompactMap for subm conv
+template <typename Index>
+__global__ void subm_conv_forward_kernel_1(
+    const torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+        depth,
+    const torch::PackedTensorAccessor32<Index, 3, RestrictPtrTraits>
+        thick,
+    torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+      CompactMap,
+    int N,
+    int H, int W
+)
+{
+
+  Index x = threadIdx.x + blockDim.x * blockIdx.x;
+  Index y = threadIdx.y + blockDim.y * blockIdx.y;
+
+  if (x >= H || y >= W ) return;
+
+  for (int b = 0; b < N; b++) {
+    for (int t = 0; t < thick[b][x][y]; t++)
+    {
+      Index z = depth[b][t][x][y];
+      CompactMap[b][x][y][z] = t + 1;
+    }
+  }
+}
+
+// init InRuleMap and OutRulemap, and NumIn
+template <typename Index>
+__global__ void subm_conv_forward_kernel_2(
+    const torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+        depth,
+    const torch::PackedTensorAccessor32<Index, 3, RestrictPtrTraits>
+        thick,
+    torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+      NumIn,
+    torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
+      InRuleMap,
+    torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
+      OutRuleMap,
+    const torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
+      CompactMap,
+    int N,
+    int H, int W,
+    int KD, int KH, int KW,
+    int sD, int sH, int sW,
+    int padD, int padH, int padW,
+    int dD, int dH, int dW,
+    int oD, int oH, int oW)
+{
+
+  Index x = threadIdx.x + blockDim.x * blockIdx.x;
+  Index y = threadIdx.y + blockDim.y * blockIdx.y;
+  Index k = threadIdx.z + blockDim.z * blockIdx.z;
+
+  if (x >= H || y >= W) return;
+
+  // printf("x, y, k =  %d, %d, %d\n", x, y, k);
+  Index k_D = k / (KH * KW);
+  Index k_H = (k / KW) % KH;
+  Index k_W = k % KW;
+  for (int b = 0; b < N; b++) {
+    for (int t = 0; t < thick[b][x][y]; t++) {
+      Index z = depth[b][t][x][y];
+      // TODO : oX oY not changed
+      Index oX = OutSpatial(k_H, x, sH, dH, padH);
+      Index oY = OutSpatial(k_W, y, sW, dW, padW);
+      Index oZ = OutSpatial(k_D, z, sD, dD, padD);
+      if (oX >= 0 && oX < oH && oY >= 0 && oY < oW && oZ >= 0 && oZ < oD) {
+        
+        Index ot = CompactMap[b][oX][oY][oZ];
+        if (ot == 0) continue;
+        printf("hit! x,y,z=%d,%d,%d, k=(%d,%d,%d), oX,oY,oZ=%d,%d,%d\n",
+        x,y,z,k_H, k_W, k_D, oX, oY, oZ);
+
+        Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
+
+        // from which thick
+        InRuleMap[b][k][x][y][i] = t;
+        // to which z coordinate, this value is used to calculate the output thick
+        OutRuleMap[b][k][x][y][i] = ot - 1;
+      }
+    }
+  }
+}
+
+
 
 /***
  * feature : N C T H W
@@ -413,8 +498,7 @@ conv_cuda_forward(torch::Tensor feature,
                      int64_t padD, int64_t padH, int64_t padW,
                      int64_t dD, int64_t dH, int64_t dW,
                      int64_t groups,
-                     int64_t D, int64_t subm
-                    )
+                     int64_t D, int64_t subm)
 {
   // input size
   int N, C, T, H, W, oC, KD, KH, KW;
@@ -435,50 +519,47 @@ conv_cuda_forward(torch::Tensor feature,
   // the output tlie
   // constexpr int H_TILE = 16, W_TILE = 16;
 
-  int oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
-  int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
-  int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+  int oT, oD, oH, oW;
+  if (subm) {
+    oD = D;
+    oH = H;
+    oW = W;
+  } else {
+    oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
+    oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
+    oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+  }
 
 #ifdef DEBUG
   printf("input spatial shape (D,H,W) = %d, %d, %d\n", D, H, W);
   printf("output spatial shape (oD,oH,oW) = %d, %d, %d\n", oD, oH, oW);
 #endif
 
-  // auto divUp = [](int a, int b) { return ((a % b) != 0) ? (a / b + 1) : (a / b); };
-
-  auto divUp = [](int x, int y) { return (x + y - 1) / y; };
-
-  // number of tiles
 
   const int H_BLOCK = 4, W_BLOCK = 4;
-  dim3 grid_size, block_size;
-  grid_size.x = divUp(H, H_BLOCK);
-  grid_size.y = divUp(W, W_BLOCK);
-  grid_size.z = 1;
-
   auto kernel_volume = KD * KH * KW;
 
-  block_size.x = H_BLOCK;
-  block_size.y = W_BLOCK;
-  block_size.z = kernel_volume;
-
-  // int INPUT_TILE_H = (H_TILE - 1) * sH + dH * (K - 1) + 1; // TODO: check
-  // int INPUT_TILE_W = (W_TILE - 1) * sW + dW * (K - 1) + 1;
+  dim3 grid_size, block_size;
+  at::Tensor new_depth, new_thick;
 
   // output tensor
-  // including new_feature
-
   // int oT = T + 8 ; // This is bad
-  int oT = T * 3 * 9;  // This is even worse
+  if (subm) {
+    oT = T;
+  } else {
+    oT = T * 3 * 9; // This is even worse
+  }
 
   // the output RangeVoxel
   auto new_feature = torch::zeros({N, oC, oT, oH, oW},
                    torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
-  auto new_depth = torch::zeros({N, oT, oH, oW},
-                                 torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
-  auto new_thick = torch::zeros({N, oH, oW},
-                                torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
+  if (!subm) {
+    new_depth = torch::zeros(
+        {N, oT, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+    new_thick = torch::zeros(
+        {N, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  }
   // count number of valid input voxel at (b,k,x,y)
   auto NumIn = torch::zeros({N, kernel_volume, H, W},
                    torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
@@ -490,111 +571,137 @@ conv_cuda_forward(torch::Tensor feature,
     /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   //// create <del>hash</del>map
+  // the final value of CompactMap, means
+  // the output thick + 1 at output coordinate, (b, oX, oY, oZ)
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  const int oH_BLOCK = 8, oW_BLOCK = 32;
 
 #ifdef DEBUG
   printTensor<int>(depth, "depth", 0, 0, H, 0, W);
   printTensor<int>(thick, "thick", 0, 0, H, 0, W);
 #endif
 
+  if (subm) {
+
+    grid_size = dim3(divUp(H, H_BLOCK * 4), divUp(W, W_BLOCK * 4), 1);
+    block_size = dim3(H_BLOCK * 4, W_BLOCK * 4, 1);
+    subm_conv_forward_kernel_1<int32_t><<<grid_size, block_size>>>(
+        depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+        CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        N, H, W);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+    grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK));
+    block_size = dim3(H_BLOCK, W_BLOCK, kernel_volume);
+    subm_conv_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
+        depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+        NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+        OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+        CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        N,
+        H, W,
+        KD, KH, KW,
+        sD, sH, sW,
+        padD, padH, padW,
+        dD, dH, dW,
+        oD, oH, oW);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+  } else {
+
+    grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK));
+    block_size = dim3(H_BLOCK, W_BLOCK, kernel_volume);
 #ifdef DEBUG
-  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
-         grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
+    printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
+          grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
 #endif
-  sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
-      depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-      thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-      NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-      InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
-      OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
-      CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+    sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
+        depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+        NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+        OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+        CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        N,
+        H, W,
+        KD, KH, KW,
+        sD, sH, sW,
+        padD, padH, padW,
+        dD, dH, dW,
+        oD, oH, oW);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+#ifdef DEBUG
+    printTensor<int>(NumIn, "NumIn", 0, 0, H, 0, W);
+    printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
+    printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
+#endif
+
+    grid_size = dim3(divUp(oH, oH_BLOCK), divUp(oW, oW_BLOCK), 1);
+    block_size = dim3(oH_BLOCK, oW_BLOCK, 1);
+
+#ifdef DEBUG
+    printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_2\n",
+      grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
+    sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
+      CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+      new_depth.packed_accessor32<int32_t, 4, RestrictPtrTraits >(),
+      new_thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+      N,
+      kernel_volume,
+      oH, oW, oD);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+#ifdef DEBUG
+    printTensor<int>(new_depth, "new_depth", 0, 0, oH, 0, oW);
+    printTensor<int>(new_thick, "new_thick", 0, 0, oH, 0, oW);
+    std::cout << "CompactMap = " << CompactMap << std::endl;
+#endif
+
+    grid_size = dim3(divUp(H, H_BLOCK * 4), divUp(W, W_BLOCK * 4), 1);
+    block_size = dim3(H_BLOCK * 4, W_BLOCK * 4, 1);
+
+#ifdef DEBUG
+    printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_3\n",
+      grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
+    sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
+      CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+      OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+      NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
       N,
       H, W,
+      kernel_volume,
       KD, KH, KW,
-      sD, sH, sW,
-      padD, padH, padW,
-      dD, dH, dW,
-      oD, oH, oW);
+      sH, sW,
+      padH, padW,
+      dH, dW,
+      oH, oW);
 
-  gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
 
-#ifdef DEBUG
-  printTensor<int>(NumIn, "NumIn", 0, 0, H, 0, W);
-  printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
-  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
-#endif
-
-  const int  oH_BLOCK = 8, oW_BLOCK = 32;
-
-  grid_size.x = divUp(oH, oH_BLOCK);
-  grid_size.y = divUp(oW, oW_BLOCK);
-  grid_size.z = 1;
-
-  block_size.x = oH_BLOCK;
-  block_size.y = oW_BLOCK;
-  block_size.z = 1;
 
 #ifdef DEBUG
-  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_2\n",
-    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
-#endif
-  sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
-    CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
-    new_depth.packed_accessor32<int32_t, 4, RestrictPtrTraits >(),
-    new_thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-    N,
-    kernel_volume,
-    oH, oW, oD);
-
-  gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
-
-#ifdef DEBUG
-  printTensor<int>(new_depth, "new_depth", 0, 0, oH, 0, oW);
-  printTensor<int>(new_thick, "new_thick", 0, 0, oH, 0, oW);
-  std::cout << "CompactMap = " << CompactMap << std::endl;
+    printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
 #endif
 
-  grid_size.x = divUp(H, H_BLOCK * 4);
-  grid_size.y = divUp(W, W_BLOCK * 4);
-  grid_size.z = 1;
+  }
 
-  block_size.x = H_BLOCK * 4;
-  block_size.y = W_BLOCK * 4;
-  block_size.z = 1;
-
-#ifdef DEBUG
-  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_3\n",
-    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
-#endif
-  sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
-    CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
-    OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
-    NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
-    N,
-    H, W,
-    kernel_volume,
-    KD, KH, KW,
-    sH, sW,
-    padH, padW,
-    dH, dW,
-    oH, oW);
-
-  gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
-
-#ifdef DEBUG
-  printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
-#endif
-
-  grid_size.x = divUp(H, H_BLOCK);
-  grid_size.y = divUp(W, W_BLOCK);
-  grid_size.z = 1;
-
-  block_size.x = H_BLOCK;
-  block_size.y = W_BLOCK;
 
   // choose C_BLOCK
   int C_BLOCK = 4;
@@ -606,7 +713,8 @@ conv_cuda_forward(torch::Tensor feature,
     C_BLOCK = 32;
   }
 
-  block_size.z = C_BLOCK;
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
+  block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
 #ifdef DEBUG
   std::cout << "feature = " << feature << std::endl;
@@ -624,9 +732,7 @@ conv_cuda_forward(torch::Tensor feature,
     OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
     NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
     weight.packed_accessor32<float, 5, RestrictPtrTraits>(),
-    N,
-    C,
-    oC,
+    N, C, oC,
     kernel_volume,
     KD, KH, KW,
     sH, sW,
@@ -643,7 +749,12 @@ conv_cuda_forward(torch::Tensor feature,
   printTensor<int>(NumIn, "NumIn final", 0, 0, H, 0, W);
 #endif
 
-  return {new_feature, new_depth, new_thick};
+  if (subm) {
+    return {new_feature, depth, thick};
+  } else {
+    return {new_feature, new_depth, new_thick};
+  }
+
 }
 
 std::vector<torch::Tensor>

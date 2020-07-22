@@ -585,6 +585,62 @@ class TestForward(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
+
+    def test13(self):
+        # test subm
+        # note! padding
+        # rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
+        rangeV = generate_test_RangeVoxel(1, 1, 1, 9, 8, 4, feature_option="", depth_option="random", thick_option="random")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(1, 1, 3, padding=1, subm=True).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv_ref = spconv.SubMConv3d(1, 1, 3, padding=0, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+
+    def test14(self):
+        # test subm
+        # note! padding
+        # rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
+        iC = oC = 4
+        rangeV = generate_test_RangeVoxel(1, iC, 1, 9, 8, 4, feature_option="", depth_option="random", thick_option="random")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(iC, oC, 3, padding=1, subm=True).cuda()
+
+        rand_weight = torch.randn((3,3,3), dtype=torch.float)
+
+        conv.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(1, 1, 3, 3, 3)
+            .expand(oC, iC, 3, 3, 3).cuda())
+
+        conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=0, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
 
 

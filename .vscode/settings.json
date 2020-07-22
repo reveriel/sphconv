@@ -1,6 +1,7 @@
 {
     "python.pythonPath": "/home/user/anaconda3/envs/depconv/bin/python",
     "files.associations": {
-        "bitset": "cpp"
+        "bitset": "cpp",
+        "*.cu": "cpp"
     }
 }
