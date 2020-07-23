@@ -762,6 +762,8 @@ __global__ void conv_backward_kernel_1(
     d_featureOut,
   torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
     d_feature,
+  torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
+    d_weight,
   const torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
     InRuleMap,
   const torch::PackedTensorAccessor32<Index, 5, RestrictPtrTraits>
@@ -770,6 +772,8 @@ __global__ void conv_backward_kernel_1(
     NumIn,
   const torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
     weight,
+  const torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
+    feature,
   int N,
   int in_channels,
   int out_channels,
@@ -795,15 +799,6 @@ __global__ void conv_backward_kernel_1(
       Index oX = OutSpatial(k_H, x, sH, dH, padH);
       Index oY = OutSpatial(k_W, y, sW, dW, padW);
       
-      // transpose
-      Index tk_D = KD - k_D - 1;
-      Index tk_H = KH - k_H - 1;
-      Index tk_W = KW - k_W - 1;
-      tk_D = k_D;
-      tk_H = k_H;
-      tk_W = k_W;
-
-      
       if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) continue;
 
       for (int ic = 0; ic < in_channels; ic++) {
@@ -820,7 +815,8 @@ __global__ void conv_backward_kernel_1(
             //        "weight[%d][%d][%d][%d][%d] * feature[%d][%d][%d][%d][%d]\n",
             //        b, oc, ot, oX, oY, oc, ic, k_D, k_H, k_W, b, ic, it, x, y);
 
-            atomicAdd(&d_feature[b][ic][it][x][y], weight[oc][ic][tk_D][tk_H][tk_W] * d_featureOut[b][oc][ot][oX][oY]);
+            atomicAdd(&d_feature[b][ic][it][x][y], weight[oc][ic][k_D][k_H][k_W] * d_featureOut[b][oc][ot][oX][oY]);
+            atomicAdd(&d_weight[oc][ic][k_D][k_H][k_W], feature[b][ic][it][x][y] * d_featureOut[b][oc][ot][oX][oY]);
             // new_feature[b][oc][ot][oX][oY] +=
             //     weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y];
 
@@ -909,10 +905,12 @@ conv_cuda_backward(torch::Tensor feature,
   conv_backward_kernel_1<int32_t><<<grid_size, block_size>>>(
     d_featureOut.packed_accessor32<float, 5, RestrictPtrTraits>(),
     d_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
+    d_weight.packed_accessor32<float, 5, RestrictPtrTraits>(),
     InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
     OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
     NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
     weight.packed_accessor32<float, 5, RestrictPtrTraits>(),
+    feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
     N, iC, oC,
     kernel_volume,
     KD, KH, KW,
