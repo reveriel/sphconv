@@ -56,7 +56,7 @@ class ConvFunction(torch.autograd.Function):
         # print("bias = ", bias)
 
         # if bias is None:
-        feature_out, depth_out, thick_out = sphconv_cuda.conv_forward(
+        feature_out, depth_out, thick_out, in_rules, out_rules = sphconv_cuda.conv_forward(
             feature,
             depth,
             thick,
@@ -71,6 +71,7 @@ class ConvFunction(torch.autograd.Function):
         # else:
         #     raise Exception("bias not immplemented yet")
 
+        
         ctx.stride = stride
         ctx.padding = padding
         ctx.dilation = dilation
@@ -78,7 +79,7 @@ class ConvFunction(torch.autograd.Function):
         ctx.D = D
         ctx.subm = subm
 
-        variables = [feature, depth, thick, weight]
+        variables = [feature, depth, thick, weight, in_rules, out_rules]
         ctx.save_for_backward(*variables)
 
         ctx.mark_non_differentiable(depth_out, thick_out)
@@ -89,7 +90,9 @@ class ConvFunction(torch.autograd.Function):
     def backward(ctx, d_featureOut, d_depthOut, d_thickOut):
 
         # bias
-        feature, depth, thick, weight = ctx.saved_tensors
+        feature, depth, thick, weight, in_rules, out_rules = ctx.saved_tensors
+        
+        print("in_rules =", in_rules)
 
         # d_bias
         d_feature, d_weight = sphconv_cuda.conv_backward(
@@ -99,6 +102,8 @@ class ConvFunction(torch.autograd.Function):
             d_featureOut,
             # bias,
             weight,
+            in_rules,
+            out_rules,
             *ctx.stride,
             *ctx.padding,
             *ctx.dilation,

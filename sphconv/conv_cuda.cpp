@@ -33,11 +33,11 @@ std::vector<torch::Tensor>  conv_forward(
     // CHECK_INPUT(bias);
 
     return conv_cuda_forward(feature, depth, thick, weights,
-                                sD, sH, sW,
-                                padD, padH, padW,
-                                dD, dH, dW,
-                                groups,
-                                D, subm);
+                             sD, sH, sW,
+                             padD, padH, padW,
+                             dD, dH, dW,
+                             groups,
+                             D, subm);
 }
 
 std::vector<torch::Tensor> conv_backward(
@@ -47,6 +47,8 @@ std::vector<torch::Tensor> conv_backward(
     torch::Tensor gradOutput,
     torch::Tensor weights,
     // torch::Tensor bias,
+    torch::Tensor InRuleMap,
+    torch::Tensor OutRuleMap,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,
@@ -57,16 +59,18 @@ std::vector<torch::Tensor> conv_backward(
     CHECK_INPUT(gradOutput);
 
     return conv_cuda_backward(feature,
-                                 depth,
-                                 thick,
-                                 gradOutput,
-                                 weights,
-                                //  bias,
-                                 sD, sH, sW,
-                                 padD, padH, padW,
-                                 dD, dH, dW,
-                                 groups,
-                                 subm);
+                              depth,
+                              thick,
+                              gradOutput,
+                              weights,
+                              //  bias,
+                              InRuleMap,
+                              OutRuleMap,
+                              sD, sH, sW,
+                              padD, padH, padW,
+                              dD, dH, dW,
+                              groups,
+                              subm);
 }
 
 
