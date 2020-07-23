@@ -25,6 +25,7 @@ std::vector<torch::Tensor> conv_cuda_backward(
     // torch::Tensor bias,
     torch::Tensor InRuleMap,
     torch::Tensor OutRuleMap,
+    torch::Tensor NumIn,
     int64_t sD, int64_t sH, int64_t sW,
     int64_t padD, int64_t padH, int64_t padW,
     int64_t dD, int64_t dH, int64_t dW,

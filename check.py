@@ -645,7 +645,7 @@ class TestForward(unittest.TestCase):
 class TestBackward(unittest.TestCase):
     def test1(self):
         rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
-        input_spconv = RangeVoxel2SparseTensor(rangeV)
+        input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
         conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
@@ -658,7 +658,10 @@ class TestBackward(unittest.TestCase):
         res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
         res_sum_ref = torch.sum(res_ref.dense())
         res_sum_ref.backward()
-        print(input_spconv.features.grad)
+        grad_tensor = spconv.SparseConvTensor(
+            input_spconv.features.grad, input_spconv.indices, input_spconv.spatial_shape, input_spconv.batch_size)
+        # print(input_spconv.features.grad)
+        print(grad_tensor.dense())
         print(conv_ref.weight.grad)
 
 
