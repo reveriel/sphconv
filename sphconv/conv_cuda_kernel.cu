@@ -799,6 +799,10 @@ __global__ void conv_backward_kernel_1(
       Index tk_D = KD - k_D - 1;
       Index tk_H = KH - k_H - 1;
       Index tk_W = KW - k_W - 1;
+      tk_D = k_D;
+      tk_H = k_H;
+      tk_W = k_W;
+
       
       if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) continue;
 
