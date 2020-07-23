@@ -757,6 +757,118 @@ class TestBackward(unittest.TestCase):
         # res_dense = res.dense()
         self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=True))
 
+    def test3(self):
+        # test d_feature, subm
+        iC, oC = 8, 16
+        rangeV = generate_test_RangeVoxel(2, iC, 3, 8, 3, 5, feature_option="range", thick_option="random", depth_option="random")
+        input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
+
+
+        rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+
+
+        conv = sphconv.Conv3d(iC, oC, 3, padding=1, subm=True).cuda()
+        # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(1, 1, 3, 3, 3)
+            .expand(oC, iC, 3, 3, 3).cuda())
+
+        
+        conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=0, bias=False).cuda()
+        # conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+        conv_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+
+        
+        input_spconv.features.requires_grad = True
+
+        res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+        res_sum_ref = torch.sum(res_ref.dense())
+        res_sum_ref.backward()
+        grad_tensor_ref = spconv.SparseConvTensor(
+            input_spconv.features.grad, input_spconv.indices,
+            input_spconv.spatial_shape, input_spconv.batch_size)
+        # print(input_spconv.features.grad)
+        grad_tensor_ref_dense = grad_tensor_ref.dense()
+        print(conv_ref.weight.grad)
+
+        
+        rangeV.feature.requires_grad = True
+        conv.weight.requires_grad = True
+        
+        res: RangeVoxel = conv(rangeV)
+        res_sum = torch.sum(res.dense())
+        res_sum.backward()
+        grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
+        grad_tensor_dense = grad_tensor.dense()
+
+        print(conv.weight.grad)
+
+        # print(res_ref_dense)
+        # res_ref_dense = res_ref.dense()
+        # res_dense = res.dense()
+        self.assertTrue(check_equal(grad_tensor_ref_dense, grad_tensor_dense, verbose=False))
+
+    def test4(self):
+        # d_weight, subm
+        iC, oC = 8, 16
+        rangeV = generate_test_RangeVoxel(2, iC, 5, 8, 8, 8, feature_option="range", thick_option="random", depth_option="random")
+        input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
+
+
+        rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+
+        conv = sphconv.Conv3d(iC, oC, 3, padding=1, subm=True).cuda()
+        # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(1, 1, 3, 3, 3)
+            .expand(oC, iC, 3, 3, 3).cuda())
+
+        
+        conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=0, bias=False).cuda()
+        # conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+        conv_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())        
+        input_spconv.features.requires_grad = True
+
+        res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+        res_sum_ref = torch.sum(res_ref.dense())
+        res_sum_ref.backward()
+        grad_tensor_ref = spconv.SparseConvTensor(
+            input_spconv.features.grad, input_spconv.indices,
+            input_spconv.spatial_shape, input_spconv.batch_size)
+        # print(input_spconv.features.grad)
+        grad_tensor_ref_dense = grad_tensor_ref.dense()
+        print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
+        print(conv_ref.weight.grad)
+
+        
+        rangeV.feature.requires_grad = True
+        conv.weight.requires_grad = True
+        
+        res: RangeVoxel = conv(rangeV)
+        res_sum = torch.sum(res.dense())
+        res_sum.backward()
+        grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
+        grad_tensor_dense = grad_tensor.dense()
+
+        print("conv.weight.grad.shape = ", conv.weight.grad.shape)
+        print(conv.weight.grad)
+
+        # print(res_ref_dense)
+        # res_ref_dense = res_ref.dense()
+        # res_dense = res.dense()
+        self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=True))
+
+
 
 
 if __name__ == '__main__':
