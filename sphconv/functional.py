@@ -45,36 +45,40 @@ class ConvFunction(torch.autograd.Function):
                 depth,
                 thick,
                 weight,
-                bias,
+                # bias,
                 stride,
                 padding,
                 dilation,
                 groups,
                 D,
                 subm):
-        sD, sH, sW = stride
-        padD, padH, padW = padding
-        dD, dH, dW = dilation
+
         # print("bias = ", bias)
 
-        if bias is None:
-            feature_out, depth_out, thick_out = sphconv_cuda.conv_forward(
-                feature,
-                depth,
-                thick,
-                weight,
-                # bias,
-                sD, sH, sW,
-                padD, padH, padW,
-                dD, dH, dW,
-                groups,
-                D,
-                subm)
-        else:
-            raise Exception("bias not immplemented yet")
+        # if bias is None:
+        feature_out, depth_out, thick_out = sphconv_cuda.conv_forward(
+            feature,
+            depth,
+            thick,
+            weight,
+            # bias,
+            *stride,
+            *padding,
+            *dilation,
+            groups,
+            D,
+            subm)
+        # else:
+        #     raise Exception("bias not immplemented yet")
 
-        variables = [feature, depth, thick,
-                     weight, bias, stride, padding, dilation, groups]
+        ctx.stride = stride
+        ctx.padding = padding
+        ctx.dilation = dilation
+        ctx.groups = groups
+        ctx.D = D
+        ctx.subm = subm
+
+        variables = [feature, depth, thick, weight]
         ctx.save_for_backward(*variables)
 
         ctx.mark_non_differentiable(depth_out, thick_out)
@@ -85,12 +89,7 @@ class ConvFunction(torch.autograd.Function):
     def backward(ctx, d_featureOut, d_depthOut, d_thickOut):
 
         # bias
-        feature, depth, thick, \
-            weight, stride, padding, dilation, groups = ctx.saved_tensors
-
-        sD, sH, sW = stride
-        padD, padH, padW = padding
-        dD, dH, dW = dilation
+        feature, depth, thick, weight = ctx.saved_tensors
 
         # d_bias
         d_feature, d_weight = sphconv_cuda.conv_backward(
@@ -100,12 +99,14 @@ class ConvFunction(torch.autograd.Function):
             d_featureOut,
             # bias,
             weight,
-            sD, sH, sW,
-            padD, padH, padW,
-            dD, dH, dW,
-            groups,
-            subm)
+            *ctx.stride,
+            *ctx.padding,
+            *ctx.dilation,
+            ctx.groups,
+            ctx.subm)
+        print("d_weight = ",d_weight)
 
         # no bias now
+        # should match the input of forward
         return d_feature, None, None, d_weight, None, None, None, None, None, None
 
