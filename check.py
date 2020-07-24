@@ -641,6 +641,39 @@ class TestForward(unittest.TestCase):
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
+        
+    def test15(self):
+        # test different kernel size
+        # note! padding
+        iC = oC = 4
+        K = (1,3,1)
+        rangeV = generate_test_RangeVoxel(1, iC, 1, 9, 8, 4, feature_option="", depth_option="random", thick_option="random")
+        input_spconv = RangeVoxel2SparseTensor(rangeV)
+
+        conv = sphconv.Conv3d(iC, oC, K, padding=0, subm=False).cuda()
+
+        rand_weight = torch.randn(K, dtype=torch.float)
+
+        conv.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(1, 1, *K)
+            .repeat(oC, iC, 1,1,1).cuda())
+
+        conv_ref = spconv.SparseConv3d(iC, oC, K, padding=0, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(*K, 1, 1)
+            .repeat(1,1,1, iC, oC).cuda())
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
 class TestBackward(unittest.TestCase):
     def test1(self):

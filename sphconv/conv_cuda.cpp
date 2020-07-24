@@ -14,76 +14,11 @@
     CHECK_CONTIGUOUS(x)
 
 
-
-std::vector<torch::Tensor>  conv_forward(
-    torch::Tensor feature,
-    torch::Tensor depth,
-    torch::Tensor thick,
-    torch::Tensor weights,
-    // torch::Tensor bias,
-    int64_t sD, int64_t sH, int64_t sW,
-    int64_t padD, int64_t padH, int64_t padW,
-    int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups,
-    int64_t D,
-    int64_t subm)
-{
-    CHECK_INPUT(feature);
-    CHECK_INPUT(depth);
-    CHECK_INPUT(thick);
-    CHECK_INPUT(weights);
-    // CHECK_INPUT(bias);
-
-    return conv_cuda_forward(feature, depth, thick, weights,
-                             sD, sH, sW,
-                             padD, padH, padW,
-                             dD, dH, dW,
-                             groups,
-                             D, subm);
-}
-
-std::vector<torch::Tensor> conv_backward(
-    torch::Tensor feature,
-    torch::Tensor gradOutput,
-    torch::Tensor weights,
-    // torch::Tensor bias,
-    torch::Tensor InRuleMap,
-    torch::Tensor OutRuleMap,
-    torch::Tensor NumIn,
-    int64_t sD, int64_t sH, int64_t sW,
-    int64_t padD, int64_t padH, int64_t padW,
-    int64_t dD, int64_t dH, int64_t dW,
-    int64_t groups,
-    int64_t subm)
-{
-
-    CHECK_INPUT(gradOutput);
-
-    return conv_cuda_backward(feature,
-                              gradOutput,
-                              weights,
-                              //  bias,
-                              InRuleMap,
-                              OutRuleMap,
-                              NumIn,
-                              sD, sH, sW,
-                              padD, padH, padW,
-                              dD, dH, dW,
-                              groups,
-                              subm);
-}
-
-
-
-
-
-
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("conv_forward", &conv_forward, "conv forward (CUDA)");
-    m.def("conv_backward", &conv_backward, "conv backward (CUDA)");
-    m.def("get_indice_pairs", &get_indice_pairs, "");
-    m.def("get_indice_pairs_subm", &get_indice_pairs_subm, "");
-    m.def("indice_conv", &indice_conv, "");
+    m.def("get_indice_pairs", &sphconv::get_indice_pairs, "");
+    m.def("get_indice_pairs_subm", &sphconv::get_indice_pairs_subm, "");
+    m.def("indice_conv", &sphconv::indice_conv, "");
+    m.def("conv_backward", &sphconv::indice_conv_backward, "conv backward (CUDA)");
 }
 

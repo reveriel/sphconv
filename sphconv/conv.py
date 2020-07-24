@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import sphconv
 import sphconv_cuda
 from sphconv.modules import SphModule
-from sphconv.functional import ConvFunction, ConvFunction2
+from sphconv.functional import ConvFunction
 from sphconv.rangevoxel import RangeVoxel
 
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
@@ -160,9 +160,7 @@ class Conv3d(Convolution):
             input.indice_dict[self.indice_key] = (new_depth, new_thick,
                 in_rules, out_rules, num_in) 
             
-
-
-        feature  = ConvFunction2.apply(
+        feature  = ConvFunction.apply(
             input.feature,
             self.weight,
             in_rules,
