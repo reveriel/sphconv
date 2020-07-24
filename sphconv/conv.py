@@ -4,8 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import sphconv
+import sphconv_cuda
 from sphconv.modules import SphModule
-from sphconv.functional import ConvFunction
+from sphconv.functional import ConvFunction, ConvFunction2
 from sphconv.rangevoxel import RangeVoxel
 
 from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
@@ -16,7 +17,8 @@ class Convolution(SphModule):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, padding, dilation, groups,
-                 bias, subm):
+                 bias, subm,
+                 indice_key=None):
         super(SphModule, self).__init__()
 
         self.in_channels = in_channels
@@ -28,6 +30,7 @@ class Convolution(SphModule):
         self.dilation = dilation
         self.groups = groups
         self.subm = subm
+        self.indice_key = indice_key
 
         self.weight = nn.Parameter(
             torch.Tensor(out_channels, in_channels, *kernel_size))
@@ -105,6 +108,7 @@ class Conv3d(Convolution):
     def forward(self, input: RangeVoxel):
 
         batch_size, inChannel, iD, iH, iW = input.shape
+        iT = input.feature.size(2)
         # print("forward input shape =", input.shape)
         # print("self inch = ", self.in_channels)
 
@@ -126,11 +130,44 @@ class Conv3d(Convolution):
 
             new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
-        feature, depth, thick = ConvFunction.apply(
+        datas = input.find_indice_pair(self.indice_key)
+        if self.indice_key is not None and datas is not None:
+            new_depth, new_thick, in_rules, out_rules, num_in = datas
+        else: # not found, compute it
+            if self.subm:
+                new_depth, new_thick, in_rules, out_rules, num_in = \
+                    sphconv_cuda.get_indice_pairs_subm(
+                        input.depth, input.thick,
+                        batch_size, iT,
+                        iD, iH, iW,
+                        *self.kernel_size,
+                        *self.stride,
+                        *self.padding,
+                        *self.dilation,
+                        self.groups)
+
+            else:
+                new_depth, new_thick, in_rules, out_rules, num_in = \
+                    sphconv_cuda.get_indice_pairs(
+                        input.depth, input.thick,
+                        batch_size, iT,
+                        iD, iH, iW,
+                        *self.kernel_size,
+                        *self.stride,
+                        *self.padding,
+                        *self.dilation,
+                        self.groups)
+            input.indice_dict[self.indice_key] = (new_depth, new_thick,
+                in_rules, out_rules, num_in) 
+            
+
+
+        feature  = ConvFunction2.apply(
             input.feature,
-            input.depth,
-            input.thick,
             self.weight,
+            in_rules,
+            out_rules,
+            num_in,
             # self.bias,
             self.stride,
             self.padding,
@@ -139,4 +176,4 @@ class Conv3d(Convolution):
             iD,
             self.subm)
 
-        return RangeVoxel(feature, depth, thick, shape=new_shape)
+        return RangeVoxel(feature, new_depth, new_thick, shape=new_shape)

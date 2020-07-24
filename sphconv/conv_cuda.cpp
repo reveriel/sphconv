@@ -13,6 +13,8 @@
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
+
+
 std::vector<torch::Tensor>  conv_forward(
     torch::Tensor feature,
     torch::Tensor depth,
@@ -42,8 +44,6 @@ std::vector<torch::Tensor>  conv_forward(
 
 std::vector<torch::Tensor> conv_backward(
     torch::Tensor feature,
-    torch::Tensor depth,
-    torch::Tensor thick,
     torch::Tensor gradOutput,
     torch::Tensor weights,
     // torch::Tensor bias,
@@ -60,8 +60,6 @@ std::vector<torch::Tensor> conv_backward(
     CHECK_INPUT(gradOutput);
 
     return conv_cuda_backward(feature,
-                              depth,
-                              thick,
                               gradOutput,
                               weights,
                               //  bias,
@@ -84,5 +82,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("conv_forward", &conv_forward, "conv forward (CUDA)");
     m.def("conv_backward", &conv_backward, "conv backward (CUDA)");
+    m.def("get_indice_pairs", &get_indice_pairs, "");
+    m.def("get_indice_pairs_subm", &get_indice_pairs_subm, "");
+    m.def("indice_conv", &indice_conv, "");
 }
 

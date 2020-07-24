@@ -42,6 +42,7 @@ class RangeVoxel(object):
         self.depth = depth
         self.thick = thick
         self.shape = shape
+        self.indice_dict = {}
 
     def dense(self, device=None):
         """Convert to dense 3D tensor
@@ -57,6 +58,13 @@ class RangeVoxel(object):
         self.depth = self.depth.cuda()
         self.thick = self.thick.cuda()
         return self
+    
+    def find_indice_pair(self, key):
+        if key is None:
+            return None
+        if key in self.indice_dict:
+            return self.indice_dict[key]
+        return None
 
 def to_dense(feature, depth, thick, D, device=None):
     """Convert to dense 3D tensor

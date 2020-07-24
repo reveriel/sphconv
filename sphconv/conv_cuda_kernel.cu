@@ -266,6 +266,7 @@ __global__ void sphconv_cuda_forward_kernel_2(
   } // for b
 }
 
+// re-assign OutRuleMap
 template <typename Index>
 __global__ void sphconv_cuda_forward_kernel_3(
     const torch::PackedTensorAccessor32<Index, 4, RestrictPtrTraits>
@@ -290,7 +291,6 @@ __global__ void sphconv_cuda_forward_kernel_3(
 
   if (x >= H || y >= W) return;
 
-  // re-assign OutRuleMap
   for (int b = 0; b < N; b++) {
 
     for (int k = 0; k < kernel_volume; k++) {
@@ -464,8 +464,6 @@ __global__ void subm_conv_forward_kernel_2(
         
         Index ot = CompactMap[b][oX][oY][oZ];
         if (ot == 0) continue;
-        printf("hit! x,y,z=%d,%d,%d, k=(%d,%d,%d), oX,oY,oZ=%d,%d,%d\n",
-        x,y,z,k_H, k_W, k_D, oX, oY, oZ);
 
         Index i = atomicAdd(&NumIn[b][k][x][y], Index(1));
 
@@ -539,7 +537,7 @@ conv_cuda_forward(torch::Tensor feature,
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
-  at::Tensor new_depth, new_thick;
+  torch::Tensor new_depth, new_thick;
 
   // output tensor
   // int oT = T + 8 ; // This is bad
@@ -835,8 +833,6 @@ __global__ void conv_backward_kernel_1(
 
 std::vector<torch::Tensor>
 conv_cuda_backward(torch::Tensor feature,
-                      torch::Tensor depth,
-                      torch::Tensor thick,
                       torch::Tensor d_featureOut,
                       torch::Tensor weight,
                       // torch::Tensor bias,
@@ -921,4 +917,321 @@ conv_cuda_backward(torch::Tensor feature,
     H, W);
 
   return {d_feature, d_weight};
+}
+
+///////
+// return {depth, thick, InRuleMap, OutRuleMap, NumIn};
+///////
+std::vector<torch::Tensor>
+get_indice_pairs_subm(torch::Tensor depth,
+                      torch::Tensor thick,
+                      int64_t N, int64_t T,
+                      int64_t D, int64_t H, int64_t W,
+                      int64_t KD, int64_t KH, int64_t KW,
+                      int64_t sD, int64_t sH, int64_t sW,
+                      int64_t padD, int64_t padH, int64_t padW,
+                      int64_t dD, int64_t dH, int64_t dW,
+                      int64_t groups)
+{
+  // output sizes
+  int oD, oH, oW;
+  oD = D;
+  oH = H;
+  oW = W;
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+  auto kernel_volume = KD * KH * KW;
+
+  dim3 grid_size, block_size;
+  at::Tensor new_depth, new_thick;
+
+  // count number of valid input voxel at (b,k,x,y)
+  auto NumIn = torch::zeros({N, kernel_volume, H, W},
+                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  // the thickness of the valid input voxel
+  auto InRuleMap = torch::full({N, kernel_volume, H, W, T},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  // the output thickness of the valid input voxel
+  auto OutRuleMap = torch::full({N, kernel_volume, H, W, T},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  //// create <del>hash</del>map
+  // the final value of CompactMap, means
+  // the output thick + 1 at output coordinate, (b, oX, oY, oZ)
+  auto CompactMap = torch::full({N, oH, oW, oD}, 0,
+                  torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  grid_size = dim3(divUp(H, H_BLOCK * 4), divUp(W, W_BLOCK * 4), 1);
+  block_size = dim3(H_BLOCK * 4, W_BLOCK * 4, 1);
+  subm_conv_forward_kernel_1<int32_t><<<grid_size, block_size>>>(
+      depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+      CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      N, H, W);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK));
+  block_size = dim3(H_BLOCK, W_BLOCK, kernel_volume);
+  subm_conv_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
+      depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+      NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+      OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+      CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      N,
+      H, W,
+      KD, KH, KW,
+      sD, sH, sW,
+      padD, padH, padW,
+      dD, dH, dW,
+      oD, oH, oW);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+  return {depth, thick, InRuleMap, OutRuleMap, NumIn};
+}
+
+///////
+// return {new_depth, new_thick, InRuleMap, OutRuleMap, NumIn};
+///////
+std::vector<torch::Tensor>
+get_indice_pairs(torch::Tensor depth,
+                 torch::Tensor thick,
+                 int64_t N, int64_t T,
+                 int64_t D, int64_t H, int64_t W,
+                 int64_t KD, int64_t KH, int64_t KW,
+                 int64_t sD, int64_t sH, int64_t sW,
+                 int64_t padD, int64_t padH, int64_t padW,
+                 int64_t dD, int64_t dH, int64_t dW,
+                 int64_t groups)
+{
+  // assume we want to have each block to calcultate T output elements
+  // (T + k - 1)^* inpuut elements are neededd ,
+
+  // tile size
+  // the output tlie
+  // constexpr int H_TILE = 16, W_TILE = 16;
+
+  int oT, oD, oH, oW;
+  oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
+  oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
+  oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+
+#ifdef DEBUG
+  printf("input spatial shape (D,H,W) = %d, %d, %d\n", D, H, W);
+  printf("output spatial shape (oD,oH,oW) = %d, %d, %d\n", oD, oH, oW);
+#endif
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+  auto kernel_volume = KD * KH * KW;
+
+  dim3 grid_size, block_size;
+  at::Tensor new_depth, new_thick;
+
+  // output tensor
+  // int oT = T + 8 ; // This is bad
+  oT = T * 3 * 9; // This is even worse
+
+  new_depth = torch::zeros(
+      {N, oT, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  new_thick = torch::zeros(
+      {N, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  // count number of valid input voxel at (b,k,x,y)
+  auto NumIn = torch::zeros({N, kernel_volume, H, W},
+                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  // the thickness of the valid input voxel
+  auto InRuleMap = torch::full({N, kernel_volume, H, W, T},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+  // the output thickness of the valid input voxel
+  auto OutRuleMap = torch::full({N, kernel_volume, H, W, T},
+    /*value=*/ -1, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  //// create <del>hash</del>map
+  // the final value of CompactMap, means
+  // the output thick + 1 at output coordinate, (b, oX, oY, oZ)
+  auto CompactMap = torch::full({N, oH, oW, oD}, 0,
+                  torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  const int oH_BLOCK = 8, oW_BLOCK = 32;
+
+#ifdef DEBUG
+  printTensor<int>(depth, "depth", 0, 0, H, 0, W);
+  printTensor<int>(thick, "thick", 0, 0, H, 0, W);
+#endif
+
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK));
+  block_size = dim3(H_BLOCK, W_BLOCK, kernel_volume);
+#ifdef DEBUG
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_1\n", grid_size.x,
+        grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z);
+#endif
+  sphconv_cuda_forward_kernel_1<int32_t><<<grid_size, block_size>>>( // <scalar_t, int32_t, H_TILE, W_TILE>
+      depth.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+      NumIn.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      InRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+      OutRuleMap.packed_accessor32<int32_t, 5, torch::RestrictPtrTraits>(),
+      CompactMap.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+      N,
+      H, W,
+      KD, KH, KW,
+      sD, sH, sW,
+      padD, padH, padW,
+      dD, dH, dW,
+      oD, oH, oW);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+#ifdef DEBUG
+  printTensor<int>(NumIn, "NumIn", 0, 0, H, 0, W);
+  printTensor_k<int>(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
+  printTensor_k<int>(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
+#endif
+
+  grid_size = dim3(divUp(oH, oH_BLOCK), divUp(oW, oW_BLOCK), 1);
+  block_size = dim3(oH_BLOCK, oW_BLOCK, 1);
+
+#ifdef DEBUG
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_2\n",
+    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
+  sphconv_cuda_forward_kernel_2<int32_t><<<grid_size, block_size>>>(
+    CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+    new_depth.packed_accessor32<int32_t, 4, RestrictPtrTraits >(),
+    new_thick.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+    N,
+    kernel_volume,
+    oH, oW, oD);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+#ifdef DEBUG
+  printTensor<int>(new_depth, "new_depth", 0, 0, oH, 0, oW);
+  printTensor<int>(new_thick, "new_thick", 0, 0, oH, 0, oW);
+  std::cout << "CompactMap = " << CompactMap << std::endl;
+#endif
+
+  grid_size = dim3(divUp(H, H_BLOCK * 4), divUp(W, W_BLOCK * 4), 1);
+  block_size = dim3(H_BLOCK * 4, W_BLOCK * 4, 1);
+
+#ifdef DEBUG
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_3\n",
+    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
+  sphconv_cuda_forward_kernel_3<int32_t><<<grid_size, block_size>>>(
+    CompactMap.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+    OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+    NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+    N,
+    H, W,
+    kernel_volume,
+    KD, KH, KW,
+    sH, sW,
+    padH, padW,
+    dH, dW,
+    oH, oW);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+
+#ifdef DEBUG
+  printTensor_k<int>(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
+#endif
+
+  return {new_depth, new_thick, InRuleMap, OutRuleMap, NumIn};
+}
+
+
+std::vector<torch::Tensor>
+indice_conv(torch::Tensor feature,
+            torch::Tensor weight,
+            torch::Tensor InRuleMap,
+            torch::Tensor OutRuleMap,
+            torch::Tensor NumIn,
+                    //  torch::Tensor bias,
+                    int64_t D, int64_t oT,
+                     int64_t sD, int64_t sH, int64_t sW,
+                     int64_t padD, int64_t padH, int64_t padW,
+                     int64_t dD, int64_t dH, int64_t dW,
+                     int64_t groups)
+{
+  int N, C, T, H, W, oC, KD, KH, KW;
+  N = feature.size(0);
+  C = feature.size(1);
+  T = feature.size(2);
+  H = feature.size(3);
+  W = feature.size(4);
+  oC = weight.size(0);
+  KD = weight.size(2);
+  KH = weight.size(3);
+  KW = weight.size(4);
+
+  int oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
+  int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
+  int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+
+  int kernel_volume = KD * KH * KW;
+
+  // the output RangeVoxel
+  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+                   torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
+
+  // choose C_BLOCK
+  int C_BLOCK = 4;
+  if (oC > 4 && oC <= 8) {
+    C_BLOCK = 8;
+  } else if (oC <= 16) {
+    C_BLOCK = 16;
+  } else {
+    C_BLOCK = 32;
+  }
+
+  dim3 grid_size, block_size;
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
+  block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+
+#ifdef DEBUG
+  std::cout << "feature = " << feature << std::endl;
+  std::cout << "weight = " << weight << std::endl;
+#endif
+
+#ifdef DEBUG
+  printf("launch <<< %dx%dx%d, %dx%dx%d>>> kernel_4\n",
+    grid_size.x, grid_size.y, grid_size.z, block_size.x, block_size.y, block_size.z );
+#endif
+  sphconv_cuda_forward_kernel_4<int32_t><<<grid_size, block_size>>>(
+    feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
+    new_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
+    InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+    OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+    NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+    weight.packed_accessor32<float, 5, RestrictPtrTraits>(),
+    N, C, oC,
+    kernel_volume,
+    KD, KH, KW,
+    sH, sW,
+    padH, padW,
+    dH, dW,
+    oH, oW,
+    H, W
+  );
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+#ifdef DEBUG
+  printTensor<int>(NumIn, "NumIn final", 0, 0, H, 0, W);
+#endif
+
+  return {new_feature};
 }
