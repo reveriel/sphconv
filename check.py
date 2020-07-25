@@ -14,8 +14,8 @@ import unittest
 
 import sphconv
 from sphconv import RangeVoxel
-from kitti_reader import get_range_voxels, get_voxels
-from test_utils import RangeVoxel2SparseTensor
+from sphconv.kitti_reader import get_range_voxels
+from test_utils import RangeVoxel2SparseTensor, get_voxels
 import spconv
 
 torch.manual_seed(42)
@@ -573,9 +573,9 @@ class TestForward(unittest.TestCase):
         # rangeV = generate_test_RangeVoxel(1, 1, 1, 3, 3, 3)
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
-        conv = sphconv.Conv3d(1, 1, 3, padding=0, stride=2).cuda()
+        conv = sphconv.Conv3d(1, 1, 3, padding=1, stride=2).cuda()
         conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
-        conv_ref = spconv.SparseConv3d(1, 1, 3, padding=0, stride=2, bias=False).cuda()
+        conv_ref = spconv.SparseConv3d(1, 1, 3, padding=1, stride=2, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
         with torch.no_grad():
@@ -916,31 +916,46 @@ class TestModules(unittest.TestCase):
         rand_weight = torch.randn((3,3,3), dtype=torch.float)
         # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
-        conv = sphconv.Sequential(
-            sphconv.Conv3d(iC, oC, 3, padding=0, bias=False),
-            nn.BatchNorm3d(oC, eps=1e-3, momentum=0.01),
-            nn.ReLU()
-        ).cuda()
-        # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
-        conv.weight = torch.nn.Parameter(
+        conv1 = sphconv.Conv3d(iC, oC, 3, padding=1, bias=False)
+        conv2 = sphconv.Conv3d(iC, oC, 3, padding=1, bias=False)
+        conv1.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(1, 1, 3, 3, 3)
+            .expand(oC, iC, 3, 3, 3).cuda())
+        conv2.weight = torch.nn.Parameter(
             rand_weight.clone()
             .reshape(1, 1, 3, 3, 3)
             .expand(oC, iC, 3, 3, 3).cuda())
 
-
-        conv_ref = spconv.SparseSequential(
-            spconv.SparseConv3d(iC, oC, 3, padding=0, bias=False),
-            nn.BatchNorm1d(oC , eps=1e-3, momentum=0.01),
+        convs = sphconv.Sequential(
+            conv1,
+            # nn.BatchNorm3d(oC, eps=1e-3, momentum=0.01),
             nn.ReLU(),
+            conv2
         ).cuda()
-        # conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
-        conv_ref.weight = torch.nn.Parameter(
+        # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
+
+        conv1_ref = spconv.SparseConv3d(iC, oC, 3, padding=1, bias=False)
+        conv2_ref = spconv.SparseConv3d(iC, oC, 3, padding=1, bias=False)
+        conv1_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+        conv2_ref.weight = torch.nn.Parameter(
             rand_weight.clone()
             .reshape(3, 3, 3, 1, 1)
             .expand(3, 3, 3, iC, oC).cuda())
         input_spconv.features.requires_grad = True
 
-        res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+        convs_ref = spconv.SparseSequential(
+            conv1_ref,
+            # nn.BatchNorm1d(oC , eps=1e-3, momentum=0.01),
+            nn.ReLU(),
+            conv2_ref,
+        ).cuda()
+        # conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+
+        res_ref: spconv.SparseConvTensor = convs_ref(input_spconv)
 
         # res_sum_ref = torch.sum(res_ref.dense())
         # res_sum_ref.backward()
@@ -953,9 +968,9 @@ class TestModules(unittest.TestCase):
         # print(conv_ref.weight.grad)
 
         rangeV.feature.requires_grad = True
-        conv.weight.requires_grad = True
+        conv1.weight.requires_grad = True
 
-        res: RangeVoxel = conv(rangeV)
+        res: RangeVoxel = convs(rangeV)
         # res_sum = torch.sum(res.dense())
         # res_sum.backward()
         # grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
