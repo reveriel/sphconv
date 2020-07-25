@@ -10,6 +10,20 @@ from sphconv import RangeVoxel
 # the resolution of the LiDAR is 0.09 dgree for 5Hz. At 10Hz, the resolution is around 0.1728 degree.
 # Ideally, W comes out to be 520
 
+class VoxelGenerator(object):
+    def __init__(self, v_res, h_res, d_res,
+                 v_range, h_range, d_range, log):
+        self.v_res = v_res
+        self.h_res = h_res
+        self.d_res = d_res
+        self.v_range = v_range
+        self.h_range = h_range
+        self.d_range = d_range
+        self.log = log
+
+    def generate(self, points):
+        return xyz2RangeVoxel(points, self.v_res, self.h_res, self.d_res,
+                              self.v_range, self.h_range, self.d_range, self.log)
 
 def xyz2RangeVoxel(points,
                    v_res=64,

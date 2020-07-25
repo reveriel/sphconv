@@ -1,6 +1,5 @@
 from collections import OrderedDict
 
-import spconv
 import torch
 from torch import nn
 import time

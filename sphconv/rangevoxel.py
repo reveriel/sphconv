@@ -22,21 +22,11 @@ class RangeVoxel(object):
 
     """
 
+
     def __init__(self, feature: torch.Tensor, depth, thick, shape):
         """
         """
-        B, C, D, H, W = shape
-        B_f, C_f, T_f, H_f, W_f = feature.shape
-        B_d, T_d, H_d, W_d = depth.shape
-        B_t, H_t, W_t = thick.shape
-        assert (B == B_d == B_t == B_f
-            and H == H_d == H_t == H_f
-            and W == W_d == W_t == W_f
-            and C == C_f
-            and T_d == T_f), \
-            "dimension not match, feature.shape={}, depth.shape={}," \
-                "thick.shape={},  shape={}".\
-                format(feature.shape, depth.shape, thick.shape, shape)
+        check_size(shape, feature.shape, depth.shape, thick.shape)
 
         self.feature = feature
         self.depth = depth
@@ -58,7 +48,7 @@ class RangeVoxel(object):
         self.depth = self.depth.cuda()
         self.thick = self.thick.cuda()
         return self
-    
+
     def find_indice_pair(self, key):
         if key is None:
             return None
@@ -83,3 +73,29 @@ def to_dense(feature, depth, thick, D, device=None):
                     buffer[b, :, z, x, y] = feature[b, :, t, x, y]
     return buffer
 
+
+def check_size(shape, feature_shape, depth_shape, thick_shape):
+    B, C, D, H, W = shape
+    B_f, C_f, T_f, H_f, W_f = feature_shape
+    B_d, T_d, H_d, W_d = depth_shape
+    B_t, H_t, W_t = thick_shape
+    assert (B == B_d == B_t == B_f), \
+        "batch dimension not match, feature.shape={}, depth.shape={}," \
+            "thick.shape={},  shape={}".\
+            format(feature_shape, depth_shape, thick_shape, shape)
+    assert ( H == H_d == H_t == H_f), \
+        "hight dimension not match, feature.shape={}, depth.shape={}," \
+            "thick.shape={},  shape={}".\
+            format(feature_shape, depth_shape, thick_shape, shape)
+    assert (W == W_d == W_t == W_f), \
+        "width dimension not match, feature.shape={}, depth.shape={}," \
+            "thick.shape={},  shape={}".\
+            format(feature_shape, depth_shape, thick_shape, shape)
+    assert (C == C_f), \
+        "channel dimension not match, feature.shape={}, depth.shape={}," \
+            "thick.shape={},  shape={}".\
+            format(feature_shape, depth_shape, thick_shape, shape)
+    assert (T_d == T_f), \
+        "thick dimension not match, feature.shape={}, depth.shape={}," \
+            "thick.shape={},  shape={}".\
+            format(feature_shape, depth_shape, thick_shape, shape)

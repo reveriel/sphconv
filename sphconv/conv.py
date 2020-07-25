@@ -56,8 +56,8 @@ class Convolution(SphModule):
             s += ', padding={padding}'
         if self.dilation != (1,) * len(self.dilation):
             s += ', dilation={dilation}'
-        if self.output_padding != (0,) * len(self.output_padding):
-            s += ', output_padding={output_padding}'
+        # if self.output_padding != (0,) * len(self.output_padding):
+            # s += ', output_padding={output_padding}'
         if self.groups != 1:
             s += ', groups={groups}'
         if self.bias is None:
@@ -72,7 +72,7 @@ class Conv3d(Convolution):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=1, dilation=1, groups=1,
-                 bias=False, subm=False):
+                 bias=False, subm=False, indice_key=None):
         """
         Args:
         ----
@@ -103,7 +103,7 @@ class Conv3d(Convolution):
 
         super(Conv3d, self).__init__(
             in_channels, out_channels, kernel_size, stride, padding, dilation,
-            groups, bias, subm)
+            groups, bias, subm, indice_key=indice_key)
 
     def forward(self, input: RangeVoxel):
 
@@ -158,8 +158,8 @@ class Conv3d(Convolution):
                         *self.dilation,
                         self.groups)
             input.indice_dict[self.indice_key] = (new_depth, new_thick,
-                in_rules, out_rules, num_in) 
-            
+                in_rules, out_rules, num_in)
+
         feature  = ConvFunction.apply(
             input.feature,
             self.weight,

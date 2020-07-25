@@ -17,17 +17,17 @@ setup(
     version='0.0.1',
     author='Guo.Xing.',
     author_email='reveriel@hotmail.com',
+    setup_requires = ['torch>=1.3.0'],
+    packages=['sphconv'],
     ext_modules=[
         CUDAExtension(
             name='sphconv_cuda',
             sources=[
-                'conv_cuda.cpp',
-                'conv_cuda_kernel.cu',
+                'sphconv/conv_cuda.cpp',
+                'sphconv/conv_cuda_kernel.cu',
             ],
             extra_compile_args={
-                'cxx': [
-                    '-O3'
-                    ],
+                'cxx': [ '-O3' ],
                 'nvcc':[
                     '-O3',
                     # '-fPIC',
