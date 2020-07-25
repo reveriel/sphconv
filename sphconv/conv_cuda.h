@@ -35,7 +35,7 @@ indice_conv(torch::Tensor feature,
 std::vector<torch::Tensor>
 get_indice_pairs(torch::Tensor depth,
                  torch::Tensor thick,
-                 int N, int T,
+                 int N, int T, int oT,
                  int D, int H, int W,
                  int KD, int KH, int KW,
                  int sD, int sH, int sW,

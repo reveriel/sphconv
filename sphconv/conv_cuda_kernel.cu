@@ -252,7 +252,7 @@ __global__ void get_indice_pairs_subm_kernel_2(
       Index z = depth[b][t][x][y];
       Index oZ = OutSpatial(k_D, z, sD, dD, padD);
       if (oX >= 0 && oX < oH && oY >= 0 && oY < oW && oZ >= 0 && oZ < oD) {
-        
+
         Index ot = CompactMap[b][oX][oY][oZ];
         if (ot == 0) continue;
 
@@ -365,7 +365,7 @@ __global__ void indice_conv_backward_kernel(
   int oH, int oW,
   int H, int W)
 {
-  
+
   Index x = threadIdx.x + blockDim.x * blockIdx.x;
   Index y = threadIdx.y + blockDim.y * blockIdx.y;
 
@@ -378,7 +378,7 @@ __global__ void indice_conv_backward_kernel(
 
       Index oX = OutSpatial(k_H, x, sH, dH, padH);
       Index oY = OutSpatial(k_W, y, sW, dW, padW);
-      
+
       if (oX >= oH || oX < 0 || oY >= oW || oY < 0 ) continue;
 
       for (int ic = 0; ic < in_channels; ic++) {
@@ -413,7 +413,7 @@ __global__ void indice_conv_backward_kernel(
 std::vector<torch::Tensor>
 get_indice_pairs(torch::Tensor depth,
                  torch::Tensor thick,
-                 int N, int T,
+                 int N, int T, int oT,
                  int D, int H, int W,
                  int KD, int KH, int KW,
                  int sD, int sH, int sW,
@@ -428,7 +428,7 @@ get_indice_pairs(torch::Tensor depth,
   // the output tlie
   // constexpr int H_TILE = 16, W_TILE = 16;
 
-  int oT, oD, oH, oW;
+  int oD, oH, oW;
   oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
   oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
@@ -441,7 +441,7 @@ get_indice_pairs(torch::Tensor depth,
 
   // output tensor
   // int oT = T + 8 ; // This is bad
-  oT = T * 3 * 9; // This is even worse
+  // oT = T * 3 * 9; // This is even worse
 
   new_depth = torch::zeros(
       {N, oT, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
@@ -613,7 +613,7 @@ get_indice_pairs_subm(torch::Tensor depth,
 
 
 ///////////////////////////////////////////////////////////////////
-// indice conv 
+// indice conv
 ///////////////////////////////////////////////////////////////////
 
 std::vector<torch::Tensor>
@@ -707,7 +707,7 @@ indice_conv_backward(torch::Tensor feature,
   auto d_feature = torch::zeros_like(feature);
   auto d_weight = torch::zeros_like(weight);
   // auto d_bias = torch::zeros_like(bias);
-  
+
   // input size
   int N, H, W, oC, iC, KD, KH, KW;
   N = feature.size(0);

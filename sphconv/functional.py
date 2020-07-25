@@ -51,14 +51,11 @@ class ConvFunction(torch.autograd.Function):
                 dilation,
                 groups,
                 D,
+                oT,
                 subm):
 
         # print("bias = ", bias)
         T = feature.size(2)
-        if subm:
-            oT = T
-        else:
-            oT = T * 27
 
         # if bias is None:
         feature_out, = sphconv_cuda.indice_conv(
@@ -76,7 +73,7 @@ class ConvFunction(torch.autograd.Function):
         # else:
         #     raise Exception("bias not immplemented yet")
 
-        
+
         ctx.stride = stride
         ctx.padding = padding
         ctx.dilation = dilation
@@ -95,7 +92,7 @@ class ConvFunction(torch.autograd.Function):
 
         # bias
         feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
-        
+
         print("d_featureOut.shape = ", d_featureOut.shape)
 
         # d_bias
