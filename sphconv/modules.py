@@ -109,8 +109,13 @@ class Sequential(SphModule):
     def forward(self, input):
         for k, module in self._modules.items():
             if is_sph_module(module):
-                assert isinstance(input, sphconv.RangeImage)
+                assert isinstance(input, sphconv.RangeVoxel)
                 input = module(input)
             else:
-                raise Exception(" ?")
+                if isinstance(input, sphconv.RangeVoxel):
+                    batch_size = input.feature.size(0)
+                    # input_view = input.feature.view(batch_size, -1)
+                    input.feature = module(input.feature)
+                else:
+                    input = module(input)
         return input
