@@ -65,3 +65,4 @@ test/data/linear.pt
 .ninja_log
 compile_commands.json
 *.egg-info/
+*.so

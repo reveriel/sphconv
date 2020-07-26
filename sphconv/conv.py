@@ -109,7 +109,10 @@ class Conv3d(Convolution):
 
         batch_size, inChannel, iD, iH, iW = input.shape
         iT = input.feature.size(2)
-        oT = iT * 4
+        if self.subm:
+            oT = iT
+        else:
+            oT = iT * 16
         # print("forward input shape =", input.shape)
         # print("self inch = ", self.in_channels)
 
@@ -139,7 +142,7 @@ class Conv3d(Convolution):
                 new_depth, new_thick, in_rules, out_rules, num_in = \
                     sphconv_cuda.get_indice_pairs_subm(
                         input.depth, input.thick,
-                        batch_size, iT, oT,
+                        batch_size, iT,
                         iD, iH, iW,
                         *self.kernel_size,
                         *self.stride,

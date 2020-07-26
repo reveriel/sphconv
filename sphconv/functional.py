@@ -93,7 +93,7 @@ class ConvFunction(torch.autograd.Function):
         # bias
         feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
 
-        print("d_featureOut.shape = ", d_featureOut.shape)
+        # print("d_featureOut.shape = ", d_featureOut.shape)
 
         # d_bias
         d_feature, d_weight = sphconv_cuda.conv_backward(
@@ -109,9 +109,9 @@ class ConvFunction(torch.autograd.Function):
             *ctx.dilation,
             ctx.groups,
             ctx.subm)
-        print("d_weight = ",d_weight)
+        # print("d_weight = ",d_weight)
 
         # no bias now
         # should match the input of forward
-        return d_feature, d_weight, None, None, None, None, None, None, None, None, None
+        return d_feature, d_weight, None, None, None, None, None, None, None, None, None, None
 

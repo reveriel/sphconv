@@ -113,8 +113,9 @@ class Sequential(SphModule):
             else:
                 if isinstance(input, sphconv.RangeVoxel):
                     batch_size = input.feature.size(0)
-                    # input_view = input.feature.view(batch_size, -1)
-                    input.feature = module(input.feature)
+                    channel_size = input.feature.size(1)
+                    input_view = input.feature.view(batch_size, channel_size, -1)
+                    input.feature = module(input_view)
                 else:
                     input = module(input)
         return input

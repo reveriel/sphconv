@@ -3,10 +3,133 @@ import numpy as np
 import torch
 from sphconv import RangeVoxel
 import spconv
-from spconv.utils import VoxelGeneratorV3
+# from spconv.utils import VoxelGeneratorV3
 import yaml
 
 VOXEL_CONFIG = 'voxel.yaml'
+
+
+class VoxelGeneratorV3:
+    def __init__(self,
+                 voxel_size,
+                 point_cloud_range,
+                 point_cloud_sphere_range,
+                 max_num_points,
+                 max_voxels=30000):
+        point_cloud_sphere_range = np.array(point_cloud_sphere_range, dtype=np.float32)
+        point_cloud_range = np.array(point_cloud_range, dtype=np.float32)
+        voxel_size = np.array(voxel_size, dtype=np.float32)
+        grid_size = (
+            point_cloud_sphere_range[3:] - point_cloud_sphere_range[:3]) / voxel_size
+        grid_size = np.round(grid_size).astype(np.int64)
+        voxelmap_shape = tuple(np.round(grid_size).astype(np.int32).tolist())
+        voxelmap_shape = voxelmap_shape[::-1]
+        print("voxelmap_shape = ", voxelmap_shape)
+
+        self._max_voxels = max_voxels
+        self._max_ponts = max_num_points
+
+        self._coor_to_voxelidx = np.full(voxelmap_shape, -1, dtype=np.int32)
+        self._voxel_size = voxel_size
+        self._point_cloud_range = point_cloud_range
+        self._point_cloud_sphere_range = point_cloud_sphere_range
+        self._max_num_points = max_num_points
+        self._max_voxels = max_voxels
+        self._grid_size = grid_size
+        # self._full_mean = full_mean
+
+    def generate(self, points, max_voxels):
+        res = points_to_voxel_v2(
+            points,
+            self._voxel_size,
+            self._point_cloud_sphere_range,
+            self._coor_to_voxelidx,
+            self._max_num_points, max_voxels or self._max_voxels)
+
+        for k, v in res.items():
+            if k != "voxel_num":
+                res[k] = v[:res["voxel_num"]]
+        return res
+
+    def generate_multi_gpu(self, points, max_voxels=None):
+        res = points_to_voxel_v2(points,
+            self._voxel_size,
+            self._point_cloud_sphere_range,
+            self._coor_to_voxelidx,
+            self._max_num_points, max_voxels or self._max_voxels,
+            pad_output=True
+            )
+        # print("res voels .shape  = ", res["voxels"].shape)
+        return res
+
+    @property
+    def voxel_size(self):
+        return self._voxel_size
+
+    @property
+    def max_num_points_per_voxel(self):
+        return self._max_num_points
+
+    @property
+    def point_cloud_range(self):
+        return self._point_cloud_range
+
+    @property
+    def grid_size(self):
+        return self._grid_size
+
+
+def points_to_voxel_v2(points,
+                    voxel_size,
+                    coors_range,
+                    coor_to_voxelidx,
+                    max_points=1,
+                    max_voxels=30000,
+                    pad_output=False):
+    """
+    convert 3d points(x,y,z), to spherical voxels,
+    """
+
+    num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
+    voxels = np.zeros(
+        shape=(max_voxels, max_points, points.shape[-1]), dtype=points.dtype)
+
+    voxel_point_mask = np.zeros(
+        shape=(max_voxels, max_points), dtype=points.dtype)
+
+    coors = np.zeros(shape=(max_voxels, 3), dtype=np.int32)
+    res = {
+        "voxels": voxels,
+        "coordinates": coors,
+        "num_points_per_voxel": num_points_per_voxel,
+        "voxel_point_mask": voxel_point_mask,
+    }
+
+
+    rad_voxel_size = np.array([voxel_size[0],
+        np.radians(voxel_size[1]), np.radians(voxel_size[2])
+        ])
+    rad_coors_range = np.array([
+        coors_range[0],
+        np.radians(coors_range[1]),
+        np.radians(coors_range[2]),
+        coors_range[3],
+        np.radians(coors_range[4]),
+        np.radians(coors_range[5])
+    ])
+    # print("rad_voxel_size,=", rad_voxel_size)
+    # print("radcoors_range=", rad_coors_range)
+
+    voxel_num = points_to_voxel_3d_sphere_np(
+        points, voxels, voxel_point_mask, coors,
+        num_points_per_voxel, coor_to_voxelidx, rad_voxel_size.tolist(),
+        rad_coors_range.tolist(), max_points, max_voxels)
+    # print("voxel_num = ", voxel_num)
+
+    res["voxel_num"] = voxel_num
+    res["voxel_point_mask"] = res["voxel_point_mask"].reshape(
+        -1, max_points, 1)
+    return res
 
 def read_config_file(config_file_path: str):
     with open(config_file_path, 'r') as stream:

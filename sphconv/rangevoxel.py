@@ -40,7 +40,7 @@ class RangeVoxel(object):
         return a 3D tensor of shape (batchsize, D, H, W, C)
 
         """
-        return to_dense(self.feature, self.depth, self.thick, self.shape[2])
+        return to_dense(self.feature, self.depth, self.thick, self.shape[2], self.feature.device)
 
     def cuda(self):
         """Move to CUDA."""

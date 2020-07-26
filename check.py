@@ -900,7 +900,8 @@ class TestBackward(unittest.TestCase):
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=True))
+        self.assertTrue(check_equal(conv_ref.weight.grad.permute(
+            4, 3, 0, 1, 2), conv.weight.grad, verbose=False))
 
 
 class TestModules(unittest.TestCase):
@@ -929,7 +930,7 @@ class TestModules(unittest.TestCase):
 
         convs = sphconv.Sequential(
             conv1,
-            # nn.BatchNorm3d(oC, eps=1e-3, momentum=0.01),
+            # nn.BatchNo1d1d(oC, eps=1e-3, momentum=0.01),
             nn.ReLU(),
             conv2
         ).cuda()
@@ -981,7 +982,7 @@ class TestModules(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
 
 
