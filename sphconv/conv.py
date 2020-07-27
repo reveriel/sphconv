@@ -112,7 +112,7 @@ class Conv3d(Convolution):
         if self.subm:
             oT = iT
         else:
-            oT = iT * 16
+            oT = iT * 27
         # print("forward input shape =", input.shape)
         # print("self inch = ", self.in_channels)
 
