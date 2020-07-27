@@ -714,7 +714,7 @@ class TestBackward(unittest.TestCase):
             input_spconv.spatial_shape, input_spconv.batch_size)
         # print(input_spconv.features.grad)
         grad_tensor_ref_dense = grad_tensor_ref.dense()
-        print(conv_ref.weight.grad)
+        # print(conv_ref.weight.grad)
 
 
         rangeV.feature.requires_grad = True
@@ -726,7 +726,7 @@ class TestBackward(unittest.TestCase):
         grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
         grad_tensor_dense = grad_tensor.dense()
 
-        print(conv.weight.grad)
+        # print(conv.weight.grad)
 
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
@@ -770,8 +770,8 @@ class TestBackward(unittest.TestCase):
             input_spconv.spatial_shape, input_spconv.batch_size)
         # print(input_spconv.features.grad)
         grad_tensor_ref_dense = grad_tensor_ref.dense()
-        print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
-        print(conv_ref.weight.grad)
+        # print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
+        # print(conv_ref.weight.grad)
 
 
         rangeV.feature.requires_grad = True
@@ -783,8 +783,8 @@ class TestBackward(unittest.TestCase):
         grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
         grad_tensor_dense = grad_tensor.dense()
 
-        print("conv.weight.grad.shape = ", conv.weight.grad.shape)
-        print(conv.weight.grad)
+        # print("conv.weight.grad.shape = ", conv.weight.grad.shape)
+        # print(conv.weight.grad)
 
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
@@ -881,8 +881,8 @@ class TestBackward(unittest.TestCase):
             input_spconv.spatial_shape, input_spconv.batch_size)
         # print(input_spconv.features.grad)
         grad_tensor_ref_dense = grad_tensor_ref.dense()
-        print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
-        print(conv_ref.weight.grad)
+        # print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
+        # print(conv_ref.weight.grad)
 
 
         rangeV.feature.requires_grad = True
@@ -894,8 +894,8 @@ class TestBackward(unittest.TestCase):
         grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
         grad_tensor_dense = grad_tensor.dense()
 
-        print("conv.weight.grad.shape = ", conv.weight.grad.shape)
-        print(conv.weight.grad)
+        # print("conv.weight.grad.shape = ", conv.weight.grad.shape)
+        # print(conv.weight.grad)
 
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
