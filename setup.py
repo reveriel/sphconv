@@ -14,7 +14,7 @@ include_dirs = [CUDNN_INCLUDE_DIR]
 
 setup(
     name='sphconv',
-    version='0.0.1',
+    version='0.1.1',
     author='Guo.Xing.',
     author_email='reveriel@hotmail.com',
     setup_requires = ['torch>=1.3.0'],

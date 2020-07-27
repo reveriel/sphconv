@@ -54,9 +54,6 @@ class ConvFunction(torch.autograd.Function):
                 oT,
                 subm):
 
-        # print("bias = ", bias)
-        T = feature.size(2)
-
         # if bias is None:
         feature_out, = sphconv_cuda.indice_conv(
             feature,

@@ -10,6 +10,7 @@
 #include <vector>
 
 using torch::RestrictPtrTraits;
+// using namespace torch::indexing;
 
 // input tile size = TILE + K
 //
@@ -413,8 +414,7 @@ __global__ void indice_conv_backward_kernel(
 std::vector<torch::Tensor>
 get_indice_pairs(torch::Tensor depth,
                  torch::Tensor thick,
-                 int N, int T, int oT,
-                 int D, int H, int W,
+                 int D,
                  int KD, int KH, int KW,
                  int sD, int sH, int sW,
                  int padD, int padH, int padW,
@@ -427,11 +427,16 @@ get_indice_pairs(torch::Tensor depth,
   // tile size
   // the output tlie
   // constexpr int H_TILE = 16, W_TILE = 16;
+  int N = depth.size(0);
+  int T = depth.size(1);
+  int H = depth.size(2);
+  int W = depth.size(3);
 
   int oD, oH, oW;
   oD = std::floor((D + 2 * padD - dD * (KD - 1) - 1) / sD + 1);
   oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+  int oT_MAX = T * 27;
 
   const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
@@ -444,7 +449,7 @@ get_indice_pairs(torch::Tensor depth,
   // oT = T * 3 * 9; // This is even worse
 
   new_depth = torch::zeros(
-      {N, oT, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+      {N, oT_MAX, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
   new_thick = torch::zeros(
       {N, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
@@ -527,6 +532,14 @@ get_indice_pairs(torch::Tensor depth,
     dH, dW,
     oH, oW);
 
+
+  int oT = torch::max(new_thick).item<int>();
+  // only supported in pytorch 1.5
+  // new_depth = new_depth.index({Ellipsis, Slice(0, oT), Ellipsis, Ellipsis}).contiguous();
+  new_depth = new_depth.narrow(1, 0, oT).contiguous();
+
+  // printf(" oT / oT_MAX = %d / %d\n", oT, oT_MAX );
+
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
@@ -541,14 +554,17 @@ get_indice_pairs(torch::Tensor depth,
 std::vector<torch::Tensor>
 get_indice_pairs_subm(torch::Tensor depth,
                       torch::Tensor thick,
-                      int N, int T,
-                      int D, int H, int W,
+                      int D,
                       int KD, int KH, int KW,
                       int sD, int sH, int sW,
                       int padD, int padH, int padW,
                       int dD, int dH, int dW,
                       int groups)
 {
+  int N = depth.size(0);
+  int T = depth.size(1);
+  int H = depth.size(2);
+  int W = depth.size(3);
   // output sizes
   int oD, oH, oW;
   oD = D;
