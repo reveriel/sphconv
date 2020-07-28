@@ -269,7 +269,7 @@ class TestForward(unittest.TestCase):
         pass
 
     def test1(self):
-        rangeV = generate_test_RangeVoxel(1, 1, 1, 4, 4, 4)
+        rangeV = generate_test_RangeVoxel(1, 1, 1, 3, 3, 3)
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
@@ -435,8 +435,8 @@ class TestForward(unittest.TestCase):
 
     def test8(self):
         # test real data
-        in_channel = 16
-        out_channel = 16
+        in_channel = 128
+        out_channel = 128
         rangeV = get_range_voxels(0, batch_size=1, channel=in_channel)
 
         print("input_sphconv shape =", rangeV.shape)
@@ -449,7 +449,7 @@ class TestForward(unittest.TestCase):
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
-        loop_time = 1
+        loop_time = 100
 
         with torch.no_grad():
             total_time = 0

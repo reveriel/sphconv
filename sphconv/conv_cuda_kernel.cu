@@ -1,5 +1,6 @@
 // #define DEBUG
 
+#include "timer.h"
 #include "debug_utils.h"
 #include <stdio.h>
 #include <cuda.h>
@@ -627,10 +628,207 @@ get_indice_pairs_subm(torch::Tensor depth,
   return {depth, thick, InRuleMap, OutRuleMap, NumIn};
 }
 
+template <typename Index>
+__global__ void gather_kernel(
+    const torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
+      feature,
+    const torch::PackedTensorAccessor32<Index , 5, RestrictPtrTraits>
+      InRuleMap,
+    const torch::PackedTensorAccessor32<Index , 4, RestrictPtrTraits>
+      NumIn,
+    torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
+      inputBuffer,
+      int N, int k, int iC,
+      int H, int W)
+{
+  for (int x = threadIdx.x + blockDim.x * blockIdx.x;
+       x < H; x += blockDim.x * gridDim.x)
+  {
+    for (int y = threadIdx.y + blockDim.y * blockIdx.y;
+         y < W; y += blockDim.y * gridDim.y)
+    {
+
+      for (int b = 0; b < N; b++)
+      {
+        for (int i = 0; i < NumIn[b][k][x][y]; i++)
+        {
+          Index it = InRuleMap[b][k][x][y][i];
+          for (int ic = threadIdx.z; ic < iC; ic += blockDim.z)
+          {
+            inputBuffer[b][i][x][y][ic] = feature[b][it][x][y][ic];
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename Index>
+__global__ void scatter_add_kernel(
+    const torch::PackedTensorAccessor32<Index , 5, RestrictPtrTraits>
+      OutRuleMap,
+    const torch::PackedTensorAccessor32<Index , 4, RestrictPtrTraits>
+      NumIn,
+    const torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
+      outputBuffer,
+    torch::PackedTensorAccessor32<float, 5, RestrictPtrTraits>
+      output,
+    int N, int oC, int k,
+    int KD, int KH, int KW,
+    int sD, int sH, int sW,
+    int padD, int padH, int padW,
+    int dD, int dH, int dW,
+    int oH, int oW,
+    int H, int W)
+{
+
+  Index k_D = k / (KH * KW);
+  Index k_H = (k / KW) % KH;
+  Index k_W = k % KW;
+
+  for (int x = threadIdx.x + blockDim.x * blockIdx.x;
+       x < H; x += blockDim.x * gridDim.x)
+  {
+    Index oX = OutSpatial(k_H, x, sH, dH, padH);
+    if (oX < 0 || oX >= oH) continue;
+    for (int y = threadIdx.y + blockDim.y * blockIdx.y;
+         y < W; y += blockDim.y * gridDim.y)
+    {
+      Index oY = OutSpatial(k_W, y, sW, dW, padW);
+      if (oY < 0 || oY >= oW) continue;
+      for (int b = 0; b < N; b++)
+      {
+        for (int i = 0; i < NumIn[b][k][x][y]; i++)
+        {
+          Index ot = OutRuleMap[b][k][x][y][i];
+          for (int oc = threadIdx.z; oc < oC; oc += blockDim.z)
+          {
+            atomicAdd(&output[b][ot][oX][oY][oc], outputBuffer[b][i][x][y][oc]);
+          }
+        }
+      }
+    }
+  }
+}
+
 
 ///////////////////////////////////////////////////////////////////
 // indice conv
 ///////////////////////////////////////////////////////////////////
+
+std::vector<torch::Tensor>
+indice_conv_gemm(torch::Tensor feature,
+                 torch::Tensor weight,
+                 torch::Tensor InRuleMap,
+                 torch::Tensor OutRuleMap,
+                 torch::Tensor NumIn,
+                 //  torch::Tensor bias,
+                 int oT,
+                 int sD, int sH, int sW,
+                 int padD, int padH, int padW,
+                 int dD, int dH, int dW,
+                 int groups)
+{
+  int N = feature.size(0);
+  int C = feature.size(1);
+  int T = feature.size(2);
+  int H = feature.size(3);
+  int W = feature.size(4);
+  int oC = weight.size(0);
+  int iC = weight.size(1);
+  int KD = weight.size(2);
+  int KH = weight.size(3);
+  int KW = weight.size(4);
+
+  int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
+  int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+
+  int kernel_volume = KD * KH * KW;
+
+  // the output RangeVoxel
+  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+                                  torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
+
+  // choose C_BLOCK
+  int C_BLOCK = 4;
+  if (oC > 4 && oC <= 8)
+  {
+    C_BLOCK = 8;
+  }
+  else if (oC <= 16)
+  {
+    C_BLOCK = 16;
+  }
+  else
+  {
+    C_BLOCK = 32;
+  }
+
+  dim3 grid_size, block_size;
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
+  block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+
+  auto filters = weight.permute({2, 3, 4, 1, 0}).contiguous().view({-1, iC, oC});
+
+  auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
+
+  torch::Tensor output = torch::zeros({N, oT, oH, oW, oC}, options);
+  torch::Tensor inputBuffer = torch::zeros({N, T, H, W, iC}, options);
+  torch::Tensor outputBuffer = torch::zeros({N, T, H, W, oC}, options);
+  torch::Tensor inputBufferGemm = inputBuffer.view({N * T * H * W, iC});
+  torch::Tensor outputBufferGemm = outputBuffer.view({N * T * H * W, oC});
+
+  torch::Tensor feature_ = feature.permute({0, 2, 3, 4, 1}).contiguous();
+
+  for (int k = 0; k < kernel_volume; ++k)
+  {
+    inputBufferGemm.fill_(0);
+    outputBufferGemm.fill_(0);
+
+    gather_kernel<int32_t><<<grid_size, block_size>>>(
+        feature_.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+        NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+        inputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        N, k, iC, H, W);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+    // std::cout << "inputBuffer = " << inputBuffer << std::endl;
+    // std::cout << "inputbuffergemm = " << inputbuffergemm << std::endl;
+    // std::cout << "filters[k] = " << filters[k] << std::endl;
+
+    torch::mm_out(outputBufferGemm, inputBufferGemm, filters[k]);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+    // std::cout << "outputBuffer = " << outputBuffer << std::endl;
+    // std::cout << "outputBufferGemm = " << outputBufferGemm << std::endl;
+
+    scatter_add_kernel<int32_t><<<grid_size, block_size>>>(
+        OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
+        NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+        outputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        output.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        N, oC, k,
+        KD, KH, KW,
+        sD, sH, sW,
+        padD, padH, padW,
+        dD, dH, dW,
+        oH, oW, H, W);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+    // std::cout << "output = " << output << std::endl;
+
+  }
+  new_feature = output.permute({0, 4, 1, 2, 3}).contiguous();
+
+  return {new_feature};
+}
 
 std::vector<torch::Tensor>
 indice_conv(torch::Tensor feature,

@@ -55,7 +55,7 @@ class ConvFunction(torch.autograd.Function):
                 subm):
 
         # if bias is None:
-        feature_out, = sphconv_cuda.indice_conv(
+        feature_out, = sphconv_cuda.indice_conv_gemm(
             feature,
             weight,
             # bias,

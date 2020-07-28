@@ -33,6 +33,19 @@ indice_conv(torch::Tensor feature,
             int groups);
 
 std::vector<torch::Tensor>
+indice_conv_gemm(torch::Tensor feature,
+                 torch::Tensor weight,
+                 torch::Tensor InRuleMap,
+                 torch::Tensor OutRuleMap,
+                 torch::Tensor NumIn,
+                 //  torch::Tensor bias,
+                 int oT,
+                 int sD, int sH, int sW,
+                 int padD, int padH, int padW,
+                 int dD, int dH, int dW,
+                 int groups);
+
+std::vector<torch::Tensor>
 get_indice_pairs(torch::Tensor depth,
                  torch::Tensor thick,
                  int D,
