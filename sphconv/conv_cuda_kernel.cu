@@ -1027,22 +1027,11 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    if (k == 9) {
-      std::cout << "outputBufferGemm = " << outputBufferGemm << std::endl;
-    }
-
     // iC, oC
     auto filterGradSub = d_weight[k];
 
     torch::mm_out(filterGradSub, inputBufferGemm.t(), outputBufferGemm);
     torch::mm_out(inputBufferGemm, outputBufferGemm, weight[k].t());
-
-    gpuErrchk(cudaPeekAtLastError());
-    gpuErrchk(cudaDeviceSynchronize());
-
-    if (k == 9) {
-      std::cout << "inputBufferGemm = " << inputBufferGemm << std::endl;
-    }
 
     scatter_add_kernel_backward<int32_t><<<grid_size, block_size>>>(
         InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
@@ -1053,11 +1042,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-
-    if (k == 9) {
-      std::cout << "d_feature = " << d_feature <<std::endl;
-
-    }
   }
 
   d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();

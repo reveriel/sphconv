@@ -449,7 +449,7 @@ class TestForward(unittest.TestCase):
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
-        loop_time = 100
+        loop_time = 10
 
         with torch.no_grad():
             total_time = 0
@@ -789,18 +789,15 @@ class TestBackward(unittest.TestCase):
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=True))
+        self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=False))
 
     def test3(self):
         # test d_feature, subm
-        iC, oC = 1, 1
-        rangeV = generate_test_RangeVoxel(1, iC, 1, 3, 3, 3, feature_option="range", thick_option="random", depth_option="")
+        iC, oC = 8, 16
+        rangeV = generate_test_RangeVoxel(2, iC, 5, 5, 8, 4, feature_option="range", thick_option="random", depth_option="")
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
-        print("dpeth = ", rangeV.depth)
-        print("thick = ", rangeV.thick)
-
-        rand_weight = torch.ones((3,3,3), dtype=torch.float)
+        rand_weight = torch.randn((3,3,3), dtype=torch.float)
         # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
 
@@ -830,7 +827,7 @@ class TestBackward(unittest.TestCase):
             input_spconv.spatial_shape, input_spconv.batch_size)
         # print(input_spconv.features.grad)
         grad_tensor_ref_dense = grad_tensor_ref.dense()
-        print("conv_ref.weight.grad = ", conv_ref.weight.grad)
+        # print("conv_ref.weight.grad = ", conv_ref.weight.grad)
 
 
         rangeV.feature.requires_grad = True
@@ -842,12 +839,12 @@ class TestBackward(unittest.TestCase):
         grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
         grad_tensor_dense = grad_tensor.dense()
 
-        print("conv.weight.grad = ", conv.weight.grad)
+        # print("conv.weight.grad = ", conv.weight.grad)
 
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(grad_tensor_ref_dense, grad_tensor_dense, verbose=True))
+        self.assertTrue(check_equal(grad_tensor_ref_dense, grad_tensor_dense, verbose=False))
 
     def test4(self):
         # d_weight, subm

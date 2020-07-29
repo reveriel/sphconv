@@ -109,8 +109,6 @@ class Conv3d(Convolution):
 
         batch_size, inChannel, iD, iH, iW = input.shape
         iT = input.feature.size(2)
-        # print("forward input shape =", input.shape)
-        # print("self inch = ", self.in_channels)
 
         assert (self.in_channels == inChannel), "input channel does not match \
             Expect: {}, got {}".format(self.in_channels, inChannel)
@@ -158,9 +156,6 @@ class Conv3d(Convolution):
             input.indice_dict[self.indice_key] = (new_depth, new_thick,
                 in_rules, out_rules, num_in)
 
-        print("in_rules = ", in_rules[0])
-        print("out_rules = ", out_rules[0])
-        print("num_in = ", num_in[0])
         oT = new_depth.size(1)
         feature  = ConvFunction.apply(
             input.feature,
