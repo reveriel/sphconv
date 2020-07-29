@@ -37,7 +37,7 @@ class RangeVoxel(object):
     def dense(self, device=None):
         """Convert to dense 3D tensor
 
-        return a 3D tensor of shape (batchsize, D, H, W, C)
+        return a 3D tensor of shape (batchsize, C, D, H, W)
 
         """
         return to_dense(self.feature, self.depth, self.thick, self.shape[2], self.feature.device)

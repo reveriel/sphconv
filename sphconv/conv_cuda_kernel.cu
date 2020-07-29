@@ -956,6 +956,9 @@ indice_conv_backward_gemm(torch::Tensor feature,
   int oW = d_featureOut.size(4);
 
   d_featureOut = d_featureOut.permute({0, 2, 3, 4, 1}).contiguous();
+  feature = feature.permute({0, 2, 3, 4, 1}).contiguous();
+  weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
+  weight = weight.view({-1, iC, oC});
 
   // choose C_BLOCK
   int C_BLOCK = 4;
@@ -970,21 +973,9 @@ indice_conv_backward_gemm(torch::Tensor feature,
   grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
   block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
-  // B,oT,oH,oW,oC
-  // d_featureOut
-
-  // B,iT,iH,iW,iC
-  feature = feature.permute({0, 2, 3, 4, 1}).contiguous();
-
-  // KD,KH,KW, iC, oC
-  weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
-  weight = weight.view({-1, iC, oC});
-
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
-
   auto d_feature = torch::zeros_like(feature);
   auto d_weight = torch::zeros_like(weight);
-
 
   torch::Tensor inputBuffer = torch::zeros({N, iT, H, W, iC}, options);
   torch::Tensor outputBuffer = torch::zeros({N, iT, H, W, oC}, options);
@@ -1045,11 +1036,7 @@ indice_conv_backward_gemm(torch::Tensor feature,
   }
 
   d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
-
-  weight = weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
   d_feature = d_feature.permute({0, 4, 1, 2, 3}).contiguous();
-
-  d_featureOut = d_featureOut.permute({0, 4, 1, 2, 3}).contiguous();
 
   return {d_feature, d_weight};
 }
