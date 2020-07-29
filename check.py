@@ -435,8 +435,8 @@ class TestForward(unittest.TestCase):
 
     def test8(self):
         # test real data
-        in_channel = 16
-        out_channel = 16
+        in_channel = 128
+        out_channel = 128
         rangeV = get_range_voxels(0, batch_size=1, channel=in_channel)
 
         print("input_sphconv shape =", rangeV.shape)

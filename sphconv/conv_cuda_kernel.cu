@@ -760,7 +760,6 @@ __global__ void scatter_add_kernel(
   }
 }
 
-
 template <typename Index>
 __global__ void scatter_add_kernel_backward(
     const torch::PackedTensorAccessor32<Index , 5, RestrictPtrTraits>
@@ -1035,10 +1034,11 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   d_weight = d_weight.view(weightShape).permute({4, 3, 0, 1, 2}).contiguous();
   d_feature = d_feature.permute({0, 4, 1, 2, 3}).contiguous();
+  std::cout << "d_feature.shape = " << d_feature.sizes() << std::endl;
+  std::cout << "d_weight.shape = " << d_weight.sizes() << std::endl;
 
   return {d_feature, d_weight};
 }
-
 
 
 std::vector<torch::Tensor>
