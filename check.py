@@ -794,12 +794,14 @@ class TestBackward(unittest.TestCase):
     def test3(self):
         # test d_feature, subm
         iC, oC = 1, 1
-        rangeV = generate_test_RangeVoxel(1, iC, 1, 3, 3, 3, feature_option="range", thick_option="random", depth_option="random")
+        rangeV = generate_test_RangeVoxel(1, iC, 1, 3, 3, 3, feature_option="range", thick_option="random", depth_option="")
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
+        print("dpeth = ", rangeV.depth)
+        print("thick = ", rangeV.thick)
 
-        # rand_weight = torch.randn((3,3,3), dtype=torch.float)
-        rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+        rand_weight = torch.ones((3,3,3), dtype=torch.float)
+        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=1, subm=True).cuda()
@@ -828,7 +830,7 @@ class TestBackward(unittest.TestCase):
             input_spconv.spatial_shape, input_spconv.batch_size)
         # print(input_spconv.features.grad)
         grad_tensor_ref_dense = grad_tensor_ref.dense()
-        print(conv_ref.weight.grad)
+        print("conv_ref.weight.grad = ", conv_ref.weight.grad)
 
 
         rangeV.feature.requires_grad = True
@@ -840,7 +842,7 @@ class TestBackward(unittest.TestCase):
         grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
         grad_tensor_dense = grad_tensor.dense()
 
-        print(conv.weight.grad)
+        print("conv.weight.grad = ", conv.weight.grad)
 
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()

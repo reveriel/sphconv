@@ -665,6 +665,7 @@ __global__ void gather_kernel(
 
 
 // TODO: obviously can be optimized, by sharing oX, oY, offset
+// TODO: output buffer underutilized when stride > 1
 template <typename Index>
 __global__ void gather_kernel_k(
     const torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
@@ -700,10 +701,15 @@ __global__ void gather_kernel_k(
       {
         for (Index i = 0; i < NumIn[b][k][x][y]; i++)
         {
+          // if ( k == 9 && threadIdx.z == 0) {
+          //   printf("outrulemap[0][9][%d][%d][%d] = %d\n ", x, y, i, OutRuleMap[b][k][x][y][i] );
+          //   printf("NumIn[0][9][%d][%d] = %d\n ", x, y, NumIn[b][k][x][y]);
+          //   // printf("featureOut[0][0][")
+          // }
           Index ot = OutRuleMap[b][k][x][y][i];
           for (Index oc = threadIdx.z; oc < oC; oc += blockDim.z)
           {
-            outputBuffer[b][i][x][y][oc] = featureOut[b][ot][oX][oX][oc];
+            outputBuffer[b][i][x][y][oc] = featureOut[b][ot][oX][oY][oc];
           }
         }
       }
@@ -972,11 +978,7 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   // KD,KH,KW, iC, oC
   weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
-  auto weightShape = weight.sizes(); // not safe
-  std::cout  << "weightShape = " << weightShape << std::endl;
   weight = weight.view({-1, iC, oC});
-
-  std::cout << "weight = " << weight <<std::endl;
 
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
 
@@ -986,9 +988,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   torch::Tensor inputBuffer = torch::zeros({N, iT, H, W, iC}, options);
   torch::Tensor outputBuffer = torch::zeros({N, iT, H, W, oC}, options);
-
-  std::cout << "inpubuf shape = " << inputBuffer.sizes() << std::endl;
-  std::cout << "outputbuf shape = " << outputBuffer.sizes() << std::endl;
 
   torch::Tensor inputBufferGemm = inputBuffer.view({N * iT * H * W, iC});
   torch::Tensor outputBufferGemm = outputBuffer.view({N * iT * H * W, oC});
@@ -1008,6 +1007,9 @@ indice_conv_backward_gemm(torch::Tensor feature,
         inputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
         N, k, iC, H, W);
 
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
     int k_H = (k / KW) % KH;
     int k_W = k % KW;
     gather_kernel_k<int32_t><<<grid_size, block_size>>>(
@@ -1025,14 +1027,22 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+    if (k == 9) {
+      std::cout << "outputBufferGemm = " << outputBufferGemm << std::endl;
+    }
 
     // iC, oC
     auto filterGradSub = d_weight[k];
 
-    std::cout << "filterGradSub = " << filterGradSub << std::endl;
-
     torch::mm_out(filterGradSub, inputBufferGemm.t(), outputBufferGemm);
     torch::mm_out(inputBufferGemm, outputBufferGemm, weight[k].t());
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
+    if (k == 9) {
+      std::cout << "inputBufferGemm = " << inputBufferGemm << std::endl;
+    }
 
     scatter_add_kernel_backward<int32_t><<<grid_size, block_size>>>(
         InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
@@ -1043,18 +1053,17 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+
+    if (k == 9) {
+      std::cout << "d_feature = " << d_feature <<std::endl;
+
+    }
   }
 
-  std::cout << "now weigthshape =" << weightShape << std::endl;
-  // std::cout << "now weigt.shape =" <<  << std::endl;
   d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
-  std::cout << "d_weight = " << d_weight << std::endl;
 
   weight = weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
-  std::cout << "weight = " << weight << std::endl;
   d_feature = d_feature.permute({0, 4, 1, 2, 3}).contiguous();
-  std::cout << "d_feature.shape = " << d_feature.sizes() << std::endl;
-  std::cout << "d_weight.shape = " << d_weight.sizes() << std::endl;
 
   d_featureOut = d_featureOut.permute({0, 4, 1, 2, 3}).contiguous();
 
