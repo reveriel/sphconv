@@ -945,10 +945,11 @@ indice_conv_backward_gemm(torch::Tensor feature,
   torch::Tensor new_depth, new_thick;
 
   // d_featureOut's shape = N, oC, oT, oH, oW
-  d_featureOut = d_featureOut.permute({0, 2, 3, 4, 1}).contiguous();
   int oT = d_featureOut.size(2);
   int oH = d_featureOut.size(3);
   int oW = d_featureOut.size(4);
+
+  d_featureOut = d_featureOut.permute({0, 2, 3, 4, 1}).contiguous();
 
   // choose C_BLOCK
   int C_BLOCK = 4;
@@ -971,11 +972,12 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   // KD,KH,KW, iC, oC
   weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
-  auto weightShape = weight.sizes();
+  auto weightShape = weight.sizes(); // not safe
+  std::cout  << "weightShape = " << weightShape << std::endl;
   weight = weight.view({-1, iC, oC});
 
+  std::cout << "weight = " << weight <<std::endl;
 
-  //
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
 
   auto d_feature = torch::zeros_like(feature);
@@ -983,7 +985,10 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
 
   torch::Tensor inputBuffer = torch::zeros({N, iT, H, W, iC}, options);
-  torch::Tensor outputBuffer = torch::zeros({N, oT, H, W, oC}, options);
+  torch::Tensor outputBuffer = torch::zeros({N, iT, H, W, oC}, options);
+
+  std::cout << "inpubuf shape = " << inputBuffer.sizes() << std::endl;
+  std::cout << "outputbuf shape = " << outputBuffer.sizes() << std::endl;
 
   torch::Tensor inputBufferGemm = inputBuffer.view({N * iT * H * W, iC});
   torch::Tensor outputBufferGemm = outputBuffer.view({N * iT * H * W, oC});
@@ -1018,8 +1023,13 @@ indice_conv_backward_gemm(torch::Tensor feature,
         dH, dW,
         oH, oW);
 
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
+
     // iC, oC
     auto filterGradSub = d_weight[k];
+
+    std::cout << "filterGradSub = " << filterGradSub << std::endl;
 
     torch::mm_out(filterGradSub, inputBufferGemm.t(), outputBufferGemm);
     torch::mm_out(inputBufferGemm, outputBufferGemm, weight[k].t());
@@ -1030,12 +1040,23 @@ indice_conv_backward_gemm(torch::Tensor feature,
         inputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
         d_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
         N, iC, k, H, W);
+
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
   }
 
-  d_weight = d_weight.view(weightShape).permute({4, 3, 0, 1, 2}).contiguous();
+  std::cout << "now weigthshape =" << weightShape << std::endl;
+  // std::cout << "now weigt.shape =" <<  << std::endl;
+  d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
+  std::cout << "d_weight = " << d_weight << std::endl;
+
+  weight = weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
+  std::cout << "weight = " << weight << std::endl;
   d_feature = d_feature.permute({0, 4, 1, 2, 3}).contiguous();
   std::cout << "d_feature.shape = " << d_feature.sizes() << std::endl;
   std::cout << "d_weight.shape = " << d_weight.sizes() << std::endl;
+
+  d_featureOut = d_featureOut.permute({0, 4, 1, 2, 3}).contiguous();
 
   return {d_feature, d_weight};
 }

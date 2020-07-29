@@ -684,8 +684,8 @@ class TestBackward(unittest.TestCase):
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
 
-        rand_weight = torch.randn((3,3,3), dtype=torch.float)
-        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+        # rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
@@ -740,8 +740,8 @@ class TestBackward(unittest.TestCase):
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
 
-        rand_weight = torch.randn((3,3,3), dtype=torch.float)
-        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+        # rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
@@ -793,13 +793,13 @@ class TestBackward(unittest.TestCase):
 
     def test3(self):
         # test d_feature, subm
-        iC, oC = 8, 16
-        rangeV = generate_test_RangeVoxel(2, iC, 3, 8, 3, 5, feature_option="range", thick_option="random", depth_option="random")
+        iC, oC = 1, 1
+        rangeV = generate_test_RangeVoxel(1, iC, 1, 3, 3, 3, feature_option="range", thick_option="random", depth_option="random")
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
 
 
-        rand_weight = torch.randn((3,3,3), dtype=torch.float)
-        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+        # rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
 
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=1, subm=True).cuda()
@@ -845,7 +845,7 @@ class TestBackward(unittest.TestCase):
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(grad_tensor_ref_dense, grad_tensor_dense, verbose=False))
+        self.assertTrue(check_equal(grad_tensor_ref_dense, grad_tensor_dense, verbose=True))
 
     def test4(self):
         # d_weight, subm
