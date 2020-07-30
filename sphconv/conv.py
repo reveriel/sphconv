@@ -33,7 +33,7 @@ class Convolution(SphModule):
         self.indice_key = indice_key
 
         self.weight = nn.Parameter(
-            torch.Tensor(out_channels, in_channels, *kernel_size))
+            torch.Tensor(*kernel_size, in_channels, out_channels))
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:

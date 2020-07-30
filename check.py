@@ -106,8 +106,10 @@ def run(conv_configs, batch_size=1, channel=4):
                           bias=configs['bias'],
                           subm=configs['subm']).cuda()
 
-    one_weight = torch.ones((configs['out_channels'], configs['in_channels'],
-        configs['kernel_size'], configs['kernel_size'], configs['kernel_size'] ))
+    one_weight = torch.ones((
+        configs['kernel_size'], configs['kernel_size'], configs['kernel_size'],
+        configs['in_channels'], configs['out_channels']
+    ))
 
     conv.weight = torch.nn.Parameter(one_weight.cuda())
 
@@ -182,66 +184,6 @@ def check_equal(first, second, verbose) -> bool:
             return False
 
 
-def zero_grad(variables):
-    for variable in variables:
-        variable.grad.zero_()
-
-
-def get_grads(variables):
-    return [var.grad.clone() for var in variables]
-
-
-def check_forward(variables, with_cuda, verbose):
-
-    # python impl
-    feature, depth, weight, bias, stride, padding, dilation, groups = variables
-    dense_output = RangeVoxel(*python.conv.sphconv3d(*variables)).dense()
-
-    # conv3d as ref
-    dense_input = RangeVoxel(feature, depth).dense()
-    print("dense_input.shape", dense_input.shape)
-    ref_output = F.conv3d(dense_input.permute(0, 4, 1, 2, 3).contiguous(), weight, bias=bias, stride=stride,
-                          padding=padding, dilation=dilation, groups=groups)
-    print("ref_output.shape = ", ref_output.shape)
-    # print(ref_output.reshape(4,3,3))
-
-    # baseline_values = python.lltm_baseline.LLTMFunction.apply(*variables)
-    # cpp_values = cpp.lltm.LLTMFunction.apply(*variables)
-
-    print('Forward: Baseline (Python) vs. C++ ... ', end='')
-    return check_equal([dense_output.permute(0, 4, 1, 2, 3)], [ref_output], verbose)
-
-    # if with_cuda:
-    #     cuda_values = cuda.lltm.LLTMFunction.apply(*variables)
-    #     print('Forward: Baseline (Python) vs. CUDA ... ', end='')
-    #     check_equal(baseline_values, cuda_values, verbose)
-    #     print('Ok')
-
-
-def check_backward(variables, with_cuda, verbose):
-    baseline_values = python.lltm_baseline.LLTMFunction.apply(*variables)
-    (baseline_values[0] + baseline_values[1]).sum().backward()
-    grad_baseline = get_grads(variables)
-
-    zero_grad(variables)
-
-    cpp_values = cpp.lltm.LLTMFunction.apply(*variables)
-    (cpp_values[0] + cpp_values[1]).sum().backward()
-    grad_cpp = get_grads(variables)
-
-    print('Backward: Baseline (Python) vs. C++ ... ', end='')
-    check_equal(grad_baseline, grad_cpp, verbose)
-    print('Ok')
-
-    if with_cuda:
-        zero_grad(variables)
-        cuda_values = cuda.lltm.LLTMFunction.apply(*variables)
-        (cuda_values[0] + cuda_values[1]).sum().backward()
-        grad_cuda = get_grads(variables)
-
-        print('Backward: Baseline (Python) vs. CUDA ... ', end='')
-        check_equal(grad_baseline, grad_cuda, verbose)
-        print('Ok')
 
 
 parser = argparse.ArgumentParser()
@@ -273,7 +215,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -295,7 +237,7 @@ class TestForward(unittest.TestCase):
         print(res_dense)
         print("conv's result sum = ", torch.sum(res_dense))
 
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
 
     def test2(self):
@@ -304,7 +246,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -325,7 +267,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(oC, iC, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
 
@@ -346,7 +288,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(oC, iC, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
 
@@ -369,9 +311,9 @@ class TestForward(unittest.TestCase):
 
         conv = sphconv.Conv3d(iC, oC, 3, padding=0).cuda()
         conv.weight = torch.nn.Parameter(
-            torch.arange(1 * 1 * 3 * 3 * 3, dtype=torch.float)
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            torch.arange(3 * 3 * 3 * 1 * 1, dtype=torch.float)
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(
             torch.arange(3 * 3 * 3 * 1 * 1, dtype=torch.float)
@@ -394,7 +336,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -417,7 +359,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -445,7 +387,7 @@ class TestForward(unittest.TestCase):
         print("input_spconv shape =", input_spconv.spatial_shape)
 
         conv = sphconv.Conv3d(in_channel, out_channel, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(out_channel, in_channel, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel ).cuda())
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
@@ -496,8 +438,8 @@ class TestForward(unittest.TestCase):
 
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(
             rand_weight.clone()
@@ -527,8 +469,8 @@ class TestForward(unittest.TestCase):
 
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(
             rand_weight.clone()
@@ -553,7 +495,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=1).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, padding=1, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -574,7 +516,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=1, stride=2).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SparseConv3d(1, 1, 3, padding=1, stride=2, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -596,7 +538,7 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV)
 
         conv = sphconv.Conv3d(1, 1, 3, padding=1, subm=True).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(1, 1, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
         conv_ref = spconv.SubMConv3d(1, 1, 3, padding=1, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, 1, 1).cuda())
 
@@ -623,8 +565,8 @@ class TestForward(unittest.TestCase):
 
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
 
         conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=0, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(
@@ -657,14 +599,14 @@ class TestForward(unittest.TestCase):
 
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, *K)
-            .repeat(oC, iC, 1,1,1).cuda())
+            .reshape(*K, 1, 1)
+            .repeat(1, 1, 1, iC, oC).cuda())
 
         conv_ref = spconv.SparseConv3d(iC, oC, K, padding=0, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(
             rand_weight.clone()
             .reshape(*K, 1, 1)
-            .repeat(1,1,1, iC, oC).cuda())
+            .repeat(1, 1, 1, iC, oC).cuda())
 
         with torch.no_grad():
             res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
@@ -688,7 +630,7 @@ class TestForward(unittest.TestCase):
         print("input_spconv shape =", input_spconv.spatial_shape)
 
         conv = sphconv.Conv3d(in_channel, out_channel, 3, padding=0).cuda()
-        conv.weight = torch.nn.Parameter(torch.ones(out_channel, in_channel, 3, 3, 3).cuda())
+        conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
@@ -743,8 +685,8 @@ class TestBackward(unittest.TestCase):
         # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
 
 
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
@@ -799,8 +741,8 @@ class TestBackward(unittest.TestCase):
         # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .repeat(oC, iC, 1, 1, 1).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .repeat(1, 1, 1, iC, oC).cuda())
 
 
         conv_ref = spconv.SparseConv3d(iC, oC, 3, bias=False).cuda()
@@ -840,7 +782,7 @@ class TestBackward(unittest.TestCase):
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(conv_ref.weight.grad.permute(4,3,0,1,2), conv.weight.grad, verbose=False))
+        self.assertTrue(check_equal(conv_ref.weight.grad, conv.weight.grad, verbose=False))
 
     def test3(self):
         # test d_feature, subm
@@ -858,8 +800,8 @@ class TestBackward(unittest.TestCase):
         # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
 
 
         conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=1, bias=False).cuda()
@@ -913,8 +855,8 @@ class TestBackward(unittest.TestCase):
         # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
         conv.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
 
 
         conv_ref = spconv.SubMConv3d(iC, oC, 3, padding=0, bias=False).cuda()
@@ -952,8 +894,7 @@ class TestBackward(unittest.TestCase):
         # print(res_ref_dense)
         # res_ref_dense = res_ref.dense()
         # res_dense = res.dense()
-        self.assertTrue(check_equal(conv_ref.weight.grad.permute(
-            4, 3, 0, 1, 2), conv.weight.grad, verbose=False))
+        self.assertTrue(check_equal(conv_ref.weight.grad, conv.weight.grad, verbose=False))
 
 
 class TestModules(unittest.TestCase):
@@ -973,12 +914,12 @@ class TestModules(unittest.TestCase):
         conv2 = sphconv.Conv3d(iC, oC, 3, padding=1, bias=False)
         conv1.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
         conv2.weight = torch.nn.Parameter(
             rand_weight.clone()
-            .reshape(1, 1, 3, 3, 3)
-            .expand(oC, iC, 3, 3, 3).cuda())
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
 
         convs = sphconv.Sequential(
             conv1,

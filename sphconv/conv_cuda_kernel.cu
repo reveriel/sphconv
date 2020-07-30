@@ -327,7 +327,7 @@ __global__ void indice_conv_kernel(
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
 
-            atomicAdd(&new_feature[b][ot][oX][oY][oc], weight[oc][ic][k_D][k_H][k_W] * feature[b][it][x][y][ic]);
+            atomicAdd(&new_feature[b][ot][oX][oY][oc], weight[k_D][k_H][k_W][ic][oc] * feature[b][it][x][y][ic]);
 
             oc += blockDim.z;
           }// while
@@ -393,8 +393,8 @@ __global__ void indice_conv_backward_kernel(
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
 
-            atomicAdd(&d_feature[b][it][x][y][ic], weight[oc][ic][k_D][k_H][k_W] * d_featureOut[b][ot][oX][oY][oc]);
-            atomicAdd(&d_weight[oc][ic][k_D][k_H][k_W], feature[b][it][x][y][ic] * d_featureOut[b][ot][oX][oY][oc]);
+            atomicAdd(&d_feature[b][it][x][y][ic], weight[k_D][k_H][k_W][ic][oc] * d_featureOut[b][ot][oX][oY][oc]);
+            atomicAdd(&d_weight[k_D][k_H][k_W][ic][oc], feature[b][it][x][y][ic] * d_featureOut[b][ot][oX][oY][oc]);
 
             oc += blockDim.z;
           }// while
@@ -821,11 +821,11 @@ indice_conv_gemm(torch::Tensor feature,
   int H = feature.size(2);
   int W = feature.size(3);
   int C = feature.size(4);
-  int oC = weight.size(0);
-  int iC = weight.size(1);
-  int KD = weight.size(2);
-  int KH = weight.size(3);
-  int KW = weight.size(4);
+  int KD = weight.size(0);
+  int KH = weight.size(1);
+  int KW = weight.size(2);
+  int iC = weight.size(3);
+  int oC = weight.size(4);
 
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
@@ -852,7 +852,7 @@ indice_conv_gemm(torch::Tensor feature,
   grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
   block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
-  auto filters = weight.permute({2, 3, 4, 1, 0}).contiguous().view({-1, iC, oC});
+  auto filters = weight.view({-1, iC, oC});
 
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
 
@@ -921,11 +921,11 @@ indice_conv_backward_gemm(torch::Tensor feature,
   int iT = feature.size(1);
   int H = feature.size(2);
   int W = feature.size(3);
-  int oC = weight.size(0);
-  int iC = weight.size(1);
-  int KD = weight.size(2);
-  int KH = weight.size(3);
-  int KW = weight.size(4);
+  int KD = weight.size(0);
+  int KH = weight.size(1);
+  int KW = weight.size(2);
+  int iC = weight.size(3);
+  int oC = weight.size(4);
 
   const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
@@ -938,7 +938,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
   int oH = d_featureOut.size(2);
   int oW = d_featureOut.size(3);
 
-  weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
   weight = weight.view({-1, iC, oC});
 
   // choose C_BLOCK
@@ -963,8 +962,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   torch::Tensor inputBufferGemm = inputBuffer.view({N * iT * H * W, iC});
   torch::Tensor outputBufferGemm = outputBuffer.view({N * iT * H * W, oC});
-
-  d_weight = d_weight.view({-1, iC, oC});
 
   for (int k = 0; k < kernel_volume; ++k)
   {
@@ -1016,9 +1013,7 @@ indice_conv_backward_gemm(torch::Tensor feature,
     gpuErrchk(cudaDeviceSynchronize());
   }
 
-  d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
-
-  return {d_feature, d_weight};
+  return {d_feature, d_weight.view({KD, KH, KW, iC, oC})};
 }
 
 
@@ -1035,15 +1030,14 @@ indice_conv(torch::Tensor feature,
             int dD, int dH, int dW,
             int groups)
 {
-  int N, C, H, W, oC, KD, KH, KW;
-  N = feature.size(0);
-  H = feature.size(2);
-  W = feature.size(3);
-  C = feature.size(4);
-  oC = weight.size(0);
-  KD = weight.size(2);
-  KH = weight.size(3);
-  KW = weight.size(4);
+  int N = feature.size(0);
+  int H = feature.size(2);
+  int W = feature.size(3);
+  int C = feature.size(4);
+  int KD = weight.size(0);
+  int KH = weight.size(1);
+  int KW = weight.size(2);
+  int oC = weight.size(4);
 
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
@@ -1116,11 +1110,11 @@ indice_conv_backward(torch::Tensor feature,
   int N = feature.size(0);
   int H = feature.size(2);
   int W = feature.size(3);
-  int oC = weight.size(0);
-  int iC = weight.size(1);
-  int KD = weight.size(2);
-  int KH = weight.size(3);
-  int KW = weight.size(4);
+  int KD = weight.size(0);
+  int KH = weight.size(1);
+  int KW = weight.size(2);
+  int iC = weight.size(3);
+  int oC = weight.size(4);
 
 
   const int H_BLOCK = 4, W_BLOCK = 4;
