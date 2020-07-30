@@ -377,8 +377,8 @@ class TestForward(unittest.TestCase):
 
     def test8(self):
         # test real data
-        in_channel = 128
-        out_channel = 128
+        in_channel = 4
+        out_channel = 16
         rangeV = get_range_voxels(0, batch_size=1, channel=in_channel)
 
         print("input_sphconv shape =", rangeV.shape)
@@ -386,9 +386,9 @@ class TestForward(unittest.TestCase):
         input_spconv = RangeVoxel2SparseTensor(rangeV, filter=True)
         print("input_spconv shape =", input_spconv.spatial_shape)
 
-        conv = sphconv.Conv3d(in_channel, out_channel, 3, padding=0).cuda()
+        conv = sphconv.Conv3d(in_channel, out_channel, 3, padding=1).cuda()
         conv.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel ).cuda())
-        conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
+        conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, padding=1, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
         loop_time = 10
@@ -901,7 +901,7 @@ class TestModules(unittest.TestCase):
 
     def test1(self):
         # test sphconv.Sequential
-        iC, oC = 1, 1
+        iC, oC = 16, 16
         batch_size = 2
         rangeV = generate_test_RangeVoxel(batch_size, iC, 5, 8, 8, 8, feature_option="range", thick_option="random", depth_option="random")
         input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
@@ -923,7 +923,7 @@ class TestModules(unittest.TestCase):
 
         convs = sphconv.Sequential(
             conv1,
-            # nn.BatchNo1d1d(oC, eps=1e-3, momentum=0.01),
+            # nn.BatchNorm1d(oC, eps=1e-3, momentum=0.01),
             nn.ReLU(),
             conv2
         ).cuda()
@@ -975,8 +975,89 @@ class TestModules(unittest.TestCase):
 
         res_ref_dense = res_ref.dense()
         res_dense = res.dense()
+        print("res_ref_dense.shape  = ", res_ref_dense.shape)
+        print("res_dense.shape = ", res_dense.shape)
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
+    def test2(self):
+        # test sphconv.Sequential, indice_key
+        iC, oC = 16, 16
+        batch_size = 2
+        rangeV = generate_test_RangeVoxel(batch_size, iC, 5, 8, 8, 8, feature_option="range", thick_option="random", depth_option="random")
+        input_spconv:spconv.SparseConvTensor = RangeVoxel2SparseTensor(rangeV)
+
+
+        rand_weight = torch.randn((3,3,3), dtype=torch.float)
+        # rand_weight = torch.arange(3*3*3, dtype=torch.float) / 1
+
+        conv1 = sphconv.Conv3d(iC, oC, 3, padding=1, bias=False, indice_key="subm1", subm=True)
+        conv2 = sphconv.Conv3d(iC, oC, 3, padding=1, bias=False, indice_key="subm1", subm=True)
+        conv1.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+        conv2.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+
+        convs = sphconv.Sequential(
+            conv1,
+            # nn.BatchNorm1d(oC, eps=1e-3, momentum=0.01),
+            nn.ReLU(),
+            conv2
+        ).cuda()
+        # conv.weight = torch.nn.Parameter(torch.ones(iC, oC, 3, 3, 3).cuda())
+
+        conv1_ref = spconv.SubMConv3d(iC, oC, 3, padding=1, bias=False, indice_key="subm1")
+        conv2_ref = spconv.SubMConv3d(iC, oC, 3, padding=1, bias=False, indice_key="subm1")
+        conv1_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+        conv2_ref.weight = torch.nn.Parameter(
+            rand_weight.clone()
+            .reshape(3, 3, 3, 1, 1)
+            .expand(3, 3, 3, iC, oC).cuda())
+        input_spconv.features.requires_grad = True
+
+        convs_ref = spconv.SparseSequential(
+            conv1_ref,
+            # nn.BatchNorm1d(oC , eps=1e-3, momentum=0.01),
+            nn.ReLU(),
+            conv2_ref,
+        ).cuda()
+        # conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, iC, oC).cuda())
+
+        res_ref: spconv.SparseConvTensor = convs_ref(input_spconv)
+
+        # res_sum_ref = torch.sum(res_ref.dense())
+        # res_sum_ref.backward()
+        # grad_tensor_ref = spconv.SparseConvTensor(
+        #     input_spconv.features.grad, input_spconv.indices,
+        #     input_spconv.spatial_shape, input_spconv.batch_size)
+        # print(input_spconv.features.grad)
+        # grad_tensor_ref_dense = grad_tensor_ref.dense()
+        # print("conv_ref.weight.grad.shape = ", conv_ref.weight.grad.shape)
+        # print(conv_ref.weight.grad)
+
+        rangeV.feature.requires_grad = True
+        conv1.weight.requires_grad = True
+
+        res: RangeVoxel = convs(rangeV)
+        # res_sum = torch.sum(res.dense())
+        # res_sum.backward()
+        # grad_tensor = RangeVoxel(rangeV.feature.grad, rangeV.depth, rangeV.thick, rangeV.shape)
+        # grad_tensor_dense = grad_tensor.dense()
+
+        # print("conv.weight.grad.shape = ", conv.weight.grad.shape)
+        # print(conv.weight.grad)
+
+        res_ref_dense = res_ref.dense()
+        res_dense = res.dense()
+        print("res_ref_dense.shape  = ", res_ref_dense.shape)
+        print("res_dense.shape = ", res_dense.shape)
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
 
 if __name__ == '__main__':
