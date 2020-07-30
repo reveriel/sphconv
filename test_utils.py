@@ -260,14 +260,19 @@ def check(input: RangeVoxel):
 #         self.indice_dict = {}
 #         self.grid = grid
 
-def RangeVoxel2SparseTensor(input, filter=False) -> spconv.SparseConvTensor :
-    """ convert RangeVoxel to sponcv.SparseConvTensor """
+def RangeVoxel2SparseTensor(input:RangeVoxel, filter=False) -> spconv.SparseConvTensor :
+    """ convert RangeVoxel to sponcv.SparseConvTensor
+
+    Args:
+        filter(bool), filter voxels whose z == 0, those are mostly bad data
+
+    """
 
     feature = input.feature
     depth = input.depth
     thick = input.thick
     B, C, D, H, W = input.shape
-    T = feature.shape[2]
+    T = input.T
     print("bcdhw", B, C, D, H, W)
 
     spconv_feature = []
@@ -280,7 +285,7 @@ def RangeVoxel2SparseTensor(input, filter=False) -> spconv.SparseConvTensor :
                     z = depth[b, t, x, y]
                     if filter and z == 0:
                         continue
-                    spconv_feature.append(feature[b, :, t, x, y])
+                    spconv_feature.append(feature[b, t, x, y, :])
                     indice = torch.tensor(
                         list([b, z, x, y]), dtype=torch.int32)
                     spconv_indices.append(indice)

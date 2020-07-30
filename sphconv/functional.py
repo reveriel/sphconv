@@ -7,10 +7,11 @@ class ConvFunction(torch.autograd.Function):
 
     Args:
 
-        input: the input tensor of shape (minibatch, in_channels, iD, iH, iW)
-        depth: depth tensor of shape (minibatch, iH, iW), of type int
+        feature, depth, and thick from RangeVoxel
+
         weight: a 3d filter of shape
-                    (out_channels, in_channels/groups, kD, kH, kW)
+                    (kD, kH, kW,  in_channels/groups, out_channels)
+
         bias: optional bias tensor of shape (out_channels). Default: None
         stride: the stride of the cconvolving kernel, can be a single number or
             a tuple (sD, sH, sW). Default: 1
@@ -21,13 +22,13 @@ class ConvFunction(torch.autograd.Function):
         groups: split into groups, in_channels shouldd be divisible by the
             number of groups. Default: 1
         see https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
+        D:
+        oT:
+        subm:
 
     Returns:
 
-        feature: a tensor of shape (N, out_channels, oT, oH, oW)
-        depth: tensor of shape (N, oT, oH, oW)
-        thick: tensor of shape (N, oH, oW), where
-            oT = ?
+        feature: a tensor of shape (N, oT, oH, oW, out_channels)
             oH = floor((iH + 2 x padH - dH x (kH - 1) -1) / sH + 1)
             oW = floor((iW + 2 x padW - dW x (kW - 1) -1) / sW + 1)
 
@@ -113,16 +114,15 @@ class ConvFunction(torch.autograd.Function):
 class ToDenseFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, feature, depth, thick, D):
-        ctx.T = feature.size(2)
+        ctx.T = feature.size(1)
         ctx.save_for_backward(depth, thick)
         dense = sphconv_cuda.to_dense(feature, depth, thick, D)
         return dense
 
     @staticmethod
-    def backward(ctx, d_featureOut):
-        # print("d_featureOut = ", d_featureOut)
+    def backward(ctx, d_dense):
         depth, thick = ctx.saved_tensors
         # print("func depth = ", depth)
         # print("func thick = ", thick)
-        d_feature = sphconv_cuda.to_dense_backward(d_featureOut, depth, thick, ctx.T)
+        d_feature = sphconv_cuda.to_dense_backward(d_dense, depth, thick, ctx.T)
         return d_feature, None, None, None

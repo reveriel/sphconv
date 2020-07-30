@@ -108,7 +108,7 @@ class Conv3d(Convolution):
     def forward(self, input: RangeVoxel):
 
         batch_size, inChannel, iD, iH, iW = input.shape
-        iT = input.feature.size(2)
+        iT = input.T
 
         assert (self.in_channels == inChannel), "input channel does not match \
             Expect: {}, got {}".format(self.in_channels, inChannel)

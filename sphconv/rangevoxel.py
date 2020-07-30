@@ -6,7 +6,7 @@ class RangeVoxel(object):
     """ Voxels like RangeImage
 
     feature:
-        Tensor of shape [B, C, T, H, W]
+        Tensor of shape [B, T, H, W, C]
         TODO: C's position ?
             T: thickness
             B: batchsize
@@ -42,7 +42,7 @@ class RangeVoxel(object):
         return a 3D tensor of shape (batchsize, C, D, H, W)
 
         """
-        return to_dense(self.feature, self.depth, self.thick, self.shape[2], self.feature.device)
+        return to_dense(self.feature, self.depth, self.thick, self.D, self.feature.device)
 
     def cuda(self):
         """Move to CUDA."""
@@ -58,6 +58,30 @@ class RangeVoxel(object):
             return self.indice_dict[key]
         return None
 
+    @property
+    def batch_size(self):
+        return self.shape[0]
+
+    @property
+    def channel_size(self):
+        return self.shape[1]
+
+    @property
+    def D(self):
+        return self.shape[2]
+
+    @property
+    def H(self):
+        return self.shape[3]
+
+    @property
+    def W(self):
+        return self.shape[4]
+
+    @property
+    def T(self):
+        return self.feature.size(1)
+
 def to_dense(feature, depth, thick, D, device=None):
     """Convert to dense 3D tensor
 
@@ -70,7 +94,7 @@ def to_dense(feature, depth, thick, D, device=None):
 
 def check_size(shape, feature_shape, depth_shape, thick_shape):
     B, C, D, H, W = shape
-    B_f, C_f, T_f, H_f, W_f = feature_shape
+    B_f, T_f, H_f, W_f, C_f = feature_shape
     B_d, T_d, H_d, W_d = depth_shape
     B_t, H_t, W_t = thick_shape
     assert (B == B_d == B_t == B_f), \

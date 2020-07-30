@@ -88,7 +88,7 @@ to_dense(torch::Tensor feature,
          int D);
 
 torch::Tensor
-to_dense_backward(torch::Tensor d_featureOut,
+to_dense_backward(torch::Tensor d_dense,
                   torch::Tensor depth,
                   torch::Tensor thick,
                   int T);

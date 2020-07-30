@@ -59,9 +59,9 @@ def generate_test_RangeVoxel(N, C, T, D, H, W,
     # N, C, T, D, H, W = 1, 1, 1, 4, 4, 4
     if feature_option == "range":
         feature = torch.arange(
-            N * C * T * H * W, dtype=torch.float).reshape(N, C, T, H, W)
+            N * T * H * W * C, dtype=torch.float).reshape(N, T, H, W, C)
     else:
-        feature = torch.ones((N, C, T, H, W))
+        feature = torch.ones((N, T, H, W, C))
 
     if depth_option == "random":
         # no duplicates
@@ -295,7 +295,7 @@ class TestForward(unittest.TestCase):
         print(res_dense)
         print("conv's result sum = ", torch.sum(res_dense))
 
-        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
+        self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=True))
 
 
     def test2(self):

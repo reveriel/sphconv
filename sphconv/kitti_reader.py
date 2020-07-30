@@ -54,6 +54,8 @@ def read_pc_data(idx: int, channel:int):
 
         append random data so that data has 'channel' channels
 
+        return: tensor of [N, Channel]
+
     """
     velo_path = Path(get_velodyne_path(idx, KITTI_DATASET_ROOT))
     # velo_path = Path(KITTI_DATASET_ROOT) / velo_path

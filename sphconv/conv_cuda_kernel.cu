@@ -327,7 +327,7 @@ __global__ void indice_conv_kernel(
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
 
-            atomicAdd(&new_feature[b][oc][ot][oX][oY], weight[oc][ic][k_D][k_H][k_W] * feature[b][ic][it][x][y]);
+            atomicAdd(&new_feature[b][ot][oX][oY][oc], weight[oc][ic][k_D][k_H][k_W] * feature[b][it][x][y][ic]);
 
             oc += blockDim.z;
           }// while
@@ -393,8 +393,8 @@ __global__ void indice_conv_backward_kernel(
             // output thickness
             int ot = OutRuleMap[b][k][x][y][i];
 
-            atomicAdd(&d_feature[b][ic][it][x][y], weight[oc][ic][k_D][k_H][k_W] * d_featureOut[b][oc][ot][oX][oY]);
-            atomicAdd(&d_weight[oc][ic][k_D][k_H][k_W], feature[b][ic][it][x][y] * d_featureOut[b][oc][ot][oX][oY]);
+            atomicAdd(&d_feature[b][it][x][y][ic], weight[oc][ic][k_D][k_H][k_W] * d_featureOut[b][ot][oX][oY][oc]);
+            atomicAdd(&d_weight[oc][ic][k_D][k_H][k_W], feature[b][it][x][y][ic] * d_featureOut[b][ot][oX][oY][oc]);
 
             oc += blockDim.z;
           }// while
@@ -701,11 +701,6 @@ __global__ void gather_kernel_k(
       {
         for (Index i = 0; i < NumIn[b][k][x][y]; i++)
         {
-          // if ( k == 9 && threadIdx.z == 0) {
-          //   printf("outrulemap[0][9][%d][%d][%d] = %d\n ", x, y, i, OutRuleMap[b][k][x][y][i] );
-          //   printf("NumIn[0][9][%d][%d] = %d\n ", x, y, NumIn[b][k][x][y]);
-          //   // printf("featureOut[0][0][")
-          // }
           Index ot = OutRuleMap[b][k][x][y][i];
           for (Index oc = threadIdx.z; oc < oC; oc += blockDim.z)
           {
@@ -822,10 +817,10 @@ indice_conv_gemm(torch::Tensor feature,
                  int groups)
 {
   int N = feature.size(0);
-  int C = feature.size(1);
-  int T = feature.size(2);
-  int H = feature.size(3);
-  int W = feature.size(4);
+  int T = feature.size(1);
+  int H = feature.size(2);
+  int W = feature.size(3);
+  int C = feature.size(4);
   int oC = weight.size(0);
   int iC = weight.size(1);
   int KD = weight.size(2);
@@ -840,7 +835,7 @@ indice_conv_gemm(torch::Tensor feature,
   int kernel_volume = KD * KH * KW;
 
   // the output RangeVoxel
-  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+  auto new_feature = torch::zeros({N, oT, oH, oW, oC},
                                   torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
 
   // choose C_BLOCK
@@ -861,13 +856,10 @@ indice_conv_gemm(torch::Tensor feature,
 
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
 
-  torch::Tensor output = torch::zeros({N, oT, oH, oW, oC}, options);
   torch::Tensor inputBuffer = torch::zeros({N, T, H, W, iC}, options);
   torch::Tensor outputBuffer = torch::zeros({N, T, H, W, oC}, options);
   torch::Tensor inputBufferGemm = inputBuffer.view({N * T * H * W, iC});
   torch::Tensor outputBufferGemm = outputBuffer.view({N * T * H * W, oC});
-
-  torch::Tensor feature_ = feature.permute({0, 2, 3, 4, 1}).contiguous();
 
   for (int k = 0; k < kernel_volume; ++k)
   {
@@ -875,7 +867,7 @@ indice_conv_gemm(torch::Tensor feature,
     outputBufferGemm.fill_(0);
 
     gather_kernel<int32_t><<<grid_size, block_size>>>(
-        feature_.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
         InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
         NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
         inputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
@@ -884,22 +876,16 @@ indice_conv_gemm(torch::Tensor feature,
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    // std::cout << "inputBuffer = " << inputBuffer << std::endl;
-    // std::cout << "inputbuffergemm = " << inputbuffergemm << std::endl;
-    // std::cout << "filters[k] = " << filters[k] << std::endl;
-
     torch::mm_out(outputBufferGemm, inputBufferGemm, filters[k]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    // std::cout << "outputBuffer = " << outputBuffer << std::endl;
-    // std::cout << "outputBufferGemm = " << outputBufferGemm << std::endl;
 
     scatter_add_kernel<int32_t><<<grid_size, block_size>>>(
         OutRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
         NumIn.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
         outputBuffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
-        output.packed_accessor32<float, 5, RestrictPtrTraits>(),
+        new_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
         N, oC, k,
         KD, KH, KW,
         sD, sH, sW,
@@ -909,10 +895,7 @@ indice_conv_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    // std::cout << "output = " << output << std::endl;
-
   }
-  new_feature = output.permute({0, 4, 1, 2, 3}).contiguous();
 
   return {new_feature};
 }
@@ -935,9 +918,9 @@ indice_conv_backward_gemm(torch::Tensor feature,
 
   // input size
   int N = feature.size(0);
-  int iT = feature.size(2);
-  int H = feature.size(3);
-  int W = feature.size(4);
+  int iT = feature.size(1);
+  int H = feature.size(2);
+  int W = feature.size(3);
   int oC = weight.size(0);
   int iC = weight.size(1);
   int KD = weight.size(2);
@@ -950,13 +933,11 @@ indice_conv_backward_gemm(torch::Tensor feature,
   dim3 grid_size, block_size;
   torch::Tensor new_depth, new_thick;
 
-  // d_featureOut's shape = N, oC, oT, oH, oW
-  int oT = d_featureOut.size(2);
-  int oH = d_featureOut.size(3);
-  int oW = d_featureOut.size(4);
+  // d_featureOut's shape = N, oT, oH, oW, oC
+  int oT = d_featureOut.size(1);
+  int oH = d_featureOut.size(2);
+  int oW = d_featureOut.size(3);
 
-  d_featureOut = d_featureOut.permute({0, 2, 3, 4, 1}).contiguous();
-  feature = feature.permute({0, 2, 3, 4, 1}).contiguous();
   weight = weight.permute({2, 3, 4, 1, 0}).contiguous();
   weight = weight.view({-1, iC, oC});
 
@@ -1036,7 +1017,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
   }
 
   d_weight = d_weight.view({KD, KH, KW, iC, oC}).permute({4, 3, 0, 1, 2}).contiguous();
-  d_feature = d_feature.permute({0, 4, 1, 2, 3}).contiguous();
 
   return {d_feature, d_weight};
 }
@@ -1057,9 +1037,9 @@ indice_conv(torch::Tensor feature,
 {
   int N, C, H, W, oC, KD, KH, KW;
   N = feature.size(0);
-  C = feature.size(1);
-  H = feature.size(3);
-  W = feature.size(4);
+  H = feature.size(2);
+  W = feature.size(3);
+  C = feature.size(4);
   oC = weight.size(0);
   KD = weight.size(2);
   KH = weight.size(3);
@@ -1073,7 +1053,7 @@ indice_conv(torch::Tensor feature,
   int kernel_volume = KD * KH * KW;
 
   // the output RangeVoxel
-  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+  auto new_feature = torch::zeros({N, oT, oH, oW, oC},
                    torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
 
   // choose C_BLOCK
@@ -1132,18 +1112,15 @@ indice_conv_backward(torch::Tensor feature,
 {
   auto d_feature = torch::zeros_like(feature);
   auto d_weight = torch::zeros_like(weight);
-  // auto d_bias = torch::zeros_like(bias);
 
-  // input size
-  int N, H, W, oC, iC, KD, KH, KW;
-  N = feature.size(0);
-  H = feature.size(3);
-  W = feature.size(4);
-  oC = weight.size(0);
-  iC = weight.size(1);
-  KD = weight.size(2);
-  KH = weight.size(3);
-  KW = weight.size(4);
+  int N = feature.size(0);
+  int H = feature.size(2);
+  int W = feature.size(3);
+  int oC = weight.size(0);
+  int iC = weight.size(1);
+  int KD = weight.size(2);
+  int KH = weight.size(3);
+  int KW = weight.size(4);
 
 
   const int H_BLOCK = 4, W_BLOCK = 4;
@@ -1152,11 +1129,11 @@ indice_conv_backward(torch::Tensor feature,
   dim3 grid_size, block_size;
   torch::Tensor new_depth, new_thick;
 
-  // d_featureOut's shape = N, oC, oT, oH, oW
+  // d_featureOut's shape = N, oT, oH, oW, oC
   int oT, oH, oW;
-  oT = d_featureOut.size(2);
-  oH = d_featureOut.size(3);
-  oW = d_featureOut.size(4);
+  oT = d_featureOut.size(1);
+  oH = d_featureOut.size(2);
+  oW = d_featureOut.size(3);
 
   // choose C_BLOCK
   int C_BLOCK = 4;
@@ -1172,7 +1149,7 @@ indice_conv_backward(torch::Tensor feature,
   block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
   // the output RangeVoxel
-  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+  auto new_feature = torch::zeros({N, oT, oH, oW, oC},
                    torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
 
   indice_conv_backward_kernel<int32_t><<<grid_size, block_size>>>(
@@ -1206,7 +1183,7 @@ __global__ void to_dense_kernel(
     const torch::PackedTensorAccessor32<Index , 3, RestrictPtrTraits>
   thick,
     torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
-  buffer,
+  dense,
   int N, int C,
   int H, int W
 )
@@ -1226,7 +1203,7 @@ __global__ void to_dense_kernel(
 
           for (int c = threadIdx.z; c < C; c += blockDim.z)
           {
-            buffer[b][c][z][x][y] = feature[b][c][t][x][y];
+            dense[b][c][z][x][y] = feature[b][t][x][y][c];
           }
         }
       }
@@ -1238,7 +1215,7 @@ __global__ void to_dense_kernel(
 template<typename Index>
 __global__ void to_dense_backward_kernel(
     const torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
-  d_featureOut,
+  d_dense,
     const torch::PackedTensorAccessor32<Index , 4, RestrictPtrTraits>
   depth,
     const torch::PackedTensorAccessor32<Index , 3, RestrictPtrTraits>
@@ -1265,7 +1242,7 @@ __global__ void to_dense_backward_kernel(
 
           for (int c = threadIdx.z; c < C; c += blockDim.z)
           {
-            d_feature[b][c][t][x][y] = d_featureOut[b][c][z][x][y];
+            d_feature[b][t][x][y][c] = d_dense[b][c][z][x][y];
           }
 
         }
@@ -1282,12 +1259,12 @@ to_dense(torch::Tensor feature,
          int D)
 {
   int N = feature.size(0);
-  int C = feature.size(1);
-  int H = feature.size(3);
-  int W = feature.size(4);
+  int H = feature.size(2);
+  int W = feature.size(3);
+  int C = feature.size(4);
 
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
-  torch::Tensor buffer = torch::zeros({N, C, D, H, W}, options);
+  torch::Tensor dense = torch::zeros({N, C, D, H, W}, options);
 
   const int H_BLOCK = 4, W_BLOCK = 4;
   // choose C_BLOCK
@@ -1308,26 +1285,26 @@ to_dense(torch::Tensor feature,
       feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
       depth.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
       thick.packed_accessor32<int32_t, 3, RestrictPtrTraits>(),
-      buffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      dense.packed_accessor32<float, 5, RestrictPtrTraits>(),
       N, C, H, W);
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
-  return buffer;
+  return dense;
 }
 
 torch::Tensor
-to_dense_backward(torch::Tensor d_featureOut,
+to_dense_backward(torch::Tensor d_dense,
                   torch::Tensor depth,
                   torch::Tensor thick,
                   int T)
 {
 
-  int N = d_featureOut.size(0);
-  int C = d_featureOut.size(1);
-  int H = d_featureOut.size(3);
-  int W = d_featureOut.size(4);
+  int N = d_dense.size(0);
+  int C = d_dense.size(1);
+  int H = d_dense.size(3);
+  int W = d_dense.size(4);
 
   const int H_BLOCK = 4, W_BLOCK = 4;
   // choose C_BLOCK
@@ -1344,11 +1321,11 @@ to_dense_backward(torch::Tensor d_featureOut,
   grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
   block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
-  auto options = torch::TensorOptions().dtype(d_featureOut.dtype()).device(d_featureOut.device());
-  auto d_feature = torch::zeros({N,C,T,H,W} , options);
+  auto options = torch::TensorOptions().dtype(d_dense.dtype()).device(d_dense.device());
+  auto d_feature = torch::zeros({N, T, H, W, C}, options);
 
   to_dense_backward_kernel<int32_t><<<grid_size, block_size>>>(
-      d_featureOut.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      d_dense.packed_accessor32<float, 5, RestrictPtrTraits>(),
       depth.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
       thick.packed_accessor32<int32_t, 3, RestrictPtrTraits>(),
       d_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
