@@ -79,4 +79,12 @@ indice_conv_backward_gemm(torch::Tensor feature,
                             int padD, int padH, int padW,
                             int dD, int dH, int dW,
                             int groups, int subm);
+
+
+torch::Tensor
+to_dense(torch::Tensor feature,
+         torch::Tensor depth,
+         torch::Tensor thick,
+         int D);
+
 } // namespace sphconv

@@ -676,6 +676,56 @@ class TestForward(unittest.TestCase):
         res_dense = res.dense()
         self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
 
+    def test16(self):
+        # test to dense
+        in_channel = 32
+        out_channel = 32
+        rangeV = get_range_voxels(0, batch_size=1, channel=in_channel)
+
+        print("input_sphconv shape =", rangeV.shape)
+        # input_spconv = get_voxels(0, batch_size=batch_size, channel=channel)
+        input_spconv = RangeVoxel2SparseTensor(rangeV, filter=True)
+        print("input_spconv shape =", input_spconv.spatial_shape)
+
+        conv = sphconv.Conv3d(in_channel, out_channel, 3, padding=0).cuda()
+        conv.weight = torch.nn.Parameter(torch.ones(out_channel, in_channel, 3, 3, 3).cuda())
+        conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
+        conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
+
+        loop_time = 10
+
+        with torch.no_grad():
+            res_ref: spconv.SparseConvTensor = conv_ref(input_spconv)
+            total_time = 0
+            for i in range(loop_time):
+                t_start = time.time()
+                res_ref_dense = res_ref.dense()
+                torch.cuda.synchronize()
+                t_end = time.time()
+                total_time += t_end - t_start
+
+            print("spconv to_dense time : ", total_time / loop_time, "s")
+
+        with torch.no_grad():
+            res: RangeVoxel = conv(rangeV)
+            total_time = 0
+            for i in range(loop_time):
+                t_start = time.time()
+                res_dense = res.dense()
+                torch.cuda.synchronize()
+                t_end = time.time()
+                total_time += t_end - t_start
+
+            print("sphconv to_dense time : ", total_time / loop_time, "s")
+
+        print("number of non empty voxels = ", len(input_spconv.indices))
+
+        # res_ref_dense = res_ref.dense()
+        # res_dense = res.dense()
+        # self.assertTrue(check_equal(res_ref_dense, res_dense, verbose=False))
+        self.assertTrue(True)
+
+
 class TestBackward(unittest.TestCase):
     def test1(self):
         # test d_feature

@@ -20,7 +20,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("get_indice_pairs_subm", &sphconv::get_indice_pairs_subm, "");
     m.def("indice_conv", &sphconv::indice_conv, "");
     m.def("indice_conv_gemm", &sphconv::indice_conv_gemm, "");
-    m.def("conv_backward", &sphconv::indice_conv_backward, "conv backward (CUDA)");
-    m.def("conv_backward_gemm", &sphconv::indice_conv_backward_gemm, "conv backward (CUDA)");
+    m.def("conv_backward", &sphconv::indice_conv_backward, "");
+    m.def("conv_backward_gemm", &sphconv::indice_conv_backward_gemm, "");
+    m.def("to_dense", &sphconv::to_dense, "");
 }
 

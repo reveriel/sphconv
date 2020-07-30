@@ -1196,4 +1196,84 @@ indice_conv_backward(torch::Tensor feature,
   return {d_feature, d_weight};
 }
 
+
+template<typename Index>
+__global__ void to_dense_kernel(
+    const torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
+  feature,
+    const torch::PackedTensorAccessor32<Index , 4, RestrictPtrTraits>
+  depth,
+    const torch::PackedTensorAccessor32<Index , 3, RestrictPtrTraits>
+  thick,
+    torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
+  buffer,
+  int N, int C,
+  int H, int W
+)
+{
+  for (int x = threadIdx.x + blockDim.x * blockIdx.x;
+       x < H; x += blockDim.x * gridDim.x)
+  {
+    for (int y = threadIdx.y + blockDim.y * blockIdx.y;
+         y < W; y += blockDim.y * gridDim.y)
+    {
+
+      for (int b = 0; b < N; b++)
+      {
+        for (int t = 0; t < thick[b][x][y]; t++)
+        {
+          Index z = depth[b][t][x][y];
+
+          for (int c = threadIdx.z; c < C; c += blockDim.z)
+          {
+            buffer[b][c][z][x][y] = feature[b][c][t][x][y];
+          }
+        }
+      }
+    }
+  }
+}
+
+torch::Tensor
+to_dense(torch::Tensor feature,
+         torch::Tensor depth,
+         torch::Tensor thick,
+         int D)
+{
+  int N = feature.size(0);
+  int C = feature.size(1);
+  int H = feature.size(3);
+  int W = feature.size(4);
+
+  auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
+  torch::Tensor buffer = torch::zeros({N, C, D, H, W}, options);
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+  // choose C_BLOCK
+  int C_BLOCK = 4;
+  if (C > 4 && C <= 8) {
+    C_BLOCK = 8;
+  } else if (C <= 16) {
+    C_BLOCK = 16;
+  } else {
+    C_BLOCK = 32;
+  }
+
+  dim3 grid_size, block_size;
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
+  block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+
+  to_dense_kernel<int32_t><<<grid_size, block_size>>>(
+      feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      depth.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+      thick.packed_accessor32<int32_t, 3, RestrictPtrTraits>(),
+      buffer.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      N, C, H, W);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+  return buffer;
+}
+
 } // namespace sphconv
