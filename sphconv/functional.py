@@ -109,3 +109,20 @@ class ConvFunction(torch.autograd.Function):
         # should match the input of forward
         return d_feature, d_weight, None, None, None, None, None, None, None, None, None, None
 
+
+class ToDenseFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, feature, depth, thick, D):
+        ctx.T = feature.size(2)
+        ctx.save_for_backward(depth, thick)
+        dense = sphconv_cuda.to_dense(feature, depth, thick, D)
+        return dense
+
+    @staticmethod
+    def backward(ctx, d_featureOut):
+        # print("d_featureOut = ", d_featureOut)
+        depth, thick = ctx.saved_tensors
+        # print("func depth = ", depth)
+        # print("func thick = ", thick)
+        d_feature = sphconv_cuda.to_dense_backward(d_featureOut, depth, thick, ctx.T)
+        return d_feature, None, None, None

@@ -1,5 +1,6 @@
 import torch
 import sphconv_cuda
+from sphconv.functional import ToDenseFunction
 
 class RangeVoxel(object):
     """ Voxels like RangeImage
@@ -64,7 +65,8 @@ def to_dense(feature, depth, thick, D, device=None):
         where D = max_depth
 
     """
-    return sphconv_cuda.to_dense(feature, depth, thick, D)
+
+    return ToDenseFunction.apply(feature, depth, thick, D)
 
 def check_size(shape, feature_shape, depth_shape, thick_shape):
     B, C, D, H, W = shape

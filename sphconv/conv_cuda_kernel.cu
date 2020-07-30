@@ -845,11 +845,11 @@ indice_conv_gemm(torch::Tensor feature,
 
   // choose C_BLOCK
   int C_BLOCK = 4;
-  if (oC > 4 && oC <= 8) {
+  if (C > 4 && C <= 8) {
     C_BLOCK = 8;
-  } else if (oC <= 16) {
-    C_BLOCK = 16;
-  } else {
+  } else if (C > 8 && C <= 16) {
+     C_BLOCK = 16;
+  } else if (C > 16) {
     C_BLOCK = 32;
   }
 
@@ -964,9 +964,9 @@ indice_conv_backward_gemm(torch::Tensor feature,
   int C_BLOCK = 4;
   if (oC > 4 && oC <= 8) {
     C_BLOCK = 8;
-  } else if (oC <= 16) {
-    C_BLOCK = 16;
-  } else {
+  } else if (oC > 8 && oC <= 16) {
+     C_BLOCK = 16;
+  } else if (oC > 16) {
     C_BLOCK = 32;
   }
 
@@ -1078,11 +1078,11 @@ indice_conv(torch::Tensor feature,
 
   // choose C_BLOCK
   int C_BLOCK = 4;
-  if (oC > 4 && oC <= 8) {
+  if (C > 4 && C <= 8) {
     C_BLOCK = 8;
-  } else if (oC <= 16) {
-    C_BLOCK = 16;
-  } else {
+  } else if (C > 8 && C <= 16) {
+     C_BLOCK = 16;
+  } else if (C > 16) {
     C_BLOCK = 32;
   }
 
@@ -1162,9 +1162,9 @@ indice_conv_backward(torch::Tensor feature,
   int C_BLOCK = 4;
   if (oC > 4 && oC <= 8) {
     C_BLOCK = 8;
-  } else if (oC <= 16) {
-    C_BLOCK = 16;
-  } else {
+  } else if (oC > 8 && oC <= 16) {
+     C_BLOCK = 16;
+  } else if (oC > 16) {
     C_BLOCK = 32;
   }
 
@@ -1234,6 +1234,47 @@ __global__ void to_dense_kernel(
   }
 }
 
+
+template<typename Index>
+__global__ void to_dense_backward_kernel(
+    const torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
+  d_featureOut,
+    const torch::PackedTensorAccessor32<Index , 4, RestrictPtrTraits>
+  depth,
+    const torch::PackedTensorAccessor32<Index , 3, RestrictPtrTraits>
+  thick,
+    torch::PackedTensorAccessor32<float , 5, RestrictPtrTraits>
+  d_feature,
+  int N, int C,
+  int H, int W
+)
+{
+  for (int x = threadIdx.x + blockDim.x * blockIdx.x;
+       x < H; x += blockDim.x * gridDim.x)
+  {
+    for (int y = threadIdx.y + blockDim.y * blockIdx.y;
+         y < W; y += blockDim.y * gridDim.y)
+    {
+
+      for (int b = 0; b < N; b++)
+      {
+        for (int t = 0; t < thick[b][x][y]; t++)
+        {
+
+          Index z = depth[b][t][x][y];
+
+          for (int c = threadIdx.z; c < C; c += blockDim.z)
+          {
+            d_feature[b][c][t][x][y] = d_featureOut[b][c][z][x][y];
+          }
+
+        }
+      }
+    }
+  }
+}
+
+
 torch::Tensor
 to_dense(torch::Tensor feature,
          torch::Tensor depth,
@@ -1253,9 +1294,9 @@ to_dense(torch::Tensor feature,
   int C_BLOCK = 4;
   if (C > 4 && C <= 8) {
     C_BLOCK = 8;
-  } else if (C <= 16) {
-    C_BLOCK = 16;
-  } else {
+  } else if (C > 8 && C <= 16) {
+     C_BLOCK = 16;
+  } else if (C > 16) {
     C_BLOCK = 32;
   }
 
@@ -1274,6 +1315,49 @@ to_dense(torch::Tensor feature,
   gpuErrchk(cudaDeviceSynchronize());
 
   return buffer;
+}
+
+torch::Tensor
+to_dense_backward(torch::Tensor d_featureOut,
+                  torch::Tensor depth,
+                  torch::Tensor thick,
+                  int T)
+{
+
+  int N = d_featureOut.size(0);
+  int C = d_featureOut.size(1);
+  int H = d_featureOut.size(3);
+  int W = d_featureOut.size(4);
+
+  const int H_BLOCK = 4, W_BLOCK = 4;
+  // choose C_BLOCK
+  int C_BLOCK = 4;
+  if (C > 4 && C <= 8) {
+    C_BLOCK = 8;
+  } else if (C > 8 && C <= 16) {
+     C_BLOCK = 16;
+  } else if (C > 16) {
+    C_BLOCK = 32;
+  }
+
+  dim3 grid_size, block_size;
+  grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
+  block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+
+  auto options = torch::TensorOptions().dtype(d_featureOut.dtype()).device(d_featureOut.device());
+  auto d_feature = torch::zeros({N,C,T,H,W} , options);
+
+  to_dense_backward_kernel<int32_t><<<grid_size, block_size>>>(
+      d_featureOut.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      depth.packed_accessor32<int32_t, 4, RestrictPtrTraits>(),
+      thick.packed_accessor32<int32_t, 3, RestrictPtrTraits>(),
+      d_feature.packed_accessor32<float, 5, RestrictPtrTraits>(),
+      N, C, H, W);
+
+  gpuErrchk(cudaPeekAtLastError());
+  gpuErrchk(cudaDeviceSynchronize());
+
+  return d_feature;
 }
 
 } // namespace sphconv

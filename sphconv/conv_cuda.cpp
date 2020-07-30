@@ -23,5 +23,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("conv_backward", &sphconv::indice_conv_backward, "");
     m.def("conv_backward_gemm", &sphconv::indice_conv_backward_gemm, "");
     m.def("to_dense", &sphconv::to_dense, "");
+    m.def("to_dense_backward", &sphconv::to_dense_backward, "");
 }
 
