@@ -28,6 +28,7 @@ using torch::RestrictPtrTraits;
 
 namespace sphconv {
 
+const int H_BLOCK = 4, W_BLOCK = 4;
 
 ///////////////////////////////////////////////////////////////////
 // get indice pairs kernels
@@ -62,7 +63,7 @@ __global__ void get_indice_pairs_kernel_1(
   Index y = threadIdx.y + blockDim.y * blockIdx.y;
   Index k = threadIdx.z + blockDim.z * blockIdx.z;
 
-  if (x >= H || y >= W ) return;
+  if (x >= H || y >= W) return;
 
   Index k_D = k / (KH * KW);
   Index k_H = (k / KW) % KH;
@@ -439,7 +440,6 @@ get_indice_pairs(torch::Tensor depth,
   oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
   int oT_MAX = T * 27;
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
@@ -572,7 +572,6 @@ get_indice_pairs_subm(torch::Tensor depth,
   oH = H;
   oW = W;
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
@@ -835,7 +834,6 @@ indice_conv_gemm(torch::Tensor feature,
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
 
   int kernel_volume = KD * KH * KW;
 
@@ -944,7 +942,6 @@ indice_conv_backward_gemm(torch::Tensor feature,
   int KH = weight.size(3);
   int KW = weight.size(4);
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
@@ -1068,8 +1065,6 @@ indice_conv(torch::Tensor feature,
   int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
   int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
-
   int kernel_volume = KD * KH * KW;
 
   // the output RangeVoxel
@@ -1145,8 +1140,6 @@ indice_conv_backward(torch::Tensor feature,
   KH = weight.size(3);
   KW = weight.size(4);
 
-
-  const int H_BLOCK = 4, W_BLOCK = 4;
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
@@ -1289,7 +1282,6 @@ to_dense(torch::Tensor feature,
   auto options = torch::TensorOptions().dtype(feature.dtype()).device(feature.device());
   torch::Tensor buffer = torch::zeros({N, C, D, H, W}, options);
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
   // choose C_BLOCK
   int C_BLOCK = 4;
   if (C > 4 && C <= 8) {
@@ -1329,7 +1321,6 @@ to_dense_backward(torch::Tensor d_featureOut,
   int H = d_featureOut.size(3);
   int W = d_featureOut.size(4);
 
-  const int H_BLOCK = 4, W_BLOCK = 4;
   // choose C_BLOCK
   int C_BLOCK = 4;
   if (C > 4 && C <= 8) {
