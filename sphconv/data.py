@@ -112,7 +112,7 @@ def xyz2RangeVoxel(points,
     # later points seems to be with bigger z, not universaly correct
     feature = torch.zeros((1, Channel, 1, v_res, h_res))
     for i in range(0, Channel):
-        feature[0, i, 0, theta_idx, phi_idx] = torch.from_numpy(points[:, 0])
+        feature[0, i, 0, theta_idx, phi_idx] = torch.from_numpy(points[:, i])
 
     # TODO, what about default depth ?
     # maybe we should ignore them / or use neigbour points' depth?
