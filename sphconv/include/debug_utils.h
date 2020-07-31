@@ -33,7 +33,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
   (threadIdx.x  == thread_x && threadIdx.y == thread_y && threadIdx.z == thread_z \
   && blockIdx.x == block_x && blockIdx.y == block_y && blockIdx.z == block_z)
 
-int divUp(int x, int y) { return (x + y - 1) / y; };
+inline int divUp(int x, int y) { return (x + y - 1) / y; };
 
 
 template <typename Index>

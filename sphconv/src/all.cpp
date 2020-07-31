@@ -4,7 +4,9 @@
 #include <iostream>
 #include <vector>
 
-#include "conv_cuda.h"
+#include "indice.h"
+#include "indice_conv.h"
+#include "to_dense.h"
 
 // NOTE: AT_ASSERT has become AT_CHECK on master after 0.4.
 #define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")

@@ -449,7 +449,7 @@ class TestForward(unittest.TestCase):
         conv_ref = spconv.SparseConv3d(in_channel, out_channel, 3, bias=False).cuda()
         conv_ref.weight = torch.nn.Parameter(torch.ones(3, 3, 3, in_channel, out_channel).cuda())
 
-        loop_time = 10
+        loop_time = 100
 
         with torch.no_grad():
             total_time = 0

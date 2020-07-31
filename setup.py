@@ -23,11 +23,14 @@ setup(
         CUDAExtension(
             name='sphconv_cuda',
             sources=[
-                'sphconv/conv_cuda.cpp',
-                'sphconv/conv_cuda_kernel.cu',
+                'sphconv/src/all.cpp',
+                'sphconv/src/indice_conv.cu',
+                'sphconv/src/indice.cu',
+                'sphconv/src/to_dense.cu',
             ],
             extra_compile_args={
-                'cxx': [ '-O3' ],
+                'cxx': [ '-O3',
+                '-I./sphconv/include' ],
                 'nvcc':[
                     '-O3',
                     # '-fPIC',
@@ -38,6 +41,7 @@ setup(
                     # '-DDEBUG',
                     # '-g',
                     '-gencode', 'arch=compute_75,code=sm_75',
+                    '-I./sphconv/include',
                     '-I./cutlass/include',
                     '-U__CUDA_NO_HALF_OPERATORS__',
                     '-U__CUDA_NO_HALF_CONVERSIONS__',

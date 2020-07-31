@@ -2,6 +2,7 @@
     "python.pythonPath": "/home/user/anaconda3/envs/sphconv/bin/python",
     "files.associations": {
         "bitset": "cpp",
-        "*.cu": "cpp"
+        "*.cu": "cpp",
+        "vector": "cpp"
     }
 }
