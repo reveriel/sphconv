@@ -2,6 +2,7 @@ dataset
 dataset/
 *.nsight-cuprof-report
 *.ncu-rep
+**/objs/
 
 .vscode/
 build/

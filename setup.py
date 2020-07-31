@@ -9,50 +9,35 @@ import glob
 
 # subprocess.run(["git", "submodule", "update", "--init", "sphconv/cutlass"])
 
-library_dirs = [CUDNN_LIB_DIR]
-include_dirs = [CUDNN_INCLUDE_DIR]
+os.system('make -j%d' % os.cpu_count())
 
 setup(
     name='sphconv',
-    version='0.1.1',
-    author='Guo.Xing.',
-    author_email='reveriel@hotmail.com',
+    version='0.1.4',
+    install_requires=['torch'],
     setup_requires = ['torch>=1.3.0'],
     packages=['sphconv'],
+    package_dir={'sphconv': './sphconv'},
     ext_modules=[
         CUDAExtension(
             name='sphconv_cuda',
+            include_dirs=['./', 'sphconv/include'],
             sources=[
-                'sphconv/src/all.cpp',
-                'sphconv/src/indice_conv.cu',
-                'sphconv/src/indice.cu',
-                'sphconv/src/to_dense.cu',
+                'sphconv/src/all.cpp'
             ],
-            extra_compile_args={
-                'cxx': [ '-O3',
-                '-I./sphconv/include' ],
-                'nvcc':[
-                    '-O3',
-                    # '-fPIC',
-                    #  '--compiler-options',
-                    #  '"-fPIC -Wall -O2"',
-                     '--shared',
-                    '-lineno',
-                    # '-DDEBUG',
-                    # '-g',
-                    '-gencode', 'arch=compute_75,code=sm_75',
-                    '-I./sphconv/include',
-                    '-I./cutlass/include',
-                    '-U__CUDA_NO_HALF_OPERATORS__',
-                    '-U__CUDA_NO_HALF_CONVERSIONS__',
-                    '--expt-relaxed-constexpr',
-                    '--expt-extended-lambda',
-                    '--use_fast_math']},
-            library_dirs=library_dirs,
-            include_dirs=include_dirs,
-            extra_link_args=['-lcudnn']
-        ),
+            libraries=['make_pytorch'],
+            library_dirs=['objs'],
+            # extra_compile_args=['-g']
+            extra_link_args=[
+                '-L./sphconv/objs/'
+            ]
+        )
     ],
-    cmdclass={
-        'build_ext': BuildExtension
-    })
+    cmdclass={'build_ext': BuildExtension},
+    author='Guo.Xing.',
+    author_email='reveriel@hotmail.com',
+    description='hh',
+    keywords='',
+    url='https://github.com/reveriel/sphconv',
+    zip_safe=False,
+)
