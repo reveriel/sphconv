@@ -21,7 +21,7 @@ setup(
     ext_modules=[
         CUDAExtension(
             name='sphconv_cuda',
-            include_dirs=['./', 'sphconv/include'],
+            include_dirs=['./', os.getcwd()+'/sphconv/include'],
             sources=[
                 'sphconv/src/all.cpp'
             ],
