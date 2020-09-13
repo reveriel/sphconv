@@ -157,6 +157,7 @@ class Conv3d(Convolution):
                 in_rules, out_rules, num_in)
 
         oT = new_depth.size(1)
+        # print("oT =", oT);
         feature  = ConvFunction.apply(
             input.feature,
             self.weight,
@@ -173,3 +174,11 @@ class Conv3d(Convolution):
             self.subm)
 
         return RangeVoxel(feature, new_depth, new_thick, shape=new_shape)
+
+# for compatible with spconv
+SparseConv3d = Conv3d
+
+
+class SubMConv3d(Conv3d):
+    def __init__(self, in_channels, out_channels, kernel_size, **kwargs) :
+        super(SubMConv3d, self).__init__(in_channels, out_channels, kernel_size, subm=True, **kwargs)
