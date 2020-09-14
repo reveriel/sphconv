@@ -34,6 +34,8 @@ def _mean_update(vals, m_vals, t):
 class SphModule(nn.Module):
     """ place holder, all module subclass from this will take sptensor in SparseSequential.
     """
+    def __init__(self, **kwargs):
+        super(SphModule, self).__init__(**kwargs)
     pass
 
 
@@ -123,3 +125,7 @@ class Sequential(SphModule):
                 else:
                     input = module(input)
         return input
+
+
+# compatible with spconv
+SparseSequential = Sequential

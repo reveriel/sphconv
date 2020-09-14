@@ -180,5 +180,12 @@ SparseConv3d = Conv3d
 
 
 class SubMConv3d(Conv3d):
-    def __init__(self, in_channels, out_channels, kernel_size, **kwargs) :
-        super(SubMConv3d, self).__init__(in_channels, out_channels, kernel_size, subm=True, **kwargs)
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, padding=1, dilation=1, groups=1,
+                 bias=False, subm=False, indice_key=None,
+                 **kwargs):
+        super(SubMConv3d, self).__init__(in_channels,
+                                         out_channels, kernel_size, subm=True,
+                                         stride=stride, padding=padding, dilation=dilation, groups=groups,
+                                         bias=bias, indice_key=indice_key,
+                                         **kwargs)
