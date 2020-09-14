@@ -17,9 +17,9 @@ class Convolution(SphModule):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride, padding, dilation, groups,
-                 bias, subm,
-                 indice_key=None):
-        super(SphModule, self).__init__()
+                 bias, subm, name,
+                 indice_key=None, **kwargs):
+        super(SphModule, self).__init__(**kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -31,6 +31,7 @@ class Convolution(SphModule):
         self.groups = groups
         self.subm = subm
         self.indice_key = indice_key
+        self.name = name
 
         self.weight = nn.Parameter(
             torch.Tensor(out_channels, in_channels, *kernel_size))
@@ -72,7 +73,7 @@ class Conv3d(Convolution):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=1, dilation=1, groups=1,
-                 bias=False, subm=False, indice_key=None):
+                 bias=False, subm=False, indice_key=None, name=None, **kwargs):
         """
         Args:
         ----
@@ -103,7 +104,7 @@ class Conv3d(Convolution):
 
         super(Conv3d, self).__init__(
             in_channels, out_channels, kernel_size, stride, padding, dilation,
-            groups, bias, subm, indice_key=indice_key)
+            groups, bias, subm, name, indice_key=indice_key, **kwargs)
 
     def forward(self, input: RangeVoxel):
 
