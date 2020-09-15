@@ -398,4 +398,45 @@ indice_conv_backward(torch::Tensor feature,
   return {d_feature, d_weight};
 }
 
+
+std::vector<torch::Tensor>
+indice_conv_tiled(torch::Tensor feature,
+            torch::Tensor weight,
+            torch::Tensor InRuleMap,
+            torch::Tensor OutRuleMap,
+            torch::Tensor NumIn,
+            //  torch::Tensor bias,
+            int oT,
+            int sD, int sH, int sW,
+            int padD, int padH, int padW,
+            int dD, int dH, int dW,
+            int groups)
+{
+
+  int N, C, H, W, oC, KD, KH, KW;
+  N = feature.size(0);
+  C = feature.size(1);
+  H = feature.size(3);
+  W = feature.size(4);
+  oC = weight.size(0);
+  KD = weight.size(2);
+  KH = weight.size(3);
+  KW = weight.size(4);
+
+  int oH = std::floor((H + 2 * padH - dH * (KH - 1) - 1) / sH + 1);
+  int oW = std::floor((W + 2 * padW - dW * (KW - 1) - 1) / sW + 1);
+
+  int kernel_volume = KD * KH * KW;
+
+
+
+
+  // the output RangeVoxel
+  auto new_feature = torch::zeros({N, oC, oT, oH, oW},
+                   torch::dtype(torch::kFloat32).device(torch::kCUDA, 0));
+
+
+  return {new_feature};
+}
+
 } // namespace sphconv

@@ -23,6 +23,7 @@ INCLUDE_DIRS := ./ $(CUDA_DIR)/include
 INCLUDE_DIRS += $(PYTHON_HEADER_DIR)
 INCLUDE_DIRS += $(PYTORCH_INCLUDES)
 INCLUDE_DIRS += ./sphconv/include
+INCLUDE_DIRS += ./sphconv/cutlass/include
 
 # Custom (MKL/ATLAS/OpenBLAS) include and lib directories.
 # Leave commented to accept the defaults for your choice of BLAS
