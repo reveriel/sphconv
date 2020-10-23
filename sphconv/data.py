@@ -120,7 +120,8 @@ def xyz2RangeVoxel(points,
     depth = torch.zeros((1, 1, v_res, h_res), dtype=torch.int32)
     depth[0, 0, theta_idx, phi_idx] = torch.from_numpy(depth_idx.astype(np.int32))
 
-    thick = torch.ones((1, v_res, h_res), dtype=torch.int32)
+    thick = torch.zeros((1, v_res, h_res), dtype=torch.int32)
+    thick[0, theta_idx, phi_idx] = 1
 
     return RangeVoxel(feature, depth, thick, shape=(1, Channel, d_res, v_res, h_res))
 

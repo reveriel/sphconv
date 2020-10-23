@@ -9,6 +9,7 @@
 #include "indice.cu.h"
 #include "indice_conv.cu.h"
 #include "reorder.cu.h"
+#include "timer.h"
 
 using torch::RestrictPtrTraits;
 
@@ -28,6 +29,11 @@ indice_conv_gemm(torch::Tensor feature,
                  int dD, int dH, int dW,
                  int groups)
 {
+  double totalInitTime = 0;
+  double totalGatherTime = 0;
+  double totalGEMMTime = 0;
+  double totalSAddTime = 0;
+
   int N = feature.size(0);
   int C = feature.size(1);
   int T = feature.size(2);
@@ -59,6 +65,8 @@ indice_conv_gemm(torch::Tensor feature,
     C_BLOCK = 32;
   }
 
+  auto timer = CudaContextTimer<>();
+
   dim3 grid_size, block_size;
   grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
   block_size = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
@@ -80,6 +88,8 @@ indice_conv_gemm(torch::Tensor feature,
     inputBufferGemm.fill_(0);
     outputBufferGemm.fill_(0);
 
+    totalInitTime += timer.report() / 1000.;
+
     gather_kernel<int32_t><<<grid_size, block_size>>>(
         feature_.packed_accessor32<float, 5, RestrictPtrTraits>(),
         InRuleMap.packed_accessor32<int32_t, 5, RestrictPtrTraits>(),
@@ -89,6 +99,7 @@ indice_conv_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+    totalGatherTime += timer.report() / 1000.;
 
     // std::cout << "inputBuffer = " << inputBuffer << std::endl;
     // std::cout << "inputbuffergemm = " << inputbuffergemm << std::endl;
@@ -98,6 +109,7 @@ indice_conv_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+    totalGEMMTime += timer.report() / 1000.;
     // std::cout << "outputBuffer = " << outputBuffer << std::endl;
     // std::cout << "outputBufferGemm = " << outputBufferGemm << std::endl;
 
@@ -115,10 +127,17 @@ indice_conv_gemm(torch::Tensor feature,
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    // std::cout << "output = " << output << std::endl;
+    totalSAddTime += timer.report() / 1000.;
 
   }
   new_feature = output.permute({0, 4, 1, 2, 3}).contiguous();
+  double permuteTime = timer.report() / 1000.;
+
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "init", totalInitTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "gather", totalGatherTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "GEMM", totalGEMMTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "sadd", totalSAddTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "permute", permuteTime);
 
   return {new_feature};
 }

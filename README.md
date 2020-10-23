@@ -94,5 +94,7 @@ lidar coordinate
 
 ## TODO
 
-[ ] Tiled
-[ ] to_dense, optimize
+- [ ] Tiled
+- [x] to_dense, optimize
+- [ ] multi GPU support
+

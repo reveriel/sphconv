@@ -4,10 +4,18 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 #include "indice.cu.h"
+#include "timer.h"
+
+using namespace std;
 
 namespace sphconv {
 
 const int H_BLOCK = 4, W_BLOCK = 8;
+
+static inline void report_time(const char *func, const char *event, CudaContextTimer<> &timer)
+{
+  // printf("%s:%s  %.3f\n", func, event, timer.report() / 1000.0);
+}
 
 ///////
 // return {new_depth, new_thick, InRuleMap, OutRuleMap, NumIn};
@@ -22,6 +30,7 @@ get_indice_pairs(torch::Tensor depth,
                  int dD, int dH, int dW,
                  int groups)
 {
+  auto timer = CudaContextTimer<>();
   // assume we want to have each block to calcultate T output elements
   // (T + k - 1)^* inpuut elements are neededd ,
 
@@ -42,15 +51,10 @@ get_indice_pairs(torch::Tensor depth,
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
-  at::Tensor new_depth, new_thick;
-
-  // output tensor
-  // int oT = T + 8 ; // This is bad
-  // oT = T * 3 * 9; // This is even worse
-
-  new_depth = torch::zeros(
+  auto new_depth = torch::zeros(
       {N, oT_MAX, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
-  new_thick = torch::zeros(
+
+  auto new_thick = torch::zeros(
       {N, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   // count number of valid input voxel at (b,k,x,y)
@@ -68,6 +72,8 @@ get_indice_pairs(torch::Tensor depth,
   // the output thick + 1 at output coordinate, (b, oX, oY, oZ)
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
+
+  report_time(__FUNCTION__, "init", timer);
 
   const int oH_BLOCK = 8, oW_BLOCK = 32;
 
@@ -94,6 +100,8 @@ get_indice_pairs(torch::Tensor depth,
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
+  report_time(__FUNCTION__, "phase1", timer);
+
   printTensor_int(NumIn, "NumIn", 0, 0, H, 0, W);
   printTensor_k_int(InRuleMap, "InRuleMap", 0, 0, H, 0, W);
   printTensor_k_int(OutRuleMap, "OutRuleMap", 0, 0, H, 0, W);
@@ -111,6 +119,8 @@ get_indice_pairs(torch::Tensor depth,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  report_time(__FUNCTION__, "phase2", timer);
 
   printTensor_int(new_depth, "new_depth", 0, 0, oH, 0, oW);
   printTensor_int(new_thick, "new_thick", 0, 0, oH, 0, oW);
@@ -132,6 +142,7 @@ get_indice_pairs(torch::Tensor depth,
     dH, dW,
     oH, oW);
 
+  report_time(__FUNCTION__, "phase3", timer);
 
   int oT = torch::max(new_thick).item<int>();
   // only supported in pytorch 1.5
@@ -139,9 +150,12 @@ get_indice_pairs(torch::Tensor depth,
   new_depth = new_depth.narrow(1, 0, oT).contiguous();
 
   // printf(" oT / oT_MAX = %d / %d\n", oT, oT_MAX );
+  // printf("thickness: iT = %d, oT = %d, fullness = %.3lf\n", T, oT, ((double)N * oT * oH * oW) / torch::sum(new_thick).item<int>());
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  report_time(__FUNCTION__, "phase4", timer);
 
   printTensor_k_int(OutRuleMap, "OutRuleMap after k3", 0, 0, H, 0, W);
 
@@ -161,6 +175,8 @@ get_indice_pairs_subm(torch::Tensor depth,
                       int dD, int dH, int dW,
                       int groups)
 {
+  auto timer = CudaContextTimer<>();
+
   int N = depth.size(0);
   int T = depth.size(1);
   int H = depth.size(2);
@@ -174,7 +190,6 @@ get_indice_pairs_subm(torch::Tensor depth,
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
-  at::Tensor new_depth, new_thick;
 
   // count number of valid input voxel at (b,k,x,y)
   auto NumIn = torch::zeros({N, kernel_volume, H, W},
@@ -192,6 +207,8 @@ get_indice_pairs_subm(torch::Tensor depth,
   auto CompactMap = torch::full({N, oH, oW, oD}, 0,
                   torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
+  report_time(__FUNCTION__, "init", timer);
+
   grid_size = dim3(divUp(H, H_BLOCK * 4), divUp(W, W_BLOCK * 4), 1);
   block_size = dim3(H_BLOCK * 4, W_BLOCK * 4, 1);
   get_indice_pairs_subm_kernel_1<int32_t><<<grid_size, block_size>>>(
@@ -202,6 +219,8 @@ get_indice_pairs_subm(torch::Tensor depth,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  report_time(__FUNCTION__, "phase1", timer);
 
   grid_size = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK));
   block_size = dim3(H_BLOCK, W_BLOCK, kernel_volume);
@@ -222,6 +241,8 @@ get_indice_pairs_subm(torch::Tensor depth,
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
+
+  report_time(__FUNCTION__, "phase2 ", timer);
 
   return {depth, thick, InRuleMap, OutRuleMap, NumIn};
 }
