@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 import torch
 from torch import nn
+from torch.cuda import nvtx
 import time
 import sys
 
@@ -111,7 +112,14 @@ class Sequential(SphModule):
         for k, module in self._modules.items():
             if is_sph_module(module):
                 assert isinstance(input, sphconv.RangeVoxel)
+                if isinstance(module, sphconv.SubMConv3d):
+                    nvtx.range_push("SubMConv3d:{}".format(k))
+                elif isinstance(module, sphconv.Conv3d):
+                    nvtx.range_push("Conv3d:{}".format(k))
+                else:
+                    nvtx.range_push("layer:{}".format(k))
                 input = module(input)
+                nvtx.range_pop()
             else:
                 if isinstance(input, sphconv.RangeVoxel):
                     batch_size = input.feature.size(0)
