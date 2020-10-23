@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
 
 import sphconv
 import sphconv_cuda
@@ -107,7 +108,8 @@ class Conv3d(Convolution):
             groups, bias, subm, name, indice_key=indice_key, **kwargs)
 
     def forward(self, input: RangeVoxel):
-
+        torch.cuda.synchronize();
+        start_time = time.time();
         batch_size, inChannel, iD, iH, iW = input.shape
         iT = input.feature.size(2)
 
@@ -130,6 +132,7 @@ class Conv3d(Convolution):
             new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
         datas = input.find_indice_pair(self.indice_key)
+        # print("========== found in  dicts ===========")
         if self.indice_key is not None and datas is not None:
             new_depth, new_thick, in_rules, out_rules, num_in = datas
         else: # not found, compute it
@@ -154,14 +157,23 @@ class Conv3d(Convolution):
                         *self.padding,
                         *self.dilation,
                         self.groups)
-                # oT = new_depth.size(1)
-                # print("thickness: iT = {}, oT = {}, iFullness = {:.3f}, oFullness = {:.3f}, iEmpty = {}, oEmpty = {}".format(iT, oT,
-                #         input.thick.sum().item() / (batch_size * iT * iH * iW),
-                #         new_thick.sum().item() / (batch_size * oT * oH * oW),
-                #         batch_size * iT * iH * iW - input.thick.sum().item(),
-                #         batch_size * oT * oH * oW - new_thick.sum().item(),
-                #         flush=True
-                #         ))
+                oT = new_depth.size(1)
+            #     print("thickness: iT = {}, oT = {}, iFullness = {:.3f}, oFullness = {:.3f}, iEmpty = {}, oEmpty = {},"\
+            #           .format(iT, oT,
+            #             input.thick.sum().item() / (batch_size * iT * iH * iW),
+            #             new_thick.sum().item() / (batch_size * oT * oH * oW),
+            #             batch_size * iT * iH * iW - input.thick.sum().item(),
+            #             batch_size * oT * oH * oW - new_thick.sum().item(),
+            #             # num_in.sum().item() / input.thick.sum().item(),
+            #             flush=True
+            #             ))
+            # print("reuse: ReuseRate = {:.3f}\n".format(
+            #             num_in.sum().item() / input.thick.sum().item()))
+            # print("inputsize: size = {:.3f}\n".format(input.feature.element_size() * input.feature.nelement()
+            #                                         +input.depth.element_size() * input.depth.nelement()
+            #                                     +input.thick.element_size() * input.thick.nelement()
+            # ) )
+
             input.indice_dict[self.indice_key] = (new_depth, new_thick,
                 in_rules, out_rules, num_in)
 
@@ -182,6 +194,9 @@ class Conv3d(Convolution):
             oT,
             self.subm)
 
+
+        # torch.cuda.synchronize()
+        # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000  ))
         return RangeVoxel(feature, new_depth, new_thick, shape=new_shape)
 
 # for compatible with spconv
