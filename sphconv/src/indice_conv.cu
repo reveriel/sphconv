@@ -133,11 +133,11 @@ indice_conv_gemm(torch::Tensor feature,
   new_feature = output.permute({0, 4, 1, 2, 3}).contiguous();
   double permuteTime = timer.report() / 1000.;
 
-  printf("%s:%s  %.3f\n", __FUNCTION__, "init", totalInitTime);
-  printf("%s:%s  %.3f\n", __FUNCTION__, "gather", totalGatherTime);
-  printf("%s:%s  %.3f\n", __FUNCTION__, "GEMM", totalGEMMTime);
-  printf("%s:%s  %.3f\n", __FUNCTION__, "sadd", totalSAddTime);
-  printf("%s:%s  %.3f\n", __FUNCTION__, "permute", permuteTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "init", totalInitTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "gather", totalGatherTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "GEMM", totalGEMMTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "sadd", totalSAddTime);
+  // printf("%s:%s  %.3f\n", __FUNCTION__, "permute", permuteTime);
 
   return {new_feature};
 }

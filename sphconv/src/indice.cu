@@ -14,7 +14,7 @@ const int H_BLOCK = 4, W_BLOCK = 8;
 
 static inline void report_time(const char *func, const char *event, CudaContextTimer<> &timer)
 {
-  printf("%s:%s  %.3f\n", func, event, timer.report() / 1000.0);
+  // printf("%s:%s  %.3f\n", func, event, timer.report() / 1000.0);
 }
 
 ///////
