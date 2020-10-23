@@ -12,7 +12,7 @@ namespace sphconv {
 
 const int H_BLOCK = 4, W_BLOCK = 8;
 
-void report_time(const char *func, const char *event, CudaContextTimer<> &timer)
+static inline void report_time(const char *func, const char *event, CudaContextTimer<> &timer)
 {
   printf("%s:%s  %.3f\n", func, event, timer.report() / 1000.0);
 }
@@ -30,7 +30,7 @@ get_indice_pairs(torch::Tensor depth,
                  int dD, int dH, int dW,
                  int groups)
 {
-  static auto timer = CudaContextTimer<>();
+  auto timer = CudaContextTimer<>();
   // assume we want to have each block to calcultate T output elements
   // (T + k - 1)^* inpuut elements are neededd ,
 
@@ -51,11 +51,10 @@ get_indice_pairs(torch::Tensor depth,
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
-  at::Tensor new_depth, new_thick;
-
-  new_depth = torch::zeros(
+  auto new_depth = torch::zeros(
       {N, oT_MAX, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
-  new_thick = torch::zeros(
+
+  auto new_thick = torch::zeros(
       {N, oH, oW}, torch::dtype(torch::kInt32).device(torch::kCUDA, 0));
 
   // count number of valid input voxel at (b,k,x,y)
@@ -151,6 +150,7 @@ get_indice_pairs(torch::Tensor depth,
   new_depth = new_depth.narrow(1, 0, oT).contiguous();
 
   // printf(" oT / oT_MAX = %d / %d\n", oT, oT_MAX );
+  // printf("thickness: iT = %d, oT = %d, fullness = %.3lf\n", T, oT, ((double)N * oT * oH * oW) / torch::sum(new_thick).item<int>());
 
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
@@ -175,7 +175,7 @@ get_indice_pairs_subm(torch::Tensor depth,
                       int dD, int dH, int dW,
                       int groups)
 {
-  static auto timer = CudaContextTimer<>();
+  auto timer = CudaContextTimer<>();
 
   int N = depth.size(0);
   int T = depth.size(1);
@@ -190,7 +190,6 @@ get_indice_pairs_subm(torch::Tensor depth,
   auto kernel_volume = KD * KH * KW;
 
   dim3 grid_size, block_size;
-  at::Tensor new_depth, new_thick;
 
   // count number of valid input voxel at (b,k,x,y)
   auto NumIn = torch::zeros({N, kernel_volume, H, W},

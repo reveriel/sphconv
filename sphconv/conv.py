@@ -154,6 +154,14 @@ class Conv3d(Convolution):
                         *self.padding,
                         *self.dilation,
                         self.groups)
+                # oT = new_depth.size(1)
+                # print("thickness: iT = {}, oT = {}, iFullness = {:.3f}, oFullness = {:.3f}, iEmpty = {}, oEmpty = {}".format(iT, oT,
+                #         input.thick.sum().item() / (batch_size * iT * iH * iW),
+                #         new_thick.sum().item() / (batch_size * oT * oH * oW),
+                #         batch_size * iT * iH * iW - input.thick.sum().item(),
+                #         batch_size * oT * oH * oW - new_thick.sum().item(),
+                #         flush=True
+                #         ))
             input.indice_dict[self.indice_key] = (new_depth, new_thick,
                 in_rules, out_rules, num_in)
 
