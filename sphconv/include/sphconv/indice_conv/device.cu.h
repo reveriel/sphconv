@@ -167,8 +167,6 @@ class IndiceConv {
 
     cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
 
-    result = cuda
-
     result = cudaGetLastError();
 
     return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;

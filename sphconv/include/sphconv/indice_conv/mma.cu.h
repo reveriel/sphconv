@@ -3,34 +3,20 @@
 #include "cutlass/cutlass.h"
 #include "sphconv/sphconv.h"
 
-using cutlass::CUTLASS_DEVICE;
 namespace sphconv
 {
 
 namespace threadblock
 {
 
-struct SharedStorage {
-
-};
-
-template<typename A>
-struct PredicatedTileIterator{
-
-};
-
-SharedStorage
-template<typename A>
-struct FilterIterator {
-
-};
 
 /// Structure to compute the matrix product targeting CUDA cores and SIMT math
 /// instructions.
 template <
   typename Shape_,
-  typename Policy_,
-  int Stages >
+  typename Policy_
+  // int Stages
+  >
 class MmaBase {
   public:
   using Shape = Shape_;
@@ -48,10 +34,14 @@ class MmaBase {
   using WarpConv = typename Policy::Operator::Shape;
 
   /// Shape describing the number of warps filling the CTA
-  using WarpCount = GemmShape< >; // TODO
+  // the input is of shape B * T * H * W * C
+  //  gather,
+  //  get (B * T' * H * W) * C
+  // T' is dynamic,
+  using WarpCount = ?; // TODO
 
-  /// Number of stages
-  static int const kStages = Stages;
+  /// Number of warp-level GEMM operations
+  static int const kWarpGemmIterations = ?;
 
   /// Tensor I
   using TensorRefI = torch::PackedTensorAccessor32<ElementI, 5, torch::RestrictPtrTraits>;
@@ -83,6 +73,7 @@ class MmaBase {
     cutlass::AligendBuffer<typename Operator::ElementK, shapeK::kCount> operand_K;
 
   public:
+
     //
     // Methods
     //
@@ -136,7 +127,7 @@ template <
     typename Policy_,
     /// Number of stages
     int Stages>
-class MmaPipelined : public MmaBase<Shape_, Policy_, 2>
+class Mma: public MmaBase<Shape_, Policy_, 2>
 {
   ///< Base class
   using Base = MmaBase<Shape_, Policy_, 2>;
@@ -173,8 +164,8 @@ class MmaPipelined : public MmaBase<Shape_, Policy_, 2>
   /// Obtain the arch tag from the warp-level operator
   using ArchTag = typename Policy::Operator::ArchTag;
 
-  // staticaly assert kStages for MmaPipelined is two (Double-buffered pipeline)
-  static_assert((Base::kStages == 2), "MmaPipelined requires kStages set to value 2");
+  // staticaly assert kStages for Mma is two (Double-buffered pipeline)
+  // static_assert((Base::kStages == 2), "MmaPipelined requires kStages set to value 2");
 
 private:
   using WarpFragmentI = typename Operator::FragmentI;
@@ -182,16 +173,16 @@ private:
 
 protected:
   /// Iterator to write threadblock-scoped tile of A operand to shared memory
-  SmemIteratorA smem_iterator_A_;
+  SmemIteratorA smem_iterator_I_;
 
   /// Iterator to write threadblock-scoped tile of B operand to shared memory
-  SmemIteratorB smem_iterator_B_;
+  SmemIteratorB smem_iterator_K_;
 
 public:
 
   /// Contrcut from tensor referecnes
   CUTLASS_DEVICE
-  MmaPipelined(
+  Mma(
       typename Base::SharedStorage &shared_storage,
       int thread_idx,
       int warp_idx,
@@ -230,7 +221,7 @@ public:
     iterator_K.load(tb_frag_K);
 
     ++iterator_I;
-    ++iterator_B;
+    ++iterator_K;
 
   }
 };
@@ -247,7 +238,7 @@ struct Mma {
   using IteratorI = threadblock::PredicatedTileIterator<>;
   using IteratorK = threadblock::FilterIterator<>;
 
-  using ThreadblockMma = threadblock::MmaPipelined<>;
+  using ThreadblockMma = threadblock::Mma<>;
 
 };
 
