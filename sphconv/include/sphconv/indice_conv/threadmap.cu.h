@@ -27,9 +27,9 @@ struct TensorNTHWCThreadMap {
   /// Number of threads total
   static int const kThreads = Threads;
   static int const kElementsPerAccess = ElementsPerAccess;
-  /// shape of access per warp
+  /// shape of access by each thread
   //  B,T, H,W,C,
-  using ThreadAccessShape = cutlass::layout::PitchLinearShape<kElementsPerAccess, 1>; //
+  using ThreadAccessShape = cutlass::layout::PitchLinearShape<kElementsPerAccess, 1>;
   struct Detail {
     static_assert(!(Shape::kW * Shape::kC % kElementsPerAccess), "");
 

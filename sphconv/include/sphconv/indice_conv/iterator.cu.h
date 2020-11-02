@@ -109,7 +109,7 @@ private:
 
   TensorCoord extent_;
 
-  /// Inital oofset for each thread
+  /// Inital offset for each thread
   TensorCoord thread_offset_;
 
   /// Offset to the first steady-state tile
@@ -155,13 +155,13 @@ private:
 
           if (is_steady_state) {
             if (kAdvanceRank == 0) {
-              guard = (coord.strided() < extent_.strided());
+              guard = (coord.h() < extent_.h());
             } else {
-              guard = (coord.contiguous() < extent_.contiguous());
+              guard = (coord.w() < extent_.w());
             }
           } else {
-            guard = (coord.strided() < extent_.strided() &&
-                     coord.contiguous() < extent_.contiguous());
+            guard = (coord.h() < extent_.h() &&
+                     coord.w() < extent_.w());
           }
 
           int pred_idx = ts + c *  ThreadMap::ThreadAccessShape::kStrided + s * ThreadMap::Iterations::kContiguous *  ThreadMap::ThreadAccessShape::kStrided;
@@ -187,7 +187,7 @@ public:
     TensorCoord const &threadblock_offset)
     : params_(params),
     pointer_(pointer),
-    extentA_(extent),
+    extent_(extent),
     is_residue_tile_(true)
   {
     TensorCoord residue_extent;
@@ -202,7 +202,7 @@ public:
 
       // TODO !
       residue_offset_ = make_Coord(0, 0, 0, residue_size);
-      residue_extent = make_Coord( 0, 0, 0, extent_.w(),  extent_.strided());
+      residue_extent = make_Coord( 0, 0, 0, extent_.w(),  extent_.h());
     } else {
 
       //TODO
@@ -395,8 +395,8 @@ public:
   {
     // n t h w c
     AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
-    for (int n = 0; n < n_max ; ++n) {
-      for (int t = 0; t < t_max; ++t) {
+    for (int n = 0; n < extent_.n() ; ++n) {
+      for (int t = 0; t < extent_.t(); ++t) {
         CUTLASS_PRAGMA_UNROLL
         for (int h = 0; h < ThreadMap::Iterations::kH ; ++h) {
           CUTLASS_PRAGMA_UNROLL
@@ -409,7 +409,7 @@ public:
                   (c + ThreadMap::Iterations::kC *
                   (w +  ThreadMap::Iterations::kW *
                   (t + ThreadMap::Iterations::kH *
-                  (n + t_max))))
+                  (n + extent_.t()))));
                 address_iterator_.set_iteration_index(idx);
                 char const *byte_ptr =
                   reinterpret_cast<char const *>(address_iterator_.get()) + byte_offset;
@@ -445,8 +445,8 @@ public:
     address_iterator_.set_iteration_index(0);
     AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
     // n t h w c
-    for (int n = 0; n < n_max ; ++n) {
-      for (int t = 0; t < t_max ; ++t) {
+    for (int n = 0; n < extent_.n() ; ++n) {
+      for (int t = 0; t < extent_.t() ; ++t) {
         CUTLASS_PRAGMA_UNROLL
         for (int h = 0; h < ThreadMap::Iterations::kH ; ++h) {
           CUTLASS_PRAGMA_UNROLL
@@ -459,7 +459,7 @@ public:
                   (c + ThreadMap::Iterations::kC *
                   (w +  ThreadMap::Iterations::kW *
                   (t + ThreadMap::Iterations::kH *
-                  (n + t_max))))
+                  (n + extent_.t()))));
 
                 address_iterator_.set_iteration_index(idx);
 

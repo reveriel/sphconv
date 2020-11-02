@@ -4,7 +4,7 @@
 #include "cutlass/coord.h"
 
 #include "sphconv/sphconv.h"
-#include "sphconv/indice_conv/coord.h"
+#include "sphconv/indice_conv/coord.cu.h"
 
 namespace sphconv {
 
@@ -23,20 +23,22 @@ class TensorNTHWC {
 
 };
 
-template <int N,
-          int H,
+
+/// only H W C are const values
+template <int H,
           int W,
           int C>
 class TensorNTHWCShape
 {
 public:
-    static int const kN = N;
     static int const kH = H;
     static int const kW = W;
     static int const kC = C;
     // dynamic
+    int n;
     int t;
-    TensorNTHWCShape(int t_) : t(t_)  {}
+    TensorNTHWCShape(): t(0), n(0) {}
+    TensorNTHWCShape(int n_, int t_) : n(n_), t(t_) {}
 };
 
 
