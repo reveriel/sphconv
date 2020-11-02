@@ -1,6 +1,8 @@
 GTEST_DIR=../cutlass/build/_deps/googletest-src/googletest
 USER_DIR=.
-# CPPFLAGS += -isystem $(GTEST_DIR)/include
+CPPFLAGS += -isystem $(GTEST_DIR)/include
+
+DEBUG=1
 
 CXX := g++
 
@@ -55,7 +57,15 @@ CUDA_ARCH := -gencode arch=compute_75,code=sm_75
 		# -gencode arch=compute_75,code=sm_75
 
 # We will also explicitly add stdc++ to the link target.
-LIBRARIES += stdc++ cudart c10 caffe2 torch torch_python caffe2_gpu
+LIBRARIES += stdc++ cudart c10 torch torch_python
+# caffe2_gpu  caff2
+
+# from torch.utils.cpp_extension import library_paths give empty results
+# use absolute path
+# this is bad
+LDFLAGS += -L/home/user/anaconda3/envs/sphconv/lib/python3.7/site-packages/torch/lib
+LDFLAGS += $(foreach library,$(LIBRARIES),-l$(library))
+# $(foreach librarydir,$(PYTORCH_LIBRARIES),-L$(librarydir)) $(PKG_CONFIG) \
 
 # Debugging
 ifeq ($(DEBUG), 1)
@@ -75,11 +85,13 @@ CXXFLAGS += -MMD -MP
 
 # Complete build flags.
 COMMON_FLAGS += $(foreach includedir,$(INCLUDE_DIRS),-I$(includedir)) \
-	     -DTORCH_API_INCLUDE_EXTENSION_H -D_GLIBCXX_USE_CXX11_ABI=$(WITH_ABI)
+    -DTORCH_API_INCLUDE_EXTENSION_H -D_GLIBCXX_USE_CXX11_ABI=$(WITH_ABI)
 CXXFLAGS += -pthread -fPIC -fwrapv -std=c++14 $(COMMON_FLAGS) $(WARNINGS)
 NVCCFLAGS += -std=c++14 -ccbin=$(CXX) -Xcompiler -fPIC $(COMMON_FLAGS)
 
+NVCCFLAGS += $(shell python -c 'from torch.utils.cpp_extension import COMMON_NVCC_FLAGS; [print(p) for p in COMMON_NVCC_FLAGS]')
 
+## all unit test executables
 TESTS = threadmap
 
 GTEST_HEADERS = $(GTEST_DIR)/include/gtest/*.h \
@@ -121,5 +133,5 @@ threadmap.o : $(USER_DIR)/threadmap.cu $(GTEST_HEADERS)
 	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
 
 threadmap : threadmap.o gtest_main.a
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -lpthread $^ -o $@
+	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -I$(GTEST_DIR)  $(CPPFLAGS) $(LDFLAGS) -o $@  $^
 
