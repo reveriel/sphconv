@@ -1,4 +1,3 @@
-
 #pragma once
 
 #include "cutlass/cutlass.h"
@@ -7,7 +6,7 @@
 namespace sphconv
 {
 
-struct Tensor5DCoord : public cutlass::Coord<5> {
+struct TensorNTHWCCoord : public cutlass::Coord<5> {
     using Base = Coord<5>;
     using Index = typename Base::Index;
     using LongIndex = typename Base::LongIndex;
@@ -16,6 +15,6 @@ struct Tensor5DCoord : public cutlass::Coord<5> {
     static int const kH = 2;
     static int const kW = 3;
     static int const kC = 4;
-}
+};
 
 } // namespace sphconv
