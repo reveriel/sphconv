@@ -3,16 +3,16 @@
 
 #include "cutlass/cutlass.h"
 #include "cutlass/array.h"
+#include "cutlass/coord.h"
 #include "sphconv/sphconv.h"
+#include "sphconv/indice_conv/coord.cu.h"
 #include "sphconv/indice_conv/layout.cu.h"
 
 using cutlass::sizeof_bits;
 
-namespace sphconv
-{
+namespace sphconv {
 
-namespace threadblock
-{
+namespace threadblock {
 
 template <typename Shape, typename Element, typename Layout, int AdvanceRank,
           typename ThreadMap, typename AccessType>
@@ -37,6 +37,8 @@ public:
 
   using Pointer = Element *;
   using NonConstPointer = Pointer;
+
+  static int const kAdvanceRank = AdvanceRank;
 
   static int const kAccessesPerVector = ThreadMap::kElementsPermAccess / AccessType::kElements;
 
@@ -203,17 +205,18 @@ public:
       residue_extent = make_Coord( 0, 0, 0, extent_.w(),  extent_.strided());
     } else {
 
+      //TODO
     }
       // Per-thread offset in logical coordinates of tensor
-      thread_offset_ = threadblock_offset + ThreadMap::initial_offset(thread_id);
+    thread_offset_ = threadblock_offset + ThreadMap::initial_offset(thread_id);
 
-      // update internal pointers
-      Layout layout(params_.stride_);
-      add_pointer_offset(layout(thread_offset_));
+    // update internal pointers
+    Layout layout(params_.stride_);
+    add_pointer_offset(layout(thread_offset_));
 
-      compute_predicates_(residue_extent, false);
+    compute_predicates_(residue_extent, false);
 
-      set_iteration_index(0);
+    set_iteration_index(0);
 
   }
 
@@ -328,7 +331,7 @@ public:
       int thread_id,
       TensorCoord const &threadblock_offset)
       : address_iterator_(params.params_, pointer, extent, thread_id,
-                          threadblock_offset {}
+                          threadblock_offset) {}
 
   CUTLASS_HOST_DEVICE
   PredicatedTileIterator(
@@ -388,16 +391,12 @@ public:
   }
 
   CUTLASS_DEVICE
-  void load_with_offset(Fragment &frag, Indexoffset) {
-    load_with_byte_offset(frag,)
-  }
-  CUTLASS_DEVICE
   void load_with_byte_offset(Fragment &frag, LongIndex byte_offset)
   {
     // n t h w c
     AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
-    for (int n = 0; n <  ; ++n) {
-      for (int t = 0; t < ; ++t) {
+    for (int n = 0; n < n_max ; ++n) {
+      for (int t = 0; t < t_max; ++t) {
         CUTLASS_PRAGMA_UNROLL
         for (int h = 0; h < ThreadMap::Iterations::kH ; ++h) {
           CUTLASS_PRAGMA_UNROLL
@@ -421,7 +420,6 @@ public:
                   AccessType
                   sizeof(AccessType)>(
                     frag_ptr[idx], access_ptr, address_iterator_.valid());
-                  )
                 ++address_iterator_;
               }
             }

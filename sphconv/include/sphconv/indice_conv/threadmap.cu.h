@@ -21,7 +21,7 @@ template<
 >
 struct TensorNTHWCThreadMap {
   // Tensor coordinate
-  using TensorCoord = typename TensorNTHWCCoord;
+  using TensorCoord = sphconv::TensorNTHWCCoord;
   // tile shape on H and W, and C
   using Shape = Shape_;
   /// Number of threads total
