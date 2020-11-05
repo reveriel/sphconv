@@ -6,17 +6,37 @@ DEBUG=1
 
 CXX := g++
 
-# PYTHON Header path
-PYTHON_HEADER_DIR := $(shell python -c 'from distutils.sysconfig import get_python_inc; print(get_python_inc())')
-PYTORCH_INCLUDES := $(shell python -c 'from torch.utils.cpp_extension import include_paths; [print(p) for p in include_paths()]')
-PYTORCH_LIBRARIES := $(shell python -c 'from torch.utils.cpp_extension import library_paths; [print(p) for p in library_paths()]')
+## all unit test executables
+TESTS = threadmap iterator
+
+## environment variables, save to a file to speedup the make proccess
+MAKE_CACHE = cache.make
 
 # CUDA ROOT DIR that contains bin/ lib64/ and include/
-# CUDA_DIR := /usr/local/cuda
-CUDA_DIR := $(shell python -c 'from torch.utils.cpp_extension import _find_cuda_home; print(_find_cuda_home())')
+CUDA_DIR := /usr/local/cuda
 
-# Assume pytorch > v1.1
-WITH_ABI := $(shell python -c 'import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')
+$(MAKE_CACHE):
+	echo "" > $@
+	echo "PYTHON_HEADER_DIR := $(shell python -c 'from distutils.sysconfig import get_python_inc; print(get_python_inc())')" >> $@
+	echo "PYTORCH_INCLUDES := $(shell python -c 'from torch.utils.cpp_extension import include_paths; [print(p) for p in include_paths()]')" >> $@
+	echo "PYTORCH_LIBRARIES := $(shell python -c 'from torch.utils.cpp_extension import library_paths; [print(p) for p in library_paths()]')" >> $@
+	# Assume pytorch > v1.1
+	echo "WITH_ABI := $(shell python -c 'import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))')" >> $@
+
+	echo "NVCCFLAGS += $(shell python -c 'from torch.utils.cpp_extension import COMMON_NVCC_FLAGS; [print(p) for p in COMMON_NVCC_FLAGS]')" >> $@
+
+include $(MAKE_CACHE)
+
+all: $(TESTS)
+
+clean :
+	rm -f $(TESTS) gtest.a gtest_main.a *.o $(MAKE_CACHE)
+
+# PYTHON Header path
+# PYTHON_HEADER_DIR := $(shell python -c 'from distutils.sysconfig import get_python_inc; print(get_python_inc())')
+# PYTORCH_INCLUDES := $(shell python -c 'from torch.utils.cpp_extension import include_paths; [print(p) for p in include_paths()]')
+# PYTORCH_LIBRARIES := $(shell python -c 'from torch.utils.cpp_extension import library_paths; [print(p) for p in library_paths()]')
+
 
 INCLUDE_DIRS := ./ $(CUDA_DIR)/include
 
@@ -89,18 +109,10 @@ COMMON_FLAGS += $(foreach includedir,$(INCLUDE_DIRS),-I$(includedir)) \
 CXXFLAGS += -pthread -fPIC -fwrapv -std=c++14 $(COMMON_FLAGS) $(WARNINGS)
 NVCCFLAGS += -std=c++14 -ccbin=$(CXX) -Xcompiler -fPIC $(COMMON_FLAGS)
 
-NVCCFLAGS += $(shell python -c 'from torch.utils.cpp_extension import COMMON_NVCC_FLAGS; [print(p) for p in COMMON_NVCC_FLAGS]')
 
-## all unit test executables
-TESTS = threadmap
 
 GTEST_HEADERS = $(GTEST_DIR)/include/gtest/*.h \
 $(GTEST_DIR)/include/gtest/internal/*.h
-
-all: $(TESTS)
-
-clean :
-	rm -f $(TESTS) gtest.a gtest_main.a *.o
 
 
 # Builds gtest.a and gtest_main.a.
@@ -132,6 +144,23 @@ threadmap.o : $(USER_DIR)/threadmap.cu $(GTEST_HEADERS)
 		-odir $(@D)
 	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
 
+iterator.o : $(USER_DIR)/iterator.cu $(GTEST_HEADERS)
+	@ echo NVCC $<
+	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -M $< -o ${@:.o=.d} \
+		-odir $(@D)
+	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -c $< -o $@
+
+# segmentation fault on gtest version 1.7.0 , @0fe96607
+# check out 1.8.1
 threadmap : threadmap.o gtest_main.a
 	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -I$(GTEST_DIR)  $(CPPFLAGS) $(LDFLAGS) -o $@  $^
 
+iterator : iterator.o gtest_main.a
+	$(Q)nvcc $(NVCCFLAGS) $(CUDA_ARCH) -I$(GTEST_DIR)  $(CPPFLAGS) $(LDFLAGS) -o $@  $^
+
+
+simple.o : simple.cpp
+	nvcc $(NVCCFLAGS) $(CUDA_ARCH) -I$(GTEST_DIR)  $(CPPFLAGS) $(LDFLAGS)   -o simple.o -c simple.cpp
+
+simple : simple.o gtest_main.a
+	nvcc $(NVCCFLAGS) $(CUDA_ARCH) -I$(GTEST_DIR)  $(CPPFLAGS) $(LDFLAGS)  -o simple simple.o gtest_main.a -lpthread
