@@ -40,6 +40,11 @@ struct TensorNTHWCCoord : public cutlass::Coord<5, int> {
   TensorNTHWCCoord(Index n, Index t, Index h, Index w, Index c) :
     Base(make_Coord(n, t, h, w, c)) { }
 
+  // view w c as a single dimension
+  TensorNTHWCCoord(Index h, Index wc) :
+    Base(make_Coord(0, 0, h, 0, wc)) { }
+
+
   CUTLASS_HOST_DEVICE
   Index const & n() const { return this->at(kN); }
 

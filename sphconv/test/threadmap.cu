@@ -1,20 +1,19 @@
 
 #include <iostream>
 
+
 #include "cutlass/cutlass.h"
 #include "cutlass/coord.h"
 #include "cutlass/transform/pitch_linear_thread_map.h"
 
-#include "sphconv/sphconv.h"
+// #include "sphconv/sphconv.h"
 // #include "sphconv/indice_conv/iterator.cu.h"
 #include "sphconv/indice_conv/layout.cu.h"
 #include "sphconv/indice_conv/threadmap.cu.h"
 
-#include "torch/extension.h"
 
-// #include <gtest/gtest.h>
-#include <cuda.h>
-#include <cuda_runtime.h>
+#define CATCH_CONFIG_MAIN
+#include "catch2/catch_test_macros.hpp"
 
 using std::cout;
 using std::endl;
@@ -22,94 +21,76 @@ using std::endl;
 using sphconv::layout::TensorNTHWCShape;
 using sphconv::threadblock::TensorNTHWCThreadMap;
 
-/*
-TEST(TensorShapeTest, Constructor) {
+TEST_CASE("TensorShapeConstructorTest", ) {
     using Shape = TensorNTHWCShape<8, 8, 16>;
 
     Shape shape;
-    EXPECT_TRUE(Shape::kH == 8);
-    EXPECT_TRUE(Shape::kW == 8);
-    EXPECT_TRUE(Shape::kC == 16);
-    EXPECT_EQ(shape.n, 0);
-    EXPECT_EQ(shape.t, 0);
-}
-*/
-
-int main () {
-    using Shape = TensorNTHWCShape<8, 8, 16>;
-
-    Shape shape;
-    // EXPECT_TRUE(Shape::kH == 8);
-    // EXPECT_TRUE(Shape::kW == 8);
-    // EXPECT_TRUE(Shape::kC == 16);
-    // EXPECT_EQ(shape.n, 0);
-    // EXPECT_EQ(shape.t, 0);
-    cout << Shape::kH << endl;
-    cout << shape.n << endl;
-    return 0;
+    REQUIRE((Shape::kH == 8));
+    REQUIRE((Shape::kW == 8));
+    REQUIRE((Shape::kC == 16));
+    REQUIRE(shape.n == 0);
+    REQUIRE(shape.t == 0);
 }
 
 
-/*
-// compiler complains "error: expression must have a constant value"
-// I don't konw why
-TEST(ThreadMapTest, Inspect) {
+TEST_CASE("ThreadMapInspect") {
 
-    int const W = 64;
-    int const H = 32;
+    int constexpr W = 64;
+    int constexpr H = 32;
     using Shape = cutlass::layout::PitchLinearShape<W, H>;
     using Layout = cutlass::layout::PitchLinear;
     using Element = int;
-    int const kThreads = 32;
+    int constexpr kThreads = 32;
 
     using ThreadMap = cutlass::transform::PitchLinearStripminedThreadMap<Shape, kThreads>;
 
-    EXPECT_TRUE(ThreadMap::Detail::ShapeVec::kContiguous == W);
-    EXPECT_TRUE(ThreadMap::Detail::ShapeVec::kStrided == H);
+    REQUIRE((ThreadMap::Detail::ShapeVec::kContiguous == W));
+    REQUIRE((ThreadMap::Detail::ShapeVec::kStrided == H));
 
-    // cout << "ShapeVec::kContiguous =  " << ThreadMap::Detail::ShapeVec::kContiguous << endl;
-    // cout << "ShapeVec::kStrided  = " << ThreadMap::Detail::ShapeVec::kStrided << endl;
+    cout << "ShapeVec::kContiguous =  " << ThreadMap::Detail::ShapeVec::kContiguous << endl;
+    cout << "ShapeVec::kStrided  = " << ThreadMap::Detail::ShapeVec::kStrided << endl;
     // iterations,  delta, initial_offset
 
-    EXPECT_TRUE(ThreadMap::Iterations::kContiguous == (W / kThreads));
-    EXPECT_TRUE(ThreadMap::Iterations::kStrided == H);
-    // cout << "Iterations::kContiguous =  " << ThreadMap::Iterations::kContiguous << endl;
-    // cout << "Iterations::kStrided =  " << ThreadMap::Iterations::kStrided << endl;
+    REQUIRE((ThreadMap::Iterations::kContiguous == (W / kThreads)));
+    REQUIRE((ThreadMap::Iterations::kStrided == H));
+    cout << "Iterations::kContiguous =  " << ThreadMap::Iterations::kContiguous << endl;
+    cout << "Iterations::kStrided =  " << ThreadMap::Iterations::kStrided << endl;
 
     // Delta : Interval between accesses along each dimension
-    EXPECT_TRUE(ThreadMap::Delta::kContiguous == (kThreads));
-    EXPECT_TRUE(ThreadMap::Delta::kStrided == 1);
-    // cout << "Delta::kContiguous =  " << ThreadMap::Delta::kContiguous << endl;
-    // cout << "Delta::kStrided =  " << ThreadMap::Delta::kStrided << endl;
+    REQUIRE((ThreadMap::Delta::kContiguous == (kThreads)));
+    REQUIRE((ThreadMap::Delta::kStrided == 1));
+    cout << "Delta::kContiguous =  " << ThreadMap::Delta::kContiguous << endl;
+    cout << "Delta::kStrided =  " << ThreadMap::Delta::kStrided << endl;
 
-    EXPECT_TRUE(true);
+    // 3
+    auto coord = ThreadMap::initial_offset(3);
+    cout << "initial_offset" << coord.at(0) << "," << coord.at(1) << endl;
+
+    coord = ThreadMap::initial_offset(65);
+    cout << "initial_offset" << coord.at(0) << "," << coord.at(1) << endl;
 }
-*/
 
-/*
-
-TEST(TensorShapeTest, test1) {
-    using Shape = TensorNTHWCShape<8, 8, 16>;
+TEST_CASE("ThreadMapTest") {
+    const int H = 8, W = 8, C = 16;
+    using Shape = TensorNTHWCShape<H, W, C>;
     using Layout = sphconv::layout::TensorNTHWC;
     using Element = int;
     int const kThreads = 32;
 
-    using ThreadMap = TensorNTHWCThreadMap<Shape, 32>;
+    using ThreadMap = TensorNTHWCThreadMap<Shape, kThreads>;
 
-    EXPECT_TRUE(ThreadMap::Detail::ShapeVec::kContiguous == 128);
-    EXPECT_TRUE(ThreadMap::Detail::ShapeVec::kStrided == 8);
+    REQUIRE((ThreadMap::Detail::ShapeVec::kContiguous == W * C));
+    REQUIRE((ThreadMap::Detail::ShapeVec::kStrided == H));
 
-    EXPECT_TRUE(ThreadMap::Iterations::kContiguous == 4);
-    EXPECT_TRUE(ThreadMap::Iterations::kStrided == 8);
+    REQUIRE((ThreadMap::Iterations::kContiguous == (W * C)/ kThreads ));
+    REQUIRE((ThreadMap::Iterations::kStrided == H));
 
-    EXPECT_TRUE(ThreadMap::Delta::kContiguous == 32);
-    EXPECT_TRUE(ThreadMap::Delta::kStrided == 1);
+    REQUIRE((ThreadMap::Delta::kContiguous == kThreads));
+    REQUIRE((ThreadMap::Delta::kStrided == 1));
 
-    // cout << ThreadMap::Delta
 }
 
 
-TEST(TensorShapeTest, fail) {
-    EXPECT_TRUE(false);
-}
-*/
+// TEST(TensorShapeTest, fail) {
+//     EXPECT_TRUE(false);
+// }

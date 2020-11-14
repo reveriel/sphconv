@@ -1,9 +1,9 @@
 #pragma once
 
-#include <type_traits>
 
 #include "cutlass/cutlass.h"
 #include "cutlass/layout/pitch_linear.h"
+#include "cutlass/platform/platform.h"
 
 #include "sphconv/sphconv.h"
 #include "sphconv/indice_conv/layout.cu.h"
@@ -50,11 +50,11 @@ struct TensorNTHWCThreadMap {
   };
   // Number of iterations by each thread
   // Iterations along each dimmension ?
-  using Iterations = typename std::conditional<
+  using Iterations = typename cutlass::platform::conditional<
     Threads >= Detail::ShapeVec::kContiguous,
     cutlass::layout::PitchLinearShape<
       1,
-      (Threads >= Detail::ShapeVec::KContiguous ?
+      (Threads >= Detail::ShapeVec::kContiguous ?
         Detail::ShapeVec::kStrided / (kThreads / Detail::ShapeVec::kContiguous)
         : 0)>,
     cutlass::layout::PitchLinearShape<
@@ -64,14 +64,14 @@ struct TensorNTHWCThreadMap {
 
   // delta between accesses along each dimension of the tensor's logical
   // coordinate
-  using Delta = typename std::conditional<
+  using Delta = typename cutlass::platform::conditional<
     Threads >= Detail::ShapeVec::kContiguous,
     cutlass::layout::PitchLinearShape<
-      1,
-      kThreads / Detail::ShapeVec::kContiguous
+      Shape::kW * Shape::kC ,
+      kThreads * ThreadAccessShape::kStrided / Detail::ShapeVec::kContiguous
     >,
     cutlass::layout::PitchLinearShape<
-      kThreads * kElementsPerAccess,
+      kThreads * ThreadAccessShape::kContiguous,
       1
     >
   >::type;
@@ -79,10 +79,10 @@ struct TensorNTHWCThreadMap {
   /// coordinate space (in units of Elements)
   CUTLASS_HOST_DEVICE
   static TensorCoord initial_offset(int thread_id) {
-
       return TensorCoord(
-        (thread_id % Detail::ShapeVec::kContiguous) * kElementsPerAccess,
-        thread_id / Detail::ShapeVec::kContiguous);
+        thread_id / Detail::ShapeVec::kContiguous,
+        (thread_id % Detail::ShapeVec::kContiguous) * kElementsPerAccess
+        );
   }
 };
 

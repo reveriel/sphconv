@@ -2,3 +2,12 @@
 *.o
 *.d
 *.a
+
+threadmap_test
+threadmap
+simple
+cache.make
+*.cmake
+
+CMakeFiles/
+CMakeCache.txt
