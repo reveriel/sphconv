@@ -8,45 +8,49 @@ auto foo = []( std::vector<std::string> args)
 {
     CoreState::set_trigger_gdb_when_crash(true);
     Program prog(Arch::gpu);
+    int n = 128;
 
     Global(a, i32);
     auto i = Index(0);
 
     layout([&]() { root.dense(i, 128).place(a); });
 
-    kernel([&]() {
-        Matrix A(2, 2), B(2, 2);
-        A(0, 0) = 1;
-        A(0, 1) = 1;
-        A(1, 0) = 1;
-        A(1, 1) = 1;
+    auto dou = [](Expr a) { return a * 2; };
 
-        B(0, 0) = 1;
-        B(0, 1) = 2;
-        B(1, 0) = 3;
-        B(1, 1) = 4;
-        auto C = Var(A * B + A);
-        Assert(C(0, 0) == 5);
-        Assert(C(0, 1) == 7);
-        Assert(C(1, 0) == 5);
-        Assert(C(1, 1) == 7);
+    kernel([&]() {
+        For(0, n, [&](Expr i) {
+            auto ret = Var(0);
+            If(i % 2 == 0).Then([&] { ret = dou(i); }).Else([&] { ret = i;});
+            a[i] = ret;
+        });
     })();
+
+    for (int i = 0; i < n; i ++) {
+        if (a.val<int32>(i) == (2 - i % 2) * i) {
+                ;
+            std::cout << "correct " << i << std::endl;
+        } else  {
+            std::cout << "error " << std::endl;
+
+        }
+    }
 };
 
-TC_REGISTER_TASK(foo);
+// TC_REGISTER_TASK(foo);
 
 int main_() {
     // for (auto &kv : InterfaceHolder::get_instance()->methods)
     // {
     //     kv.second(&m);
     // }
-    Task *t = new Task_foo();
+    // Task *t = new Task_foo();
     std::vector<std::string> args = {"foo"};
-    Config config = Config();
-    config.set("1", "foo");
-    t->initialize(config);
-    t->run(args);
-    return 0;
+    // Config config = Config();
+    // config.set("1", "foo");
+    // t->initialize(config);
+    // t->run(args);
+    // return 0;
+    foo(args);
 }
 
 TLANG_NAMESPACE_END
