@@ -22,3 +22,7 @@ message("C++ Flags: ${CMAKE_CXX_FLAGS}")
 add_executable(program)
 target_sources(program PUBLIC program.cpp)
 target_link_libraries(program taichi_core taichi_lang_core dl)
+
+add_executable(test)
+target_sources(test PUBLIC test.cpp)
+target_link_libraries(test taichi_core taichi_lang_core dl)

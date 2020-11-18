@@ -73,52 +73,94 @@ static inline bool in_range(int x, int low, int high) {
     return x >= low && x < high;
 }
 
-int main() {
-
-    Points points = gen_points_data(0, 0);
-
-    auto prog = new Program(Arch::gpu);
-
-
-    init_taichi_program();
-
-    int n = 128;
-
-    Global(layer1, f32);
-    Global(layer2, f32);
-    Global(layer3, f32);
-    Global(layer4, f32);
-
-    Global(weights1, f32);
-    Global(weights2, f32);
-    Global(weights3, f32);
+struct ConvolutionConfig {
+    std::array<int, 3>  kernel_size;
+    std::array<int, 3> padding;
+    std::array<int, 3>  stride;
+    int channel_in;
+    int channel_out;
+    ConvolutionConfig(const std::array<int, 3> &kernel_size_,
+                      const std::array<int, 3> &padding_,
+                      const std::array<int, 3> &stride_,
+                      int channel_in_, int channel_out_)
+                       : kernel_size(kernel_size_),
+                       padding(padding_),
+                       stride(stride_), channel_in(channel_in_), channel_out(channel_out_)
+    { }
+};
 
 
-    VoxelizationConfig vcfg;
+/**
+ *  convolution kernel body
+ */
+const std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights, ConvolutionConfig cfg)
+{
+    return [&]() {
+        bool use_cache = true;
+        CacheL1(weights);
+        BlockDim(256);
 
-    int block_size = 4;
-    int num_ch1 = 16;
-    int num_ch2 = 16;
-    int num_ch3 = 16;
-    int num_ch4 = 16;
+        For(layer_in, [&](Expr i, Expr j, Expr k, Expr c_out) {
+            auto sum = Var(0.0f);
+            for (int c_in = 0; c_in < cfg.channel_in; c_in++) {
+                for (int dx = -1; dx < 2; dx++) {
+                    for (int dy = -1; dy < 2; dy++) {
+                        for (int dz = -1; dz < 2; dz++) {
 
-    layout([&]() {
-        auto ijkl = Indices(0, 1, 2, 3);
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res/ block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch1}).place(layer1);
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer2);
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer3);
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer4);
+                            auto weight = weights[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * cfg.channel_out + c_out];
 
-        root.dense(ijkl, {4, 4, 4, num_ch1 * num_ch2}).place(weights1);
-        root.dense(ijkl, {4, 4, 4, num_ch2 * num_ch3}).place(weights2);
-        root.dense(ijkl, {4, 4, 4, num_ch3 * num_ch4}).place(weights3);
-    });
+                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
 
-    // init layer1 data
+                            sum += weight * layer_in[i + dx, j + dy, k + dz, c_in2];
+                        }
+                    }
+                }
+            }
+            layer_out[i, j, k, c_out] = sum;
+        });
+    };
+}
+
+template <int k0, int k1, int k2,
+    int s0, int s1, int s2,
+    int p0, int p1, int p2,
+    int channel_in,
+    int channel_out>
+const std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights) {
+    return [&]() {
+        bool use_cache = true;
+        CacheL1(weights);
+        BlockDim(256);
+
+        For(layer_in, [&](Expr i, Expr j, Expr k, Expr c_out) {
+            auto sum = Var(0.0f);
+            for (int c_in = 0; c_in < channel_in; c_in++) {
+                for (int dx = -1; dx < 2; dx++) {
+                    for (int dy = -1; dy < 2; dy++) {
+                        for (int dz = -1; dz < 2; dz++) {
+
+                            auto weight = weights[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * channel_out + c_out];
+
+                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
+
+                            sum += weight * layer_in[i + dx, j + dy, k + dz, c_in2];
+                        }
+                    }
+                }
+            }
+            layer_out[i, j, k, c_out] = sum;
+        });
+    };
+}
+
+
+
+
+
+/**
+* init layer1 from points data,  voxelization is done at here
+*/
+void init_layer1(Expr &layer1, const Points &points, const VoxelizationConfig &vcfg,  int num_ch1) {
 
     for (size_t i = 0; i < points.shape[0]; i++) {
         float x = points.data[i * 4 + 0];
@@ -151,6 +193,67 @@ int main() {
         }
     }
 
+}
+
+
+int main() {
+
+    Points points = gen_points_data(0, 0);
+
+    auto prog = new Program(Arch::gpu);
+
+
+    init_taichi_program();
+
+    int n = 128;
+
+    // Global(layer1, f32);
+    //
+    Declare(layer1_global); auto layer1 = global_new(layer1_global, DataType::f32);
+
+    Global(layer2, f32);
+    Global(layer3, f32);
+    Global(layer4, f32);
+
+    Global(weights1, f32);
+    Global(weights2, f32);
+    Global(weights3, f32);
+
+    auto relu = [](Expr a) { return  max(a, Var(0.0f)); };
+
+
+    VoxelizationConfig vcfg;
+
+    int block_size = 4;
+    int num_ch1 = 16;
+    int num_ch2 = 16;
+    int num_ch3 = 32;
+
+    int num_ch4 = 16;
+
+
+
+    layout([&]() {
+        auto ijkl = Indices(0, 1, 2, 3);
+        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res/ block_size, 1}).bitmasked()
+            .dense(ijkl, {block_size, block_size, block_size, num_ch1}).place(layer1);
+        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
+            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer2);
+        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
+            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer3);
+
+        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
+            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer4);
+
+
+        root.dense(ijkl, {3, 3, 3, num_ch1 * num_ch2}).place(weights1);
+        root.dense(ijkl, {3, 3, 3, num_ch2 * num_ch3}).place(weights2);
+        root.dense(ijkl, {3, 3, 3, num_ch3 * num_ch4}).place(weights3);
+    });
+
+    // init layer1 data
+
+    init_layer1(layer1, points, vcfg, num_ch1);
 
     Kernel(forward_conv1).def([&]{
         bool use_cache = true;
@@ -225,7 +328,7 @@ int main() {
         BlockDim(256);
         kernel_name("dilate");
         For(layer1, [&](Expr i, Expr j, Expr k) {
-            If(i % block_size == 0 && j % block_size == 0 && block_size == 0)
+            If(i % block_size == 0 && j % block_size == 0 &&  k % block_size == 0)
                 .Then([&] {
                     for (int x = -1; x < 2; x++) {
                         for (int y = -1; y < 2; y++) {
