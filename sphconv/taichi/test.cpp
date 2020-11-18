@@ -24,6 +24,41 @@ void init_taichi_program() {
 // data
 
 
+template <int k0, int k1, int k2,
+    int s0, int s1, int s2,
+    int p0, int p1, int p2,
+    int channel_in,
+    int channel_out>
+std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights) {
+    return [&]() {
+        bool use_cache = true;
+        CacheL1(weights);
+        BlockDim(256);
+
+        For(layer_in, [&](Expr i, Expr j, Expr k, Expr c_out) {
+            auto sum = Var(0.0f);
+            for (int c_in = 0; c_in < channel_in; c_in++) {
+                for (int dx = -1; dx < 2; dx++) {
+                    for (int dy = -1; dy < 2; dy++) {
+                        for (int dz = -1; dz < 2; dz++) {
+
+                            auto weight = weights[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * channel_out + c_out];
+
+                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
+
+                            sum += weight * layer_in[i + dx, j + dy, k + dz, c_in2];
+                        }
+                    }
+                }
+            }
+            layer_out[i, j, k, c_out] = sum;
+        });
+    };
+}
+
+
+
+
 int main() {
 
     bool gpu = true;
@@ -94,33 +129,11 @@ int main() {
     }
 
 
-    Kernel(forward_conv1).def([&]{
-        bool use_cache = gpu ;
-        if (gpu) {
-            CacheL1(weights1);
-            BlockDim(256);
-        } else  {
-            Parallelize(8);
-            Vectorize(block_size);
+    Kernel(forward_conv1).def(
+        convolution<3, 3, 3, 1, 1, 1, 0, 0, 0, 16, 16>(layer1, layer2,  weights1)
+    );
 
-        }
 
-        For (layer2, [&](Expr i, Expr j, Expr k, Expr c_out) {
-            auto sum = Var(0.0f);
-            for (int c_in = 0; c_in < num_ch1; c_in++) {
-                for (int dx = -1; dx < 2; dx++) {
-                    for (int dy = -1; dy < 2; dy++) {
-                        for (int dz = -1; dz < 2; dz++) {
-                            auto weight = weights1[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * num_ch2 + c_out];
-                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
-                            sum += weight * layer1[i + dx, j + dy, k + dz, c_in2];
-                        }
-                    }
-                }
-            }
-            layer2[i, j, k, c_out] = sum;
-        });
-    });
 
     kernel([&] {
         if (!gpu) {
