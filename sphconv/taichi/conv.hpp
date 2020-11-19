@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mp_helper.h"
+
 #include <iostream>
 #include <vector>
 #include <array>
@@ -8,6 +10,8 @@
 #include <cassert>
 // Use (void) to silent unused warnings.
 #define assertm(exp, msg) assert(((void)msg, exp))
+
+
 
 struct VoxelizationConfig {
     // vertical resolution
@@ -55,23 +59,61 @@ struct Points {
     std::vector<float> data;
 };
 
+
 /**
- * describe the parameters of a convolution
+ *  base class for configrations
  */
-struct ConvolutionConfig {
+struct ConvolutionConfigBase {
     std::array<int, 3> kernel_size;
     std::array<int, 3> padding;
     std::array<int, 3> stride;
     int channel_in;
     int channel_out;
     bool subm; // is submanifold convolution
-    ConvolutionConfig(const std::array<int, 3> &kernel_size_,
-                      const std::array<int, 3> &padding_,
-                      const std::array<int, 3> &stride_,
-                      int channel_in_, int channel_out_,
-                      bool subm_)
+
+    ConvolutionConfigBase(const std::array<int, 3> kernel_size_,
+                            const std::array<int, 3> padding_,
+                            const std::array<int, 3> stride_,
+                            int channel_in_, int channel_out_, bool subm_)
         : kernel_size(kernel_size_), padding(padding_), stride(stride_),
-          channel_in(channel_in_), channel_out(channel_out_), subm(subm_) {}
+          channel_in(channel_in_), channel_out(channel_out_), subm(subm_) {
+          }
+};
+
+/**
+ * describe the parameters of a convolution
+ */
+template <
+    int K0_,
+    int K1_,
+    int K2_,  // kernel size
+    int P0_,
+    int P1_,
+    int P2_, // padding
+    int S0_,
+    int S1_,
+    int S2_, // stride
+    int Ci_, // channel_in
+    int Co_, // channel_out
+    bool subm_ // submanifold
+    >
+struct ConvolutionConfig : public ConvolutionConfigBase
+{
+    using Base = ConvolutionConfigBase;
+    static const int K0 = K0_;
+    static const int K1 = K1_;
+    static const int K2 = K2_;
+    static const int P0 = P0_;
+    static const int P1 = P1_;
+    static const int P2 = P2_;
+    static const int S0 = S0_;
+    static const int S1 = S1_;
+    static const int S2 = S2_;
+    static const int Ci = Ci_;
+    static const int Co = Co_;
+
+    ConvolutionConfig()
+        : Base({K0, K1, K2}, {P0, P1, P2}, {S0, S1, S2}, Ci, Co, subm_) { }
 };
 
 /***
@@ -92,7 +134,7 @@ struct FeatureShape {
     /**
      * compute the output FeatureShape after applying a convlution
      */
-    FeatureShape conv(const ConvolutionConfig &cfg) {
+    FeatureShape conv(const ConvolutionConfigBase &cfg) {
         assertm((this->c() == cfg.channel_in), "channel size not match");
         if (cfg.subm)
             return *this;
@@ -106,27 +148,64 @@ struct FeatureShape {
 
 };
 
+/**
+ * ConfigList:
+ */
+template <typename ConfigList>
 struct BackBoneShape {
     std::vector<FeatureShape> shapes;
-    BackBoneShape(const std::vector<ConvolutionConfig> &backbone_cfg,
-        const FeatureShape &input_shape)
+
+    BackBoneShape(const FeatureShape &input_shape)
     {
         shapes.push_back(input_shape);
-        for (auto conv_cfg : backbone_cfg) {
-            shapes.push_back(shapes.back().conv(conv_cfg));
-        }
+
+        mp_for_each<ConfigList>([&](auto ConvConfig) {
+            using Conv = decltype(ConvConfig);
+            Conv conv;
+            shapes.push_back(shapes.back().conv(conv));
+        });
     }
-    friend std::ostream& operator<<(std::ostream& os, const BackBoneShape & bbshape);
+
+    size_t size() {
+        return shapes.size();
+    }
+
+    FeatureShape operator[](size_t i) {
+        return shapes[i];
+    }
+
+    template<typename T>
+    friend std::ostream& operator<<(std::ostream& os, const BackBoneShape<T> & bbshape);
 };
 
 std::ostream &operator<<(std::ostream &os, const FeatureShape &fshape) {
     return os << "Tensor[" << fshape.h() << ", " << fshape.w() << ", " << fshape.d() << ", " << fshape.c() << "]";
 }
 
-std::ostream & operator<<(std::ostream & os, const BackBoneShape &bbshape)
+template<typename T>
+std::ostream & operator<<(std::ostream & os, const BackBoneShape<T> &bbshape)
 {
     for (auto shape : bbshape.shapes) {
         os << shape << std::endl;
     }
     return os;
 }
+
+
+template<typename BackBoneConfigType_>
+struct BackBoneConfig {
+    using BackBoneConfigType = BackBoneConfigType_;
+
+    std::vector<ConvolutionConfigBase> convs;
+    BackBoneConfig () {
+        mp_for_each<BackBoneConfigType>(
+        [&](auto Config){
+            using Conv = decltype(Config);
+            Conv conv;
+            convs.push_back(conv);
+        });
+    }
+    ConvolutionConfigBase operator[](size_t i) const { return convs[i]; };
+    size_t size() const { return convs.size(); }
+};
+

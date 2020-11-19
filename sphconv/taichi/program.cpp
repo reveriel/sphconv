@@ -1,5 +1,6 @@
 #include "conv.hpp"
 #include "npy.hpp"
+#include "mp_helper.h"
 
 #include <taichi/lang.h>
 #include <numeric>
@@ -33,25 +34,58 @@ Points gen_points_data(int num_points, int num_channel ) {
     return points;
 }
 
-std::vector<ConvolutionConfig> backbone_cfg = {
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 16, 16, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 16, 16, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {2, 2, 2}, 16, 32, false),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 32, 32, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 32, 32, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {2, 2, 2}, 32, 64, false),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {2, 1, 1}, 64, 64, false),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 3, 3}, {1, 1, 1}, {1, 1, 1}, 64, 64, true),
-    ConvolutionConfig({3, 1, 1}, {1, 0, 0}, {2, 1, 1}, 64, 64, false),
-};
 
+using BackBoneConfigType =
+mp_list<
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 1, 1, 64, 64, false>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    ConvolutionConfig<3, 1, 1, 0, 0, 1, 2, 1, 1, 64, 64, false>
+>;
+
+// BackBoneConfig backbone_cfg;
+
+
+BackBoneConfig<BackBoneConfigType> backbone_cfg;
 auto input_shape = FeatureShape({vcfg.H(), vcfg.W(), vcfg.D(), 16});
-auto backbone_shape = BackBoneShape(backbone_cfg, input_shape);
+auto backbone_shape = BackBoneShape<BackBoneConfigType>(input_shape);
+
+/**
+ *  fill weights with value
+ */
+void fill_weights(Expr weights, ConvolutionConfigBase conv, float value) {
+    for (int c_out = 0; c_out < conv.channel_out; c_out++) {
+        for (int c_in = 0; c_in < conv.channel_in; c_in++) {
+            // float inc = 0.1f;
+            for (int i = 0; i < conv.kernel_size[0]; i++) {
+                for (int j = 0; j < conv.kernel_size[1]; j++) {
+                    for (int k = 0; k < conv.kernel_size[2]; k++) {
+                        weights.val<taichi::float32>(i, j, k, c_in * conv.channel_out + c_out ) = value;
+                    }
+                }
+            }
+            // for (int dx = -1; dx < 2; dx++) {
+            //     for (int dy = -1; dy < 2; dy++) {
+            //         for (int dz = -1; dz < 2; dz++) {
+            //             // if (dx == 0 && dy == 0 && dz == 0)
+            //             weights.val<taichi::float32>(dx + 1, dy + 1, dz + 1, c_in * conv.channel_out + c_out) = value;
+            //             // inc += 0.1f;
+            //         }
+            //     }
+            // }
+        }
+    }
+}
 
 
 /**
@@ -131,9 +165,9 @@ std::function<void()> conv_activate_subm(Expr layer_in, Expr layer_out) {
 
 
 /**
-* init layer1 from points data,  voxelization is done at here
+* init layer0 from points data,  voxelization is done at here
 */
-void init_layer1(Expr &layer1, const Points &points, const VoxelizationConfig &vcfg,  int num_ch1) {
+void init_layer0(Expr &layer0, const Points &points, const VoxelizationConfig &vcfg,  int num_ch1) {
 
     for (size_t i = 0; i < points.shape[0]; i++) {
         float x = points.data[i * 4 + 0];
@@ -155,16 +189,24 @@ void init_layer1(Expr &layer1, const Points &points, const VoxelizationConfig &v
             && in_range(phi_idx, 0, vcfg.h_res)
             && in_range(depth_idx, 0, vcfg.d_res))
         {
-            layer1.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 0) = x;
-            layer1.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 1) = y;
-            layer1.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 2) = z;
-            layer1.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 3) = refl;
+            layer0.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 0) = x;
+            layer0.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 1) = y;
+            layer0.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 2) = z;
+            layer0.val<taichi::float32>(theta_idx, phi_idx, depth_idx, 3) = refl;
             // for testing
             for (int j = 0; j < num_ch1; j++) {
-                layer1.val<taichi::float32>(theta_idx, phi_idx, depth_idx, j) = refl;
+                layer0.val<taichi::float32>(theta_idx, phi_idx, depth_idx, j) = refl;
             }
         }
     }
+}
+
+auto relu = [](Expr a) { return  max(a, Var(0.0f)); };
+
+inline
+Expr declare_global(std::string name, DataType t) {
+    auto var_global = Expr(std::make_shared<IdExpression>(name));
+    return global_new(var_global, t);
 }
 
 int main() {
@@ -172,119 +214,78 @@ int main() {
     Points points = gen_points_data(0, 0);
 
     auto prog = new Program(Arch::gpu);
-
-
     init_taichi_program();
 
-    int n = 128;
-
-    // Global(layer1, f32);
-    //
-    Declare(layer1_global); auto layer1 = global_new(layer1_global, DataType::f32);
-
-    Global(layer2, f32);
-    Global(layer3, f32);
-    Global(layer4, f32);
-
-    Global(weights1, f32);
-    Global(weights2, f32);
-    Global(weights3, f32);
-
-    auto relu = [](Expr a) { return  max(a, Var(0.0f)); };
-
-
+    // declare all varialbes
+    std::vector<Expr> layers;
+    std::vector<Expr> weights;
+    layers.push_back(declare_global("layer0", DataType::f32));
+    for (size_t i = 1; i <= backbone_cfg.size(); i++) {
+        // auto conv_cfg = backbone_cfg[i];
+        layers.push_back(declare_global("layer" + i, DataType::f32));
+        weights.push_back(declare_global("weights" + i, DataType::f32));
+    }
 
     std::cout << backbone_shape;
 
-    int block_size = 4;
-    int num_ch1 = 16;
-    int num_ch2 = 16;
-    int num_ch3 = 32;
-    int num_ch4 = 16;
+    constexpr int block_size = 4;
 
+    assert((backbone_shape.size() == layers.size()));
+    assert((backbone_cfg.size() == weights.size()));
 
     layout([&]() {
         auto ijkl = Indices(0, 1, 2, 3);
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res/ block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch1}).place(layer1);
-
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer2);
-
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer3);
-
-        root.dense(ijkl, {vcfg.v_res / block_size, vcfg.h_res / block_size, vcfg.d_res / block_size, 1}).bitmasked()
-            .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer4);
-
-
-        root.dense(ijkl, {3, 3, 3, num_ch1 * num_ch2}).place(weights1);
-        root.dense(ijkl, {3, 3, 3, num_ch2 * num_ch3}).place(weights2);
-        root.dense(ijkl, {3, 3, 3, num_ch3 * num_ch4}).place(weights3);
+        for (size_t i = 0; i < backbone_shape.size(); i++) {
+            auto shape = backbone_shape[i];
+            root.dense(ijkl, {shape.h()/block_size, shape.w()/block_size, shape.d()/block_size, 1 })
+            .dense(ijkl, {block_size, block_size, block_size, shape.c()})
+            .place(layers[i]);
+        }
+        for (size_t i = 0; i < backbone_cfg.size(); i++) {
+            auto conv = backbone_cfg[i];
+            root.dense(ijkl, {conv.kernel_size[0], conv.kernel_size[1], conv.kernel_size[2],
+            conv.channel_in * conv.channel_out}).place(weights[i]);
+        }
     });
 
     // init layer1 data
 
-    init_layer1(layer1, points, vcfg, num_ch1);
-
-    Kernel(activate_conv1).def(conv_activate_subm<4, 4, 4>(layer1, layer2));
-    Kernel(forward_conv1).def(convolution<3, 3, 3, 1, 1, 1, 0, 0, 0, 16, 16>(layer1, layer2, weights1));
-    Kernel(activate_conv2).def(conv_activate_subm<4, 4, 4>(layer2, layer3));
-    Kernel(forward_conv2).def(convolution<3, 3, 3, 1, 1, 1, 0, 0, 0, 16, 16>(layer2, layer3, weights2));
-    Kernel(activate_conv3).def(conv_activate_subm<4, 4, 4>(layer3, layer4));
-    Kernel(forward_conv3).def(convolution<3, 3, 3, 1, 1, 1, 0, 0, 0, 16, 16>(layer3, layer4, weights3));
+    init_layer0(layers[0], points, vcfg, backbone_cfg[0].channel_in);
 
 
+    std::vector<Program::Kernel> activate_convs;
+    std::vector<Program::Kernel> forward_convs;
+    mp_for_each<decltype(backbone_cfg)::BackBoneConfigType>([&](auto ConvConfig) {
+        using Conv = decltype(ConvConfig);
+        size_t i = activate_convs.size();
+        activate_convs.push_back(
+            std::move(
+            get_current_program()
+                .kernel("activate_conv" + i)
+                .def(conv_activate_subm<block_size, block_size, block_size>(layers[i], layers[i + 1]))));
+
+        forward_convs.push_back(
+            std::move(
+            get_current_program()
+            .kernel("forward_conv" + i)
+            .def(convolution<Conv::K0, Conv::K1, Conv::K2,
+                            Conv::P0, Conv::P1, Conv::P2,
+                            Conv::S0, Conv::S1, Conv::S2,
+                            Conv::Ci, Conv::Co>(layers[i], layers[i+1], weights[i]))));
+    });
 
     // fill weights1, 串行的？
-    for (int c_out = 0; c_out < num_ch2; c_out++) {
-        for (int c_in = 0; c_in < num_ch1; c_in++) {
-            float inc = 0.1f;
-            for (int dx = -1; dx < 2; dx++) {
-                for (int dy = -1; dy < 2; dy++) {
-                    for (int dz = -1; dz < 2; dz++) {
-                        if (dx == 0 && dy == 0 && dz == 0)
-                            weights1.val<taichi::float32>(dx + 1, dy + 1, dz + 1, c_in * num_ch2 + c_out) = inc;
-                        inc += 0.1f;
-                    }
-                }
-            }
+    for (auto weight : weights) {
+    }
+
+    for (int i = 0; i < 50; i++) {
+        for (size_t j = 0; j < backbone_cfg.size(); j++) {
+            activate_convs[j]();
+            forward_convs[j]();
         }
     }
 
-    for (int i = 0; i < 0; i++) {
-        activate_conv1();
-        forward_conv1();
-        activate_conv2();
-        forward_conv2();
-        activate_conv3();
-        forward_conv3();
-    }
-
     prog->profiler_print();
-
-
-
-//  // 这厮是 不带参数的！
-//     Kernel &kernel_double =
-//         kernel([&]() {
-//             kernel_name("double");
-//             For(0, n, [&](Expr i) {
-//                 auto ret = Var(0);
-//                 If(i % 2 == 0).Then([&] { ret = dou(i); }).Else([&] { ret = i; });
-//                 a[i] = ret;
-//             });
-//         });
-
-//     kernel_double();
-
-//     for (int i = 0; i < n; i ++) {
-//         if (a.val<taichi::int32>(i) == (2 - i % 2) * i) {
-//             std::cout << "correct " << i << std::endl;
-
-//             std::cout << "error " << std::endl;
-//         }
-//     }
 
 
 
