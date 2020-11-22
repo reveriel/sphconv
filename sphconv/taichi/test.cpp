@@ -1,11 +1,13 @@
 
+#include "npy.hpp"
+#include "kernel.h"
+
 #include <taichi/lang.h>
 #include <numeric>
 // #include <taichi/visual/gui.h>
 // #include <torch/extension.h>
 #include <string>
 #include <vector>
-#include "npy.hpp"
 #include <cmath>
 
 // test if convolution get a correct result
@@ -22,41 +24,6 @@ void init_taichi_program() {
 // input  layer of 3, 3
 // compare with pytorch ?
 // data
-
-
-template <int k0, int k1, int k2,
-    int s0, int s1, int s2,
-    int p0, int p1, int p2,
-    int channel_in,
-    int channel_out>
-std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights) {
-    return [&]() {
-        bool use_cache = true;
-        CacheL1(weights);
-        BlockDim(256);
-
-        For(layer_in, [&](Expr i, Expr j, Expr k, Expr c_out) {
-            auto sum = Var(0.0f);
-            for (int c_in = 0; c_in < channel_in; c_in++) {
-                for (int dx = -1; dx < 2; dx++) {
-                    for (int dy = -1; dy < 2; dy++) {
-                        for (int dz = -1; dz < 2; dz++) {
-
-                            auto weight = weights[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * channel_out + c_out];
-
-                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
-
-                            sum += weight * layer_in[i + dx, j + dy, k + dz, c_in2];
-                        }
-                    }
-                }
-            }
-            layer_out[i, j, k, c_out] = sum;
-        });
-    };
-}
-
-
 
 
 int main() {
@@ -80,6 +47,7 @@ int main() {
 
     int res = 8;
 
+
     layout([&]() {
         auto ijkl = Indices(0, 1, 2, 3);
         root.dense(ijkl, {res / block_size, res / block_size, res / block_size, 1}).bitmasked()
@@ -87,7 +55,7 @@ int main() {
         root.dense(ijkl, {res / block_size, res / block_size, res / block_size, 1}).bitmasked()
             .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer2);
 
-        root.dense(ijkl, {3, 3, 3, num_ch1 * num_ch2}).place(weights1);
+        root.dense(ijkl, {4, 4, 4, num_ch1 * num_ch2}).place(weights1);
     });
 
     // init layer1 data, fill with ones
@@ -130,7 +98,7 @@ int main() {
 
 
     Kernel(forward_conv1).def(
-        convolution<3, 3, 3, 1, 1, 1, 0, 0, 0, 16, 16>(layer1, layer2,  weights1)
+        convolution<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16>(layer1, layer2,  weights1)
     );
 
 
@@ -170,26 +138,6 @@ int main() {
 
 
 
-//  // 这厮是 不带参数的！
-//     Kernel &kernel_double =
-//         kernel([&]() {
-//             kernel_name("double");
-//             For(0, n, [&](Expr i) {
-//                 auto ret = Var(0);
-//                 If(i % 2 == 0).Then([&] { ret = dou(i); }).Else([&] { ret = i; });
-//                 a[i] = ret;
-//             });
-//         });
-
-//     kernel_double();
-
-//     for (int i = 0; i < n; i ++) {
-//         if (a.val<taichi::int32>(i) == (2 - i % 2) * i) {
-//             std::cout << "correct " << i << std::endl;
-
-//             std::cout << "error " << std::endl;
-//         }
-//     }
 
     for (int i = 0; i < res; i++) {
         for (int j = 0; j < res; j++) {

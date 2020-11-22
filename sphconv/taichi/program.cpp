@@ -1,5 +1,6 @@
 #include "conv.hpp"
 #include "npy.hpp"
+#include "kernel.h"
 #include "mp_helper.h"
 
 #include <taichi/lang.h>
@@ -88,37 +89,6 @@ void fill_weights(Expr weights, ConvolutionConfigBase conv, float value) {
 }
 
 
-/**
- *  convolution kernel body
- */
-template <int k0, int k1, int k2, int s0, int s1, int s2, int p0, int p1, int p2, int channel_in, int channel_out>
-std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights)
-{
-    return [&]() {
-        bool use_cache = true;
-        CacheL1(weights);
-        BlockDim(256);
-
-        For(layer_in, [&](Expr i, Expr j, Expr k, Expr c_out) {
-            auto sum = Var(0.0f);
-            for (int c_in = 0; c_in < channel_in; c_in++) {
-                for (int dx = -1; dx < 2; dx++) {
-                    for (int dy = -1; dy < 2; dy++) {
-                        for (int dz = -1; dz < 2; dz++) {
-
-                            auto weight = weights[Expr(dx + 1), Expr(dy + 1), Expr(dz + 1), c_in * channel_out + c_out];
-
-                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
-
-                            sum += weight * layer_in[i + dx, j + dy, k + dz, c_in2];
-                        }
-                    }
-                }
-            }
-            layer_out[i, j, k, c_out] = sum;
-        });
-    };
-}
 
 /**
  * activate convolution output layer  (dilated version)

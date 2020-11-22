@@ -26,3 +26,7 @@ target_link_libraries(program taichi_core taichi_lang_core dl)
 add_executable(test)
 target_sources(test PUBLIC test.cpp)
 target_link_libraries(test taichi_core taichi_lang_core dl)
+
+add_executable(test_array)
+target_sources(test_array PUBLIC test_array.cpp)
+target_link_libraries(test_array taichi_core taichi_lang_core dl)
