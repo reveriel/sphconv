@@ -1,18 +1,20 @@
 #include "conv.hpp"
 #include "npy.hpp"
 #include "kernel.h"
-#include "mp_helper.h"
 
 #include <taichi/lang.h>
 #include <numeric>
 // #include <taichi/visual/gui.h>
 // #include <torch/extension.h>
 
+#include  <boost/mp11.hpp>
+using namespace boost::mp11;
+
 using namespace taichi::Tlang;
 
 Program *prog;
 
-VoxelizationConfig vcfg;
+constexpr VoxelizationConfig vcfg;
 
 void init_taichi_program() {
     taichi::CoreState::set_trigger_gdb_when_crash(false);
@@ -40,31 +42,38 @@ using BackBoneConfigType =
 mp_list<
     ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
     ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 1, 1, 64, 64, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 1, 1, 0, 0, 1, 2, 1, 1, 64, 64, false>
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 1, 1, 64, 64, false>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 1, 1, 0, 0, 1, 2, 1, 1, 64, 64, false>
 >;
 
 // BackBoneConfig backbone_cfg;
 
 
 BackBoneConfig<BackBoneConfigType> backbone_cfg;
-auto input_shape = FeatureShape({vcfg.H(), vcfg.W(), vcfg.D(), 16});
-auto backbone_shape = BackBoneShape<BackBoneConfigType>(input_shape);
+constexpr auto input_shape = FeatureShapeBase(vcfg.H(), vcfg.W(), vcfg.D(), 16);
+// auto backbone_shape = BackBoneShape<BackBoneConfigType>(input_shape);
+
+using BackBoneShape_mp = mp_reverse<mp_fold<
+    BackBoneConfigType,
+    mp_list<FeatureShape<vcfg.H(),vcfg.W(), vcfg.D(), 16>>,
+    conv_apply_concate
+    >>;
 
 /**
  *  fill weights with value
  */
-void fill_weights(Expr weights, ConvolutionConfigBase conv, float value) {
+void fill_weights(Expr weights, ConvolutionConfigBase conv, float value)
+{
     for (int c_out = 0; c_out < conv.channel_out; c_out++) {
         for (int c_in = 0; c_in < conv.channel_in; c_in++) {
             // float inc = 0.1f;
@@ -87,8 +96,6 @@ void fill_weights(Expr weights, ConvolutionConfigBase conv, float value) {
         }
     }
 }
-
-
 
 /**
  * activate convolution output layer  (dilated version)
@@ -196,21 +203,41 @@ int main() {
         weights.push_back(declare_global("weights" + i, DataType::f32));
     }
 
-    std::cout << backbone_shape;
+
+    // std::cout << FeatureShape<1,2,3,4>() << std::endl;;
+    // std::cout << l;
+    print( BackBoneShape_mp() );
+
 
     constexpr int block_size = 4;
+    constexpr int N_layer = mp_size<BackBoneConfigType>::value;
 
-    assert((backbone_shape.size() == layers.size()));
-    assert((backbone_cfg.size() == weights.size()));
+    // assert((backbone_shape.size() == layers.size())); // N + 1
+    assert((mp_size<BackBoneShape_mp>::value == layers.size())); // N + 1
+    assert((backbone_cfg.size() == weights.size())); // N
 
     layout([&]() {
         auto ijkl = Indices(0, 1, 2, 3);
-        for (size_t i = 0; i < backbone_shape.size(); i++) {
-            auto shape = backbone_shape[i];
-            root.dense(ijkl, {shape.h()/block_size, shape.w()/block_size, shape.d()/block_size, 1 })
-            .dense(ijkl, {block_size, block_size, block_size, shape.c()})
-            .place(layers[i]);
-        }
+
+        mp_for_each<mp_iota_c<N_layer + 1>> ([&] (auto I) {
+
+            using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
+            root.dense(ijkl, {Shape::H / block_size, Shape::W / block_size, Shape::D / block_size, 1 })
+            .bitmasked()
+            .dense(ijkl, {block_size, block_size, block_size, Shape::C})
+            .place(layers[I]);
+
+        });
+
+        mp_for_each<BackBoneShape_mp>([&](auto Shape) {
+        });
+        // for (size_t i = 0; i < backbone_shape.size(); i++) {
+        //     auto shape = backbone_shape[i];
+        //     root.dense(ijkl, {shape.h()/block_size, shape.w()/block_size, shape.d()/block_size, 1 })
+        //     .dense(ijkl, {block_size, block_size, block_size, shape.c()})
+        //     .place(layers[i]);
+        // }
+
         for (size_t i = 0; i < backbone_cfg.size(); i++) {
             auto conv = backbone_cfg[i];
             root.dense(ijkl, {conv.kernel_size[0], conv.kernel_size[1], conv.kernel_size[2],
@@ -225,23 +252,27 @@ int main() {
 
     std::vector<Program::Kernel> activate_convs;
     std::vector<Program::Kernel> forward_convs;
-    mp_for_each<decltype(backbone_cfg)::BackBoneConfigType>([&](auto ConvConfig) {
-        using Conv = decltype(ConvConfig);
-        size_t i = activate_convs.size();
+
+    mp_for_each<mp_iota_c<N_layer>>([&](auto I) {
+        using Conv = mp_at<BackBoneConfigType, decltype(I)>;
+        using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
         activate_convs.push_back(
             std::move(
-            get_current_program()
-                .kernel("activate_conv" + i)
-                .def(conv_activate_subm<block_size, block_size, block_size>(layers[i], layers[i + 1]))));
+                get_current_program()
+                    .kernel("activate_conv" + I)
+                    .def(conv_activate_subm<block_size, block_size, block_size>(
+                        layers[I], layers[I + 1]))));
 
         forward_convs.push_back(
             std::move(
-            get_current_program()
-            .kernel("forward_conv" + i)
-            .def(convolution<Conv::K0, Conv::K1, Conv::K2,
-                            Conv::P0, Conv::P1, Conv::P2,
-                            Conv::S0, Conv::S1, Conv::S2,
-                            Conv::Ci, Conv::Co>(layers[i], layers[i+1], weights[i]))));
+                get_current_program()
+                    .kernel("forward_conv" + I)
+                    .def(convolution<Conv::K0, Conv::K1, Conv::K2,
+                                     Conv::P0, Conv::P1, Conv::P2,
+                                     Conv::S0, Conv::S1, Conv::S2,
+                                     Conv::Ci, Conv::Co,
+                                     Shape::H, Shape::W, Shape::D>(
+                        layers[I], layers[I + 1], weights[I]))));
     });
 
     // fill weights1, 串行的？

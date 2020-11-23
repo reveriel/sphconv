@@ -24,6 +24,15 @@ void init_taichi_program() {
 // input  layer of 3, 3
 // compare with pytorch ?
 // data
+template<typename T>
+void print_2d(Expr arr, int i0, int N1, int N2, int i3) {
+    for (int i1 = 0; i1 < N1; i1++) {
+        for (int i2 = 0; i2 < N2; i2++) {
+            printf("%4.1f ", arr.val<T>(i0, i1, i2, i3));
+        }
+        printf("\n");
+    }
+}
 
 
 int main() {
@@ -42,10 +51,12 @@ int main() {
     Global(weights1, f32);
 
     int block_size = 4;
-    int num_ch1 = 16;
-    int num_ch2 = 16;
+    constexpr int num_ch1 = 4;
+    constexpr int num_ch2 = 4;
 
-    int res = 8;
+    constexpr int res = 8;
+
+
 
 
     layout([&]() {
@@ -98,7 +109,7 @@ int main() {
 
 
     Kernel(forward_conv1).def(
-        convolution<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16>(layer1, layer2,  weights1)
+        convolution<3, 3, 3, 1, 1, 1, 1, 1, 1, num_ch1, num_ch2, res, res, res>(layer1, layer2,  weights1)
     );
 
 
@@ -140,12 +151,8 @@ int main() {
 
 
     for (int i = 0; i < res; i++) {
-        for (int j = 0; j < res; j++) {
-            for (int k = 0; k < res; k++) {
-                for (int l = 0; l < 1; l++)
-                printf("layer2.val(%d,%d,%d,%d) = %f\n", i, j, k, l, layer2.val<taichi::float32>(i, j, k, l));
-            }
-        }
+        printf("i = %d\n", i);
+        print_2d<taichi::float32>(layer2, i, res, res, 0);
     }
 
     delete prog;

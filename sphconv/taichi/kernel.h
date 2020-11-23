@@ -8,7 +8,12 @@ using namespace taichi::Tlang;
 /**
  *  convolution kernel body
  */
-template <int k0, int k1, int k2, int s0, int s1, int s2, int p0, int p1, int p2, int channel_in, int channel_out>
+template <
+    int k0, int k1, int k2,
+    int s0, int s1, int s2,
+    int p0, int p1, int p2,
+    int channel_in, int channel_out,
+    int N0, int N1, int N2> // input featuremap shape
 std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights)
 {
     return [&]() {
@@ -39,7 +44,6 @@ std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights)
                                 layer_in[x_in, y_in, z_in, c_in2],
                                 Var(0.0f)
                              );
-
 
                             sum += weight * feature_in;
                         }
