@@ -23,10 +23,11 @@ link_libraries(Boost::mp11)
 
 # set(CMAKE_CXX_COMPILER  clang++)
 
+add_library(utils utils.cpp)
 
 add_executable(program)
 target_sources(program PUBLIC program.cpp)
-target_link_libraries(program taichi_core taichi_lang_core dl ${Boost_LIBRARIES})
+target_link_libraries(program taichi_core taichi_lang_core dl ${Boost_LIBRARIES} utils)
 
 
 add_executable(mp)
