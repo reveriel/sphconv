@@ -1,6 +1,6 @@
 
-#include "npy.hpp"
 #include "kernel.h"
+#include "utils.h"
 
 #include <taichi/lang.h>
 #include <numeric>
@@ -15,10 +15,6 @@
 using namespace taichi::Tlang;
 
 Program *prog;
-
-void init_taichi_program() {
-    taichi::CoreState::set_trigger_gdb_when_crash(true);
-}
 
 // case1:
 // input  layer of 3, 3
@@ -43,8 +39,6 @@ int main() {
 
     init_taichi_program();
 
-    // int n = 128;
-
     Global(layer1, f32);
     Global(layer2, f32);
 
@@ -55,9 +49,6 @@ int main() {
     constexpr int num_ch2 = 4;
 
     constexpr int res = 8;
-
-
-
 
     layout([&]() {
         auto ijkl = Indices(0, 1, 2, 3);
@@ -78,17 +69,6 @@ int main() {
             }
         }
     }
-
-// // ? I have to print the value, layer!
-//     for (int i = 0; i < res; i++) {
-//         for (int j = 0; j < res; j++) {
-//             for (int k = 0; k < res; k++) {
-//                 for (int l = 0; l < 1; l++)
-//                 printf("layer1.val1(%d,%d,%d,%d) = %f\n", i, j, k, l, layer2.val<taichi::float32>(i, j, k, l));
-//             }
-//         }
-//     }
-
 
     // fill weights1, with ones
     for (int c_out = 0; c_out < num_ch2; c_out++) {
@@ -113,7 +93,6 @@ int main() {
     );
 
 
-
     kernel([&] {
         if (!gpu) {
             Parallelize(8);
@@ -136,20 +115,11 @@ int main() {
         });
     })();
 
-
-    // for (int i = 0; i < 50; i++) {
-    // }
-
     forward_conv1();
-
 
     prog->profiler_print();
 
     // print each element
-
-
-
-
     for (int i = 0; i < res; i++) {
         printf("i = %d\n", i);
         print_2d<taichi::float32>(layer2, i, res, res, 0);

@@ -24,6 +24,7 @@ link_libraries(Boost::mp11)
 # set(CMAKE_CXX_COMPILER  clang++)
 
 add_library(utils utils.cpp)
+link_libraries(utils)
 
 add_executable(program)
 target_sources(program PUBLIC program.cpp)
