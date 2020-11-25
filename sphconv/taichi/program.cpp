@@ -22,19 +22,19 @@ constexpr int block_size = 4;
 using BackBoneConvConfigs =
 mp_list<
     ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 1, 1, 64, 64, false>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
-    ConvolutionConfig<3, 1, 1, 0, 0, 0, 2, 1, 1, 64, 64, false>
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 1, 1, 64, 64, false>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 64, 64, true>,
+    // ConvolutionConfig<3, 1, 1, 0, 0, 0, 2, 1, 1, 64, 64, false>
 >;
 
 // the number of convs
@@ -67,51 +67,6 @@ void fill_weights(Expr weights, float value)
         }
     }
 }
-
-/**
- * activate convolution output layer  (dilated version)
- *  in Taichi, sparse data block (like bitmasked) must be activated before writing
- */
-template<int block_size0, int block_size1, int block_size2>
-std::function<void()> conv_activate_dilate(Expr layer_in, Expr layer_out) {
-    return [&]() {
-        BlockDim(256);
-        kernel_name("dilate");
-        For(layer_in, [&](Expr i, Expr j, Expr k) {
-            If(i % block_size0 == 0 && j % block_size1 == 0 &&  k % block_size2 == 0)
-                .Then([&] {
-                    for (int x = -1; x < 2; x++) {
-                        for (int y = -1; y < 2; y++) {
-                            for (int z = -1; z < 2; z++) {
-                                layer_out[i + x * block_size0, j + y * block_size1, k + z * block_size2, 0] = 0.0f; // activate the block
-                            }
-                        }
-                    }
-                });
-        });
-    };
-}
-
-
-/**
- * activate convolution output layer  (submanifold version)
- *  in Taichi, sparse data block (like bitmasked) must be activated before writing
- */
-template<int block_size0, int block_size1, int block_size2>
-std::function<void()> conv_activate_subm(Expr layer_in, Expr layer_out) {
-    return [&]() {
-        BlockDim(256);
-        kernel_name("submanifold");
-        For(layer_in, [&](Expr i, Expr j, Expr k) {
-            If(i % block_size0 == 0 && j % block_size1 == 0 &&  k % block_size2 == 0)
-                .Then([&] {
-                    layer_out[i , j , k , 0] = 0.0f; // activate the block
-                });
-        });
-    };
-}
-
-
 /**
 * init layer0 from points data,  voxelization is done at here
 */
@@ -149,7 +104,7 @@ void init_layer0(Expr &layer0, const Points &points, const VoxelizationConfig &v
     }
 }
 
-auto relu = [](Expr a) { return  max(a, Var(0.0f)); };
+
 
 inline
 Expr declare_global(std::string name, DataType t) {
@@ -211,11 +166,17 @@ int main() {
     mp_for_each<mp_iota_c<N_layer>>([&](auto I) {
         using Conv = mp_at<BackBoneConvConfigs, decltype(I)>;
         using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
+        using ShapeOut = mp_at<BackBoneShape_mp, decltype(std::integral_constant<std::size_t, I + 1>())>;
         activate_convs.push_back(
             std::move(
                 get_current_program()
                     .kernel("activate_conv" + I)
-                    .def(conv_activate_subm<block_size, block_size, block_size>(
+                    .def(conv_activate<block_size, block_size, block_size,
+                                       Conv::K0, Conv::K1, Conv::K2,
+                                       Conv::P0, Conv::P1, Conv::P2,
+                                       Conv::S0, Conv::S1, Conv::S2,
+                                       ShapeOut::H, ShapeOut::W, ShapeOut::D,
+                                       Conv::subm>(
                         layers[I], layers[I + 1]))));
 
         forward_convs.push_back(

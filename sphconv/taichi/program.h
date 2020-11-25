@@ -1,5 +1,8 @@
 #pragma once
 #include <torch/extension.h>
+#include <pybind11/pybind11.h>
+namespace py = pybind11;
+#include <cstdlib>
 
 
 void init() {
@@ -9,8 +12,10 @@ void init() {
 
 void forward(torch::Tensor output,
              torch::Tensor points,
-             torch::Tensor weights)
+             py::tuple weights)
 {
+    printf("number of weights = %d\n", (int)weights.size());
+
     return;
 }
 
