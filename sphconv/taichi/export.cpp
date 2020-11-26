@@ -1,7 +1,7 @@
 #include <torch/extension.h>
 #include <pybind11/pybind11.h>
 
-#include "program.h"
+#include "backbone.h"
 
 // #define TORCH_EXTENSION_NAME conv_taichi
 

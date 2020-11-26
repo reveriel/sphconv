@@ -106,11 +106,6 @@ void init_layer0(Expr &layer0, const Points &points, const VoxelizationConfig &v
 
 
 
-inline
-Expr declare_global(std::string name, DataType t) {
-    auto var_global = Expr(std::make_shared<IdExpression>(name));
-    return global_new(var_global, t);
-}
 
 int main() {
     //
