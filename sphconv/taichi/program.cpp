@@ -168,7 +168,7 @@ int main() {
         using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
         using ShapeOut = mp_at<BackBoneShape_mp, decltype(std::integral_constant<std::size_t, I + 1>())>;
         activate_convs.push_back(
-            std::move(
+            std::move( // NOTE: we move the Kernel from Prgram's public member, luckliy, it's OK
                 get_current_program()
                     .kernel("activate_conv" + I)
                     .def(conv_activate<block_size, block_size, block_size,

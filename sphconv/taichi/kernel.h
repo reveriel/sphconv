@@ -17,7 +17,7 @@ template <
     int P0, int P1, int P2,
     int channel_in, int channel_out,
     int N0, int N1, int N2> // input featuremap shape
-std::function<void()> convolution(Expr layer_in, Expr layer_out, Expr weights)
+std::function<void()> convolution(Expr &layer_in, Expr &layer_out, Expr &weights)
 {
     return [&]() {
         bool use_cache = true;
@@ -69,7 +69,7 @@ template <int block_size0, int block_size1, int block_size2,
           int S0, int S1, int S2,
           int P0, int P1, int P2,
           int N0, int N1, int N2> // output shape
-std::function<void()> conv_activate_dilate(Expr layer_in, Expr layer_out)
+std::function<void()> conv_activate_dilate(Expr &layer_in, Expr &layer_out)
 {
     return [&]() {
         BlockDim(256);
@@ -104,7 +104,7 @@ std::function<void()> conv_activate_dilate(Expr layer_in, Expr layer_out)
  *  in Taichi, sparse data block (like bitmasked) must be activated before writing
  */
 template <int block_size0, int block_size1, int block_size2>
-std::function<void()> conv_activate_subm(Expr layer_in, Expr layer_out)
+std::function<void()> conv_activate_subm(Expr &layer_in, Expr &layer_out)
 {
     return [&]() {
         BlockDim(256);
@@ -125,9 +125,8 @@ template <int block_size0, int block_size1, int block_size2,
           int P0, int P1, int P2,
           int N0, int N1, int N2,
           bool subm>
-static inline std::function<void()> conv_activate(Expr layer_in, Expr layer_out) {
+std::function<void()>  conv_activate(Expr &layer_in, Expr &layer_out) {
     if (subm) {
-        printf(" errrrrrr---------- \n");
         return conv_activate_subm<block_size0, block_size1, block_size2>(layer_in, layer_out);
     } else {
         return conv_activate_dilate<block_size0, block_size1, block_size2,
