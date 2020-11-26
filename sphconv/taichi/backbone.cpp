@@ -116,6 +116,10 @@ void forward(torch::Tensor output,
              py::tuple weights)
 {
     printf("number of weights = %d\n", (int)weights.size());
+    // copy weights data
+    // copy points data
+
+    //
     for (size_t i = 0; i < N_layer; i++) {
         backbone->activate_convs[i]();
         backbone->forward_convs[i]();
@@ -130,4 +134,8 @@ void backward(torch::Tensor grad)
 {
     printf(" backward not implemented. \n");
     return;
+}
+
+void profiler_print() {
+    prog->profiler_print();
 }

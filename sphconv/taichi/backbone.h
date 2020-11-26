@@ -23,7 +23,7 @@ extern std::unique_ptr<Backbone> backbone;
  */
 void init();
 
-/**gg
+/**
  * forward
  */
 void forward(torch::Tensor output,
@@ -31,3 +31,5 @@ void forward(torch::Tensor output,
              py::tuple weights);
 
 void backward(torch::Tensor grad);
+
+void profiler_print();

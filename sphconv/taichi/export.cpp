@@ -10,4 +10,5 @@ PYBIND11_MODULE(conv_taichi, m)
     m.def("init", &init, "");
     m.def("forward", &forward,"" );
     m.def("backward", &backward,"");
+    m.def("profiler_print", &profiler_print, "");
 }
