@@ -28,7 +28,7 @@ void init();
  */
 void forward(torch::Tensor output,
              torch::Tensor points,
-             py::tuple weights);
+             std::vector<torch::Tensor> weights);
 
 void backward(torch::Tensor grad);
 

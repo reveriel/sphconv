@@ -1,19 +1,24 @@
 
 #include <torch/extension.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <cstdlib>
 #include <vector>
 #include <taichi/lang.h>
 #include <boost/mp11.hpp>
+#include <time.h>
+
 
 using namespace boost::mp11;
 using namespace taichi::Tlang;
 namespace py = pybind11;
 
 
+
 #include "kernel.h"
 #include "backbone.h"
 #include "utils.h"
+#include "copy.h"
 
 // load convolution configurations
 #include "conv_config.h"
@@ -51,8 +56,9 @@ Backbone::Backbone()
         mp_for_each<mp_iota_c<N_layer + 1>>([&](auto I) {
             using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
             root.dense(ijkl,
-                       {Shape::H / block_size, Shape::W / block_size, Shape::D / block_size, 1})
-                .bitmasked()
+                       {Shape::H / block_size, Shape::W / block_size,
+                        Shape::D / block_size, 1})
+                .pointer()
                 .dense(ijkl, {block_size, block_size, block_size, Shape::C})
                 .place(layers[I]);
         });
@@ -108,26 +114,46 @@ void init() {
     backbone.reset(new Backbone());
 }
 
+
 /**
  * forward
+ *
+ * NOTE: do not print to std::cout and std::err, in this function
  */
 void forward(torch::Tensor output,
              torch::Tensor points,
-             py::tuple weights)
+             std::vector<torch::Tensor> weights)
 {
-    printf("number of weights = %d\n", (int)weights.size());
+
+    // printf("number of weights = %d\n", (int)weights.size());
     // copy weights data
+
+    // TC_INFO("copy weights ");
+    mp_for_each<mp_iota_c<N_layer>>([&] (auto I) {
+        using Conv = mp_at<BackBoneConvConfigs, decltype(I)>;
+        // copy_weights_cpu<Conv>(backbone->weights[I], weights[I]);
+        // PyObject *p = PyTuple_GetItem(weights, I);
+
+    });
+
+
     // copy points data
+    // TC_INFO("init layer0 ");
+    // init_layer0(backbone->layers[0], points, vcfg);
+
 
     //
+    // TC_INFO("forward ");
     for (size_t i = 0; i < N_layer; i++) {
+        // TC_INFO("  layer {}", i);
         backbone->activate_convs[i]();
         backbone->forward_convs[i]();
     }
 
     // fill data to output
-
-    return;
+    // TC_INFO("copy_feature_cpu");
+    using Shape = mp_at<BackBoneShape_mp,mp_int<N_layer>>;
+    // copy_feature_cpu<Shape>(backbone->layers[N_layer], output);
 }
 
 void backward(torch::Tensor grad)

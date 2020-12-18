@@ -19,6 +19,7 @@ constexpr VoxelizationConfig vcfg;
 
 constexpr int block_size = 4;
 
+
 using BackBoneConvConfigs =
 mp_list<
     ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
@@ -108,6 +109,7 @@ void init_layer0(Expr &layer0, const Points &points, const VoxelizationConfig &v
 
 
 int main() {
+    taichi::logger.set_level("trace");
     //
     // Debug
     //
@@ -201,6 +203,7 @@ int main() {
 
     prog->profiler_print();
 
+    TC_FLUSH_LOGGER;
     delete prog;
 
     return 0;

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
-project(ttt)
+project(ttt LANGUAGES CXX CUDA)
 
 
 set(TAICHI_DIR "../../third_party/taichi/")
@@ -17,6 +17,7 @@ include_directories(../../third_party/taichi/external/include)
 link_directories(../../third_party/taichi/build)
 
 message("C++ Flags: ${CMAKE_CXX_FLAGS}")
+
 
 add_subdirectory(mp11)
 # link_libraries(Boost::mp11)
@@ -35,27 +36,38 @@ add_executable(mp)
 target_sources(mp PUBLIC mp.cpp)
 target_link_libraries(mp  ${Boost_LIBRARIES} Boost::mp11)
 
+
 add_executable(test)
 target_sources(test PUBLIC test.cpp)
 target_link_libraries(test taichi_core taichi_lang_core dl ${Boost_LIBRARIES} Boost::mp11 utils)
+
 
 add_executable(test_array)
 target_sources(test_array PUBLIC test_array.cpp)
 target_link_libraries(test_array taichi_core taichi_lang_core dl ${Boost_LIBRARIES})
 
-add_library(backbone)
-target_sources(backbone PRIVATE backbone.cpp)
-target_link_libraries(backbone Boost::mp11 utils)
 
 pybind11_add_module(conv_taichi MODULE
     export.cpp
     backbone.cpp
+    copy.cpp
 )
+
+
 
 target_link_libraries(conv_taichi
     PRIVATE taichi_core
     PRIVATE taichi_lang_core
-    PRIVATE backbone
     PRIVATE ${TORCH_LIBRARIES}
     PRIVATE ${TORCH_PYTHON_LIBRARY}
+    Boost::mp11
+    utils
 )
+
+find_package(Threads REQUIRED)
+add_executable(test_backbone)
+target_sources(test_backbone PUBLIC test_backbone.cpp copy.cpp backbone.cpp)
+target_link_libraries(test_backbone
+   Threads::Threads
+   taichi_core taichi_lang_core
+   dl ${Boost_LIBRARIES} Boost::mp11 utils ${TORCH_LIBRARIES})

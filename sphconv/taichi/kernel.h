@@ -22,6 +22,8 @@ std::function<void()> convolution(Expr &layer_in, Expr &layer_out, Expr &weights
     return [&]() {
         bool use_cache = true;
         CacheL1(weights);
+        Cache(2, layer_in);
+        // Cache(1, layer_out);
         BlockDim(256);
 
         For(layer_out, [&](Expr i, Expr j, Expr k, Expr c_out) {

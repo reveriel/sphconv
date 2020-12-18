@@ -10,8 +10,6 @@ class BackBoneFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, points, *weights):
-
-
         return;
 
     @staticmethod
