@@ -7,6 +7,8 @@
 #include <taichi/lang.h>
 #include <boost/mp11.hpp>
 #include <time.h>
+#include "utils.h"
+#include <cuda_runtime.h>
 
 
 using namespace boost::mp11;
@@ -32,6 +34,8 @@ struct Backbone {
     std::vector<Program::Kernel> activate_convs;
     std::vector<Program::Kernel> forward_convs;
     Backbone();
+    size_t n_layers() { return N_layer + 1; }
+    size_t n_weights() { return N_layer; }
 } ;
 
 ///
@@ -82,8 +86,8 @@ Backbone::Backbone()
                     .kernel("activate_conv" + I)
                     .def(conv_activate<block_size, block_size, block_size,
                                        Conv::K0, Conv::K1, Conv::K2,
-                                       Conv::P0, Conv::P1, Conv::P2,
                                        Conv::S0, Conv::S1, Conv::S2,
+                                       Conv::P0, Conv::P1, Conv::P2,
                                        ShapeOut::H, ShapeOut::W, ShapeOut::D,
                                        Conv::subm>(
                         layers[I], layers[I + 1]))));
@@ -93,8 +97,8 @@ Backbone::Backbone()
                 get_current_program()
                     .kernel("forward_conv" + I)
                     .def(convolution<Conv::K0, Conv::K1, Conv::K2,
-                                     Conv::P0, Conv::P1, Conv::P2,
                                      Conv::S0, Conv::S1, Conv::S2,
+                                     Conv::P0, Conv::P1, Conv::P2,
                                      Conv::Ci, Conv::Co,
                                      Shape::H, Shape::W, Shape::D>(
                         layers[I], layers[I + 1], weights[I]))));
@@ -105,11 +109,13 @@ Backbone::Backbone()
 /**
  *  init the backbone taichi program
  */
-void init() {
+void init(bool debug) {
     if (current_program != nullptr) {
         return;
     }
     prog.reset(new Program(Arch::gpu));
+    prog->config.debug = debug;
+    prog->config.lower_access = false;
     init_taichi_program();
     backbone.reset(new Backbone());
 }
@@ -131,16 +137,13 @@ void forward(torch::Tensor output,
     // TC_INFO("copy weights ");
     mp_for_each<mp_iota_c<N_layer>>([&] (auto I) {
         using Conv = mp_at<BackBoneConvConfigs, decltype(I)>;
-        // copy_weights_cpu<Conv>(backbone->weights[I], weights[I]);
-        // PyObject *p = PyTuple_GetItem(weights, I);
-
+        copy_weights_cpu<Conv>(backbone->weights[I], weights[I]);
+        // PyObject *p = PyTuple_GetItem(weights, I);gg
     });
-
 
     // copy points data
     // TC_INFO("init layer0 ");
-    // init_layer0(backbone->layers[0], points, vcfg);
-
+    init_layer0(backbone->layers[0], points, vcfg);
 
     //
     // TC_INFO("forward ");
@@ -149,6 +152,7 @@ void forward(torch::Tensor output,
         backbone->activate_convs[i]();
         backbone->forward_convs[i]();
     }
+
 
     // fill data to output
     // TC_INFO("copy_feature_cpu");
@@ -161,6 +165,42 @@ void backward(torch::Tensor grad)
     printf(" backward not implemented. \n");
     return;
 }
+
+void print_last_layer()
+{
+    using Shape = mp_at_c<BackBoneShape_mp, N_layer>;
+    print_3d<taichi::float32>(backbone->layers.back(),
+    Shape::H,  Shape::W, Shape::D, 0);
+}
+
+void print_first_layer()
+{
+    using Shape = mp_at_c<BackBoneShape_mp, 0>;
+    print_3d<taichi::float32>(backbone->layers[0],
+    Shape::H,  Shape::W, Shape::D, 0);
+}
+
+void print_first_layer_nz()
+{
+    using Shape = mp_at_c<BackBoneShape_mp, 0>;
+    print_3d_nz<taichi::float32>(backbone->layers[0],
+    Shape::H,  Shape::W, Shape::D, 0);
+}
+
+void print_last_layer_nz()
+{
+    using Shape = mp_at_c<BackBoneShape_mp, N_layer>;
+    print_3d_nz<taichi::float32>(backbone->layers.back(),
+    Shape::H,  Shape::W, Shape::D, 0);
+}
+
+// void print_layer(const int i)
+// {
+//     assert(i >= 0 && i < N_layer + 1, "layer number invalid");
+//     using Shape = mp_at_c<BackBoneShape_mp, i>;
+//     print_3d<taichi::float32>(backbone->layers.back(),
+//     Shape::H, Shape::W, Shape::D, 0);
+// }
 
 void profiler_print() {
     prog->profiler_print();

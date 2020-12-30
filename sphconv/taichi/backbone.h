@@ -21,7 +21,7 @@ extern std::unique_ptr<Backbone> backbone;
 /**
  *  init the backbone taichi program
  */
-void init();
+void init(bool debug=false);
 
 /**
  * forward
@@ -31,5 +31,11 @@ void forward(torch::Tensor output,
              std::vector<torch::Tensor> weights);
 
 void backward(torch::Tensor grad);
+
+void print_last_layer();
+void print_first_layer();
+void print_first_layer_nz();
+void print_last_layer_nz();
+void print_layer(int i);
 
 void profiler_print();
