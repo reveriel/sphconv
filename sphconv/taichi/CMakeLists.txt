@@ -1,9 +1,8 @@
 cmake_minimum_required(VERSION 3.8)
 
-set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 project(ttt LANGUAGES CXX CUDA)
-
 
 set(TAICHI_DIR "../../third_party/taichi/")
 set(TAICHI_CMAKE_DIR "${TAICHI_DIR}/cmake/")
@@ -41,6 +40,9 @@ add_executable(test)
 target_sources(test PUBLIC test.cpp)
 target_link_libraries(test taichi_core taichi_lang_core dl ${Boost_LIBRARIES} Boost::mp11 utils)
 
+add_executable(test_pads)
+target_sources(test_pads PUBLIC test_pads.cpp)
+target_link_libraries(test_pads taichi_core taichi_lang_core dl ${Boost_LIBRARIES} Boost::mp11 utils)
 
 add_executable(test_array)
 target_sources(test_array PUBLIC test_array.cpp)
