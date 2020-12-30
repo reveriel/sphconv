@@ -11,9 +11,9 @@ constexpr int block_size = 4;
 
 using BackBoneConvConfigs =
 mp_list<
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 4, 16, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
-    ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>
+    ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 4, 16, true>
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 16, 16, true>,
+    // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 16, 32, false>
     // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
     // ConvolutionConfig<3, 3, 3, 1, 1, 1, 1, 1, 1, 32, 32, true>,
     // ConvolutionConfig<3, 3, 3, 1, 1, 1, 2, 2, 2, 32, 64, false>,

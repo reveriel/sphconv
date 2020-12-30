@@ -6,5 +6,7 @@ Makefile
 CMakeFiles/
 test
 test_array
+test_pads
+test_backbone
 mp
 *.a

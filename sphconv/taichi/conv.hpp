@@ -34,10 +34,23 @@ struct VoxelizationConfig {
     constexpr static const float PI = 3.14159265;
     constexpr VoxelizationConfig()
         : delta_phi(radians(h_range[1] - h_range[0]) / h_res),
-          delta_theta(radians(v_range[1] - v_range[1]) / v_res),
+          delta_theta(radians(v_range[1] - v_range[0]) / v_res),
           delta_r(log ? (std::log(d_range[1]) - std::log(d_range[0])) / d_res
                       : (d_range[1] - d_range[0]) / d_res)
     {
+    }
+
+    constexpr int theta_idx(float theta) const {
+        return (theta - radians(v_range[0])) / delta_theta;
+    }
+    constexpr int phi_idx(float phi) const {
+        return (phi - radians(h_range[0])) / delta_phi;
+    }
+
+    constexpr int depth_idx(float r) const {
+        return log
+                   ? ((std::log(r) - std::log(d_range[0])) / delta_r)
+                   : ((r - d_range[0]) / delta_r);
     }
 
     constexpr int H() const { return v_res; }
@@ -53,6 +66,7 @@ static inline bool in_range(int x, int low, int high) {
 /**
  * describe the parameters of a convolution
  */
+// TODO: change order to K S P
 template <
     int K0_,
     int K1_,
