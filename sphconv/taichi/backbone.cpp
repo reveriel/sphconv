@@ -25,6 +25,8 @@ namespace py = pybind11;
 // load convolution configurations
 #include "conv_config.h"
 
+constexpr int block_size = 16;
+constexpr int block_size_d = 1;
 
 struct Backbone {
     // declare all variables
@@ -61,9 +63,9 @@ Backbone::Backbone()
             using Shape = mp_at<BackBoneShape_mp, decltype(I)>;
             root.dense(ijkl,
                        {Shape::H / block_size, Shape::W / block_size,
-                        Shape::D / block_size, 1})
+                        Shape::D / block_size_d, 1})
                 .pointer()
-                .dense(ijkl, {block_size, block_size, block_size, Shape::C})
+                .dense(ijkl, {block_size, block_size, block_size_d, Shape::C})
                 .place(layers[I]);
         });
 
@@ -84,7 +86,7 @@ Backbone::Backbone()
             std::move( // NOTE: we move the Kernel from Prgram's public member, luckliy, it's OK
                 get_current_program()
                     .kernel("activate_conv" + I)
-                    .def(conv_activate<block_size, block_size, block_size,
+                    .def(conv_activate<block_size, block_size, block_size_d,
                                        Conv::K0, Conv::K1, Conv::K2,
                                        Conv::S0, Conv::S1, Conv::S2,
                                        Conv::P0, Conv::P1, Conv::P2,

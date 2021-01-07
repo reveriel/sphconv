@@ -1,8 +1,14 @@
 #pragma once
 #include <taichi/lang.h>
 #include <type_traits>
+#include <taichi/testing.h>
+#include <numeric>
 
 
+#pragma GCC push_options
+#pragma GCC optimize ("unroll-loops")
+
+#define Print(x) Print_(x, #x);
 
 using namespace taichi::Tlang;
 
@@ -20,14 +26,26 @@ template <
 std::function<void()> convolution(Expr &layer_in, Expr &layer_out, Expr &weights)
 {
     return [&]() {
-        bool use_cache = true;
-        CacheL1(weights);
-        Cache(2, layer_in);
-        // Cache(1, layer_out);
         BlockDim(256);
+        kernel_name("conv_forward");
+        bool use_cache = true;
+        // CacheL1(weights);
+        // Cache(0, layer_in);
+        // Cache(0, layer_out);
 
         For(layer_out, [&](Expr i, Expr j, Expr k, Expr c_out) {
             auto sum = Var(0.0f);
+            // auto zero =  Expr(0);
+            // auto zero = ConstExpression(static_cast<taichi::int32>(0));
+            // auto zero =  Expr::make<ConstExpression, taichi::int32>(0);
+
+            // auto zero = ([]() {
+            //     auto var = Expr(std::make_shared<IdExpression>());
+            //     current_ast_builder().insert(std::make_unique<FrontendAllocaStmt>(
+            //         std::static_pointer_cast<IdExpression>(var.expr)->id,
+            //         DataType::i32));
+            //     return var;
+            // })();
             for (int c_in = 0; c_in < channel_in; c_in++) {
                 for (int dx = 0; dx < K0; dx++) {
                     for (int dy = 0; dy < K1; dy++) {
@@ -37,24 +55,38 @@ std::function<void()> convolution(Expr &layer_in, Expr &layer_out, Expr &weights
                             // x_in = i * s0 + dx - p0
 
                             auto weight = weights[Expr(dx), Expr(dy), Expr(dz), c_in * channel_out + c_out];
+                            // Print(weight);
 
-                            auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, 0, 1) : c_in;
+                            // auto c_in2 = use_cache ? AssumeInRange(c_in, c_out, -channel_in, channel_in+1) : c_in;
+                            auto c_in2 = c_in;
+
                             // auto c_in2 = c_in;
-                            auto x_in = S0 * i + dx - P0;
-                            auto y_in = S1 * j + dy - P1;
-                            auto z_in = S2 * k + dz - P2;
+                            auto x_in = (S0 * i + dx - P0);
+                            // auto x_in2 = AssumeInRange(x_in, i, -P0, K0);
+                            auto y_in = (S1 * j + dy - P1);
+                            // auto y_in2 = AssumeInRange(y_in, j, -P1, K1);
+                            auto z_in = (S2 * k + dz - P2);
+                            // auto z_in2 = AssumeInRange(z_in, k, -P2, K2);
+                            // auto node = (x_in2, y_in2, z_in2, c_in2);
+                            auto node = (x_in, y_in, z_in, c_in);
 
                             auto feature_in =
                                 select(x_in >= 0 && y_in >= 0 && z_in >= 0 &&
                                            x_in < N0 && y_in < N1 && z_in < N2,
-                                       layer_in[x_in, y_in, z_in, c_in2],
+                                       layer_in[node],
                                        Var(0.0f));
 
+                            // auto feature_in = layer_in[node];
+
                             sum += weight * feature_in;
+
+                            // layer_out[i, j, k, c_out] += weight * feature_in;
+                            // Print(layer_out[i,j,k,c_out]);
                         }
                     }
                 }
             }
+            // Print(sum);
             layer_out[i, j, k, c_out] = sum;
         });
     };
@@ -136,3 +168,5 @@ std::function<void()>  conv_activate(Expr &layer_in, Expr &layer_out) {
                                     N0, N1, N2>(layer_in, layer_out);
     }
 }
+
+#undef Print

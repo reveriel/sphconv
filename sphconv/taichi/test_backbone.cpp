@@ -47,12 +47,15 @@ int main() {
     torch::jit::script::Module tensors = torch::jit::load("points0.pt");
     torch::Tensor points = tensors.attr("points").toTensor();
 
-    forward(output, points, weights);
+    // forward(output, points, weights);
 
     auto t = get_time();
     for (int i = 0; i < 50; i++) {
         forward(output, points, weights);
     }
+
+    // print_first_layer_nz();
+    // print_last_layer_nz();
 
     profiler_print();
 

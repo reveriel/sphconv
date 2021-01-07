@@ -30,24 +30,51 @@ void print_2d(Expr arr, int i0, int N1, int N2, int i3) {
     }
 }
 
+struct Layer {
+    //  3D layer
+    int  h_, w_, d_, c_;
+    float *data;
+    Layer(int h, int w, int d, int c) : h_(h), w_(w), d_(d), c_(c)
+    {
+        data = (float*)malloc(sizeof(float) *   h * w  * d * c);
+    }
+    ~Layer() {
+        free(data);
+    }
+};
+
+struct Weight {
+    int h_, w_, d_, cin_, cout_;
+    float *data;
+    Weight(int h, int w, int d, int cin, int cout)
+    : h_(h), w_(w), d_(d), cin_(cin), cout_(cout) {
+        data = (float *)malloc(sizeof(float) * h * w * d * cin * cout);
+    }
+    ~Weight() {
+        free(data);
+    }
+};
+
+// Layer  conv(Layer l, Weight w) {
+//     for (int i = 0; i <)
+// }
+
+
+
 
 int main() {
 
     bool gpu = true;
-
     auto prog = new Program(gpu ? Arch::gpu : Arch::x86_64);
-
     init_taichi_program();
 
     Global(layer1, f32);
     Global(layer2, f32);
-
     Global(weights1, f32);
 
     int block_size = 4;
     constexpr int num_ch1 = 4;
     constexpr int num_ch2 = 4;
-
     constexpr int res = 8;
 
     layout([&]() {
@@ -56,7 +83,6 @@ int main() {
             .dense(ijkl, {block_size, block_size, block_size, num_ch1}).place(layer1);
         root.dense(ijkl, {res / block_size, res / block_size, res / block_size, 1}).bitmasked()
             .dense(ijkl, {block_size, block_size, block_size, num_ch2}).place(layer2);
-
         root.dense(ijkl, {4, 4, 4, num_ch1 * num_ch2}).place(weights1);
     });
 
@@ -115,7 +141,13 @@ int main() {
         });
     })();
 
-    forward_conv1();
+    for (int i = 0 ; i < 50; i ++) {
+        // init_input();
+        // init_weight();
+        // activate();
+        forward_conv1();
+        // check();
+    }
 
     prog->profiler_print();
 
