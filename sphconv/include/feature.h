@@ -1,3 +1,5 @@
+#pragma once
+
 // storage format for feature Map
 // featureMap logically is a 5-order tensor of
 //     B H W D C
@@ -93,7 +95,7 @@ private:
 public:
     Feature(Index B_, Index H_, Index W_, Index D_, Index C_)
         : B(B_), H(H_), W(W_), D(D_), C(C_),
-          nnz(0), capacity(0), val(nullptr), z_ind(nullptr)
+          val(nullptr), z_ind(nullptr), nnz(0), capacity(0)
     {
         z_ptr = (Index *)malloc(sizeof(Index) * B * H * W + 1);
         memset(z_ptr, 0, sizeof(Index) * B * H * W + 1);
@@ -176,14 +178,14 @@ public:
     }
 
     void print() {
-        for (int b = 0; b < B; b++) {
-            for (int x = 0; x < H; x++) {
-                for (int y = 0; y < W; y++) {
+        for (int b = 0; b < (int)B; b++) {
+            for (int x = 0; x < (int)H; x++) {
+                for (int y = 0; y < (int)W; y++) {
                     for (Index start = z_ptr_at(b, x, y),
                                end = z_ptr_at(b, x, y + 1);
                          start < end; start++)
                     {
-                        for (int c = 0; c < C; c++) {
+                        for (int c = 0; c < (int)C; c++) {
                             printf("[%d,%d,%d,%d,%d] -> %.2f\n",
                             b, x, y, z_ind[start], c, val[start * C + c]);
                         }

@@ -19,5 +19,5 @@ Add_executable(feature
     test/feature.cpp
     )
 
-Target_link_libraries(feature PRIVATE Catch2::Catch2 sphconv)
+Target_link_libraries(feature PRIVATE Catch2::Catch2 sphconv  "${TORCH_LIBRARIES}" )
 

@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include <cstdint>
+#include "conv.h"
 
 void test()
 {
