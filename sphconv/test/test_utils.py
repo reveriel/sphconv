@@ -1,5 +1,0 @@
-from sphconv.utils import *
-
-
-
-
