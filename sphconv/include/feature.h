@@ -157,12 +157,12 @@ public:
         }
         Index z_start = z_ptr_at(b, x, y);
         Index z_end = z_ptr_at(b, x, y+1);
-        // TODO: binary search
+        // TODO: binary search may imporve this linear search
         Index i = z_start;
         for(; i < z_end; i++)
             if (z_ind[i] >= z)
                 break;
-        // shift
+        // shift and insert the new index
         for (Index j = nnz; j > i; j--) {
             z_ind[j] = z_ind[j-1];
         }
@@ -194,7 +194,6 @@ public:
             }
         }
     }
-
 };
 
 

@@ -21,3 +21,5 @@ Add_executable(feature
 
 Target_link_libraries(feature PRIVATE Catch2::Catch2 sphconv  "${TORCH_LIBRARIES}" )
 
+
+add_subdirectory(src/utils)

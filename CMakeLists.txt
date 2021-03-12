@@ -9,6 +9,7 @@ set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}/lib/python3.7/site-packages/torch/shar
 message("Cmake prefix  =" ${CMAKE_PREFIX_PATH})
 
 find_package(Torch REQUIRED)
+find_package(PythonLibs REQUIRED)
 # find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
 # see https://github.com/pytorch/pytorch/issues/38122
 # add_subdirectory(third_party/pybind11)
@@ -23,7 +24,6 @@ include_directories(${TORCH_INCLUDE_DIRS})
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-find_package(PythonLibs REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 
 add_subdirectory(sphconv/)
