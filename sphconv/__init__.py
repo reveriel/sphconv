@@ -4,3 +4,5 @@ from sphconv.modules import Sequential, SparseSequential
 from sphconv.data import VoxelGenerator, xyz2RangeVoxel, merge_rangevoxel_batch
 
 
+
+from sphconv.tensor import SparseConvTensor
