@@ -2,8 +2,62 @@ import torch
 from typing import List
 
 
-class SparseConvTensor:
+def init_csf(features: torch.Tensor, indices: torch.Tensor,
+             B: int,  # batch size
+             H: int, W: int, D: int, C: int,
+             NNZ: int,
+             grid: torch.Tensor,
+             val: torch.Tensor,
+             z_idx: torch.Tensor) -> torch.Tensor:
+    """
+    init val, z_idx, and z_ptr from features and indices
+    return, z_ptr,
+    """
 
+    grid.zero_()
+
+    b = indices[:, 0]
+    x = indices[:, 3]
+    y = indices[:, 2]
+    z = indices[:, 1]
+
+    # set one on occupied voxels
+    grid.index_put_((b, x, y, z), torch.ones(NNZ, dtype=torch.int64))
+
+    # prefix sum on each D fiber
+    # sumgrid = torch.cumsum(grid, dim=3)
+    #  now we know the thickness on each fiber.
+    #  stored at, {:, :, :, D-1}
+    #  z_ptr is the prefix sum on these numbers
+
+    # fiber_size = sumgrid[:, :, :, self.D-1]
+    fiber_size = torch.sum(grid, dim=3)
+
+    z_ptr = torch.cumsum(fiber_size.reshape(-1), dim=0)
+    assert z_ptr.shape[0] == B * H * W
+    assert z_ptr[-1] == NNZ
+
+    for i in range(NNZ):
+        b = indices[i, 0]
+        x = indices[i, 3]
+        y = indices[i, 2]
+        z = indices[i, 1]
+        # zptr shape B H W
+        zptr_idx = ((b * H + x) * W + y)
+        # zptr_idx =  b * H * W  + x * W + y
+
+        val_pos = z_ptr[zptr_idx]
+        # fill z_idx
+        fiber_pos = fiber_size[b, x, y]
+        # fiber_pos -= 1
+        val[val_pos - fiber_pos] = features[i]
+        z_idx[val_pos - fiber_pos] = z
+        fiber_size[b, x, y] = fiber_pos - 1
+        # fill val
+    return z_ptr
+
+
+class SparseConvTensor:
     def __init__(self,
                  features: torch.Tensor,
                  indices: torch.Tensor,
@@ -19,10 +73,8 @@ class SparseConvTensor:
         spatial_shape: of order [z, y, x], or [k, j, i]
                     or, a        D, W, H
         """
-        self.features = features
-        self.indices = indices
         self.spatial_shape = spatial_shape
-        self.batch_size = batch_size
+        self.B = batch_size
         self.H = spatial_shape[2]
         self.W = spatial_shape[1]
         self.D = spatial_shape[0]
@@ -32,108 +84,55 @@ class SparseConvTensor:
         self.dtype = features.dtype
         self.idxtype = torch.int64
         self.ptrtype = torch.int64
-        B = self.batch_size
-        W = self.W
-        H = self.H
-        D = self.D
-        C = self.C
 
         indices = indices.type(self.idxtype)
 
         # the number of non zero elements
-        NNZ = features.shape[0]
-
+        self.NNZ = features.shape[0]
         # all nonzeros are in the 'val'
         # size: NNZ * C
         # the 'val' stores all nonzeros
         # its a pointer points to an array of
         self.val = torch.empty(
-            (NNZ, self.C), device=self.device, dtype=self.dtype)
+            (self.NNZ, self.C), device=self.device, dtype=self.dtype)
 
         # the 'z_idx' stores the z indexes of the elements in 'val'
         # if val[k] = A[b,x,y,z,c], then z_idx[k]  = z
         # size: NNZ
-        self.z_idx = torch.zeros((NNZ), device=self.device, dtype=self.idxtype)
+        self.z_idx = torch.zeros((self.NNZ), device=self.device, dtype=self.idxtype)
 
         # invariant: capacity >= nnz
-        self.capacity = NNZ
+        # self.capacity = self.NNZ
 
         # the 'z_ptr' stores the locations in 'val' that start a 'C' vector.
         # if val[k] = A[b,x,y,z,c], then  z_ptr[b,x,y] <= k < z_ptr[b,x,y + 1]
         # equivalent to
         #     Index z_ptr[B][H][W];
-        # but B H W is not static constant, we manage it at runtime
-        # and we append a guard at z_ptr[B-1][H-1][W]
         #
-        # size: B * H * W + 1
+        # size: B * H * W
         self.z_ptr = None
         #  torch.new_empty(
         #     (B * H * W), device=self.device, dtype=self.ptrtype)
 
         # size   B H W D
         if grid == None:
-            grid = torch.empty((B, H, W, D),
+            grid = torch.empty((self.B, self.H, self.W, self.D),
                                device=self.device, dtype=self.idxtype)
 
-        grid.zero_()
-        # sphconv_C.init_feature(self.val, self.z_idx, self.z_ptr, features,
-        # indices, grid)
-        # do it in python?
-        b = indices[:, 0]
-        x = indices[:, 3]
-        y = indices[:, 2]
-        z = indices[:, 1]
-
-        # set one on occupied voxels
-        grid.index_put_((b, x, y, z), torch.ones(NNZ, dtype=self.idxtype))
-
-        # prefix sum on each D fiber
-        # sumgrid = torch.cumsum(grid, dim=3)
-        #  now we know the thickness on each fiber.
-        #  stored at, {:, :, :, D-1}
-        #  z_ptr is the prefix sum on these numbers
-
-        # fiber_size = sumgrid[:, :, :, self.D-1]
-        fiber_size = torch.sum(grid, dim=3)
-
-        # self.z_idx ?
-
-        self.z_ptr = torch.cumsum(fiber_size.reshape(-1), dim=0)
-        assert self.z_ptr.shape[0] ==  B * H * W
-        assert self.z_ptr[-1] == NNZ
-
-        # for each voxel
-        print ("NNZ = ", NNZ)
-        for i in range(NNZ):
-            b = indices[i, 0]
-            x = indices[i, 3]
-            y = indices[i, 2]
-            z = indices[i, 1]
-            # zptr shape B H W
-            zptr_idx = ((b * H + x) * W + y)
-            # zptr_idx =  b * H * W  + x * W + y
-
-            val_pos = self.z_ptr[zptr_idx]
-            # fill z_idx
-            fiber_pos = fiber_size[b, x, y]
-            # fiber_pos -= 1
-            self.val[val_pos - fiber_pos] = features[i]
-            self.z_idx[val_pos - fiber_pos] = z
-            fiber_size[b, x, y] = fiber_pos - 1
-            # fill val
-
-        self.NNZ = NNZ
+        self.z_ptr = init_csf(features, indices, self.B, self.H, self.W,
+                              self.D, self.C, self.NNZ, grid, self.val, self.z_idx)
 
     def dense(self):
         """
         return dense tensor of shape ,B C D W H
         """
 
-        # res = torch.zeros((self.batch_size, self.C, self.D, self.W, self.H))
-        res = torch.zeros((self.batch_size, self.H, self.W, self.D, self.C))
+        # res = torch.zeros((self.B, self.C, self.D, self.W, self.H))
+        res = torch.zeros((self.B, self.H, self.W, self.D, self.C))
 
+        # TODO, parallel
         # fill val to res, based on z index
-        for b in range(self.batch_size):
+        for b in range(self.B):
             for x in range(self.H):
                 for y in range(self.W):
                     zptr_idx = ((b * self.H + x) * self.W + y)
@@ -147,6 +146,3 @@ class SparseConvTensor:
 
         # return torch.randn(
         #     (self.batch_size, self.C, self.D, self.W, self.H))
-
-
-

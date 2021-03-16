@@ -113,7 +113,7 @@ class TestClass:
         sphconv_dense = sphconv_tensor.dense()
 
         assert spconv_dense.shape == sphconv_dense.shape
-        # assert torch.all(torch.eq(spconv_dense, sphconv_dense))
+        assert torch.all(torch.eq(spconv_dense, sphconv_dense))
 
     # run convolution on both.
 
