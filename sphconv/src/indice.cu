@@ -98,7 +98,7 @@ get_indice_pairs(torch::Tensor depth,
       oD, oH, oW);
 
   gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
+gpuErrchk(cudaDeviceSynchronize());
 
   report_time(__FUNCTION__, "phase1", timer);
 
