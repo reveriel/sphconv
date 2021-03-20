@@ -1,5 +1,5 @@
 import torch
-import sphconv_cuda
+# import sphconv_cuda
 from sphconv.functional import ToDenseFunction
 
 class RangeVoxel(object):

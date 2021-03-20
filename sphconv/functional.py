@@ -1,6 +1,6 @@
 import torch
 
-import sphconv_cuda
+# import sphconv.sphconv_cuda
 
 class ConvFunction(torch.autograd.Function):
     """ Applies a 3D convolution on Range Images
@@ -55,18 +55,19 @@ class ConvFunction(torch.autograd.Function):
                 subm):
 
         # if bias is None:
-        feature_out, = sphconv_cuda.indice_conv_gemm(
-            feature,
-            weight,
-            # bias,
-            in_rules,
-            out_rules,
-            num_in,
-            oT,
-            *stride,
-            *padding,
-            *dilation,
-            groups)
+        feature_out, = None, None
+        # # sphconv_cuda.indice_conv_gemm(
+        #     feature,
+        #     weight,
+        #     # bias,
+        #     in_rules,
+        #     out_rules,
+        #     num_in,
+        #     oT,
+        #     *stride,
+        #     *padding,
+        #     *dilation,
+        #     groups)
         # else:
         #     raise Exception("bias not immplemented yet")
 
@@ -91,19 +92,21 @@ class ConvFunction(torch.autograd.Function):
         feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
 
         # d_bias
-        d_feature, d_weight = sphconv_cuda.conv_backward_gemm(
-            feature,
-            d_featureOut,
-            # bias,
-            weight,
-            in_rules,
-            out_rules,
-            num_in,
-            *ctx.stride,
-            *ctx.padding,
-            *ctx.dilation,
-            ctx.groups,
-            ctx.subm)
+        d_feature, d_weight = \
+            None, None
+            # sphconv_cuda.conv_backward_gemm(
+            # feature,
+            # d_featureOut,
+            # # bias,
+            # weight,
+            # in_rules,
+            # out_rules,
+            # num_in,
+            # *ctx.stride,
+            # *ctx.padding,
+            # *ctx.dilation,
+            # ctx.groups,
+            # ctx.subm)
 
         # no bias now
         # should match the input of forward
@@ -115,7 +118,8 @@ class ToDenseFunction(torch.autograd.Function):
     def forward(ctx, feature, depth, thick, D):
         ctx.T = feature.size(2)
         ctx.save_for_backward(depth, thick)
-        dense = sphconv_cuda.to_dense(feature, depth, thick, D)
+        dense = None
+        # sphconv_cuda.to_dense(feature, depth, thick, D)
         return dense
 
     @staticmethod
@@ -124,5 +128,6 @@ class ToDenseFunction(torch.autograd.Function):
         depth, thick = ctx.saved_tensors
         # print("func depth = ", depth)
         # print("func thick = ", thick)
-        d_feature = sphconv_cuda.to_dense_backward(d_featureOut, depth, thick, ctx.T)
+        d_feature = None
+        #  sphconv_cuda.to_dense_backward(d_featureOut, depth, thick, ctx.T)
         return d_feature, None, None, None

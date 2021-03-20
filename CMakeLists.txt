@@ -26,7 +26,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include_directories(${PYTHON_INCLUDE_DIRS})
 
-add_subdirectory(sphconv/)
+add_subdirectory(src/sphconv)
+add_subdirectory(src/utils)
 
 
 

@@ -1,14 +1,13 @@
 import torch
 from typing import List
 
-
 def init_csf(features: torch.Tensor, indices: torch.Tensor,
              B: int,  # batch size
              H: int, W: int, D: int, C: int,
              NNZ: int,
              grid: torch.Tensor,
              val: torch.Tensor,
-             z_idx: torch.Tensor) -> torch.Tensor:
+             z_idx: torch.Tensor, device) -> torch.Tensor:
     """
     init val, z_idx, and z_ptr from features and indices
     return, z_ptr,
@@ -22,7 +21,7 @@ def init_csf(features: torch.Tensor, indices: torch.Tensor,
     z = indices[:, 1]
 
     # set one on occupied voxels
-    grid.index_put_((b, x, y, z), torch.ones(NNZ, dtype=torch.int64))
+    grid.index_put_((b, x, y, z), torch.ones(NNZ, dtype=torch.int32, device=device))
 
     # prefix sum on each D fiber
     # sumgrid = torch.cumsum(grid, dim=3)
@@ -59,7 +58,7 @@ def init_csf(features: torch.Tensor, indices: torch.Tensor,
 
 class SparseConvTensor:
     def __init__(self,
-                 features: torch.Tensor,
+                 voxel_features: torch.Tensor,
                  indices: torch.Tensor,
                  spatial_shape: List[int], batch_size: int,
                  grid: torch.Tensor = None
@@ -78,17 +77,17 @@ class SparseConvTensor:
         self.H = spatial_shape[2]
         self.W = spatial_shape[1]
         self.D = spatial_shape[0]
-        self.C = features.shape[-1]
-        self.device = features.device
-        assert features.device == indices.device
-        self.dtype = features.dtype
+        self.C = voxel_features.shape[-1]
+        self.device = voxel_features.device
+        assert voxel_features.device == indices.device
+        self.dtype = voxel_features.dtype
         self.idxtype = torch.int64
         self.ptrtype = torch.int64
 
         indices = indices.type(self.idxtype)
 
         # the number of non zero elements
-        self.NNZ = features.shape[0]
+        self.NNZ = voxel_features.shape[0]
         # all nonzeros are in the 'val'
         # size: NNZ * C
         # the 'val' stores all nonzeros
@@ -111,16 +110,32 @@ class SparseConvTensor:
         #
         # size: B * H * W
         self.z_ptr = None
-        #  torch.new_empty(
+        #  torch.new_emp
         #     (B * H * W), device=self.device, dtype=self.ptrtype)
 
         # size   B H W D
         if grid == None:
             grid = torch.empty((self.B, self.H, self.W, self.D),
-                               device=self.device, dtype=self.idxtype)
+                               device=self.device, dtype=torch.int32)
+        self.grid = grid
 
-        self.z_ptr = init_csf(features, indices, self.B, self.H, self.W,
-                              self.D, self.C, self.NNZ, grid, self.val, self.z_idx)
+        self.z_ptr = init_csf(voxel_features, indices, self.B, self.H, self.W,
+                              self.D, self.C, self.NNZ, grid, self.val, self.z_idx,
+                              self.device)
+
+        self.indice_dict = {}
+
+    @property
+    def shape(self):
+        return [self.B, self.C, self.D, self.H, self.W]
+
+
+    def find_indice_pair(self, key:str):
+        if key is None:
+            return None
+        if key in self.indice_dict:
+            return self.indice_dict[key]
+        return None
 
     def dense(self):
         """
@@ -146,3 +161,4 @@ class SparseConvTensor:
 
         # return torch.randn(
         #     (self.batch_size, self.C, self.D, self.W, self.H))
+

@@ -8,7 +8,11 @@ pip install .
 
 ## test
 
-- Run output and gradient checks on the code by running `python check.py `.
+<!-- - Run output and gradient checks on the code by running `python check.py `. -->
+```
+cd test
+pytest -s .
+```
 
 
 ## prepare dataset

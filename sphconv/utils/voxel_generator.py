@@ -14,7 +14,7 @@ class VoxelGeneratorV3:
                  coord_system=None,
                  append_mode=0):
         """
-        resolution:, or grid_size, is the dresolution of generated voxels.
+        resolution:, or grid_size, is the resolution of generated voxels.
             if resolution is not provided, we use voxel_size to calcluate it.
         """
 

@@ -51,6 +51,7 @@ def _calculate_fan_in_and_fan_out_hwio(tensor):
 
     return fan_in, fan_out
 
+
 def change_default_args(**kwargs):
     def layer_wrapper(layer_class):
         class DefaultArgLayer(layer_class):

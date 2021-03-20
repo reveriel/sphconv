@@ -2,6 +2,7 @@
 from typing import List
 
 import numpy as np
+from torch import dtype
 from sphconv.sphconv_utils import (points_to_voxel_3d, points_to_voxel_3d_np,
                                    points_to_voxel_3d_np_mean,
                                    points_to_voxel_3d_sphere_np,
@@ -131,7 +132,7 @@ def points_to_voxel_v2(points,
                        append_mode: int = 0
                        ):
     """
-    convert 3d points(x,y,z), to spherical voxels,
+    convert 3d points(x,y,z), to voxels in.. any coordiante system,
 
         coors_range, in degree
         resolution: 3d resolution in (xyz), or (r, phi, theta) or (r, phi, h)
@@ -142,14 +143,25 @@ def points_to_voxel_v2(points,
             "l-cylinder"
             "hybrid"
             "l-hybrid"
+            "cartesian"
     """
 
+    # input are points
+    #
+    # points
+    # we do avg pooling here.
+
+
     num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
+
     voxels_feature_dim = points.shape[-1]
     if append_mode == 1:
         voxels_feature_dim += 3
+
     voxels = np.zeros(
         shape=(max_voxels, max_points, voxels_feature_dim), dtype=points.dtype)
+
+    val = np.zeros(shape=(max_voxels, voxels_feature_dim), dtype=points.dtype)
 
     voxel_point_mask = np.zeros(
         shape=(max_voxels, max_points), dtype=points.dtype)

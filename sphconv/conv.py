@@ -1,16 +1,16 @@
 import math
+import time
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import time
 
-import sphconv
-import sphconv_cuda
-from sphconv.modules import SphModule
 from sphconv.functional import ConvFunction
-from sphconv.rangevoxel import RangeVoxel
-
-from .utils import _triple, _calculate_fan_in_and_fan_out_hwio
+from sphconv.modules import SphModule
+from sphconv.sphconv_cuda import get_rules_subm
+# from sphconv.rangevoxel import RangeVoxel
+from sphconv.tensor import SparseConvTensor
+from sphconv.utils import _calculate_fan_in_and_fan_out_hwio, _triple
 
 
 class Convolution(SphModule):
@@ -107,11 +107,9 @@ class Conv3d(Convolution):
             in_channels, out_channels, kernel_size, stride, padding, dilation,
             groups, bias, subm, name, indice_key=indice_key, **kwargs)
 
-    def forward(self, input: RangeVoxel):
-        torch.cuda.synchronize();
+    def forward(self, input: SparseConvTensor):
         start_time = time.time();
         batch_size, inChannel, iD, iH, iW = input.shape
-        iT = input.feature.size(2)
 
         assert (self.in_channels == inChannel), "input channel does not match \
             Expect: {}, got {}".format(self.in_channels, inChannel)
@@ -132,31 +130,35 @@ class Conv3d(Convolution):
             new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
         datas = input.find_indice_pair(self.indice_key)
-        # print("========== found in  dicts ===========")
+        print("========== found in dicts ===========")
+
         if self.indice_key is not None and datas is not None:
             new_depth, new_thick, in_rules, out_rules, num_in = datas
+
         else: # not found, compute it
             if self.subm:
                 new_depth, new_thick, in_rules, out_rules, num_in = \
-                    sphconv_cuda.get_indice_pairs_subm(
-                        input.depth, input.thick,
-                        iD,
-                        *self.kernel_size,
-                        *self.stride,
-                        *self.padding,
-                        *self.dilation,
-                        self.groups)
+                    None, None, None, None, None
+                    # sphconv_cuda.get_indice_pairs_subm(
+                    #     input.depth, input.thick,
+                    #     iD,
+                    #     *self.kernel_size,
+                    #     *self.stride,
+                    #     *self.padding,
+                    #     *self.dilation,
+                    #     self.groups)
 
             else:
                 new_depth, new_thick, in_rules, out_rules, num_in = \
-                    sphconv_cuda.get_indice_pairs(
-                        input.depth, input.thick,
-                        iD,
-                        *self.kernel_size,
-                        *self.stride,
-                        *self.padding,
-                        *self.dilation,
-                        self.groups)
+                    None, None, None, None, None
+                    # sphconv_cuda.get_indice_pairs(
+                    #     input.depth, input.thick,
+                    #     iD,
+                    #     *self.kernel_size,
+                    #     *self.stride,
+                    #     *self.padding,
+                    #     *self.dilation,
+                    #     self.groups)
                 oT = new_depth.size(1)
             #     print("thickness: iT = {}, oT = {}, iFullness = {:.3f}, oFullness = {:.3f}, iEmpty = {}, oEmpty = {},"\
             #           .format(iT, oT,
@@ -196,8 +198,10 @@ class Conv3d(Convolution):
 
 
         # torch.cuda.synchronize()
-        # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000  ))
-        return RangeVoxel(feature, new_depth, new_thick, shape=new_shape)
+        # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000
+        # ))
+        return None
+        # return RangeVoxel(feature, new_depth, new_thick, shape=new_shape)
 
 # for compatible with spconv
 SparseConv3d = Conv3d

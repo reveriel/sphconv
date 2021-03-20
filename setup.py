@@ -2,26 +2,28 @@ import os
 import platform
 import subprocess
 import sys
-import torch
-
 from pathlib import Path
-from setuptools import Extension, setup
+
+import torch
+from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
-from torch.utils.cpp_extension import (BuildExtension, CUDAExtension,
-                                       check_compiler_ok_for_platform)
 
 from setup_helpers.cudnn import CUDNN_INCLUDE_DIR, CUDNN_LIB_DIR, WITH_CUDNN
+
 LIBTORCH_ROOT = str(Path(torch.__file__).parent)
 
 PYTHON_VERSION = "{}.{}".format(sys.version_info.major, sys.version_info.minor)
 
 # subprocess.run(["git", "submodule", "update", "--init", "sphconv/cutlass"])
 
-from distutils.sysconfig import get_python_inc;
 #  print(get_python_inc())")  \
 import distutils.sysconfig as sysconfig
+from distutils.sysconfig import get_python_inc
+
 #  print(sysconfig.get_config_var('LIBDIR'))")
 
+# A CMakeExtension needs a sourcedir instead of a file list.
+# The name must be the _single_ output extension from the CMake build.
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -42,6 +44,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext):
         extdir = os.path.abspath(os.path.dirname(
             self.get_ext_fullpath(ext.name)))
+
         if not extdir.endswith(os.path.sep):
             extdir += os.path.sep
 
@@ -50,7 +53,8 @@ class CMakeBuild(build_ext):
             '-DPYBIND11_PTYHON_VERSION={}'.format(PYTHON_VERSION),
             '-DPYTHON_EXECUTABLE={}'.format(sys.executable),
             '-DPYTHON_INCLUDE_DIR={}'.format(get_python_inc()),
-            '-DPYTHON_LIBRARY={}'.format(sysconfig.get_config_var('LIBDIR'))
+            '-DPYTHON_LIBRARY={}'.format(sysconfig.get_config_var('LIBDIR')),
+            '-DSPHCONV_VERSION_INFO={}'.format(self.distribution.get_version()),
             ]
 
         cfg = 'Debug' if self.debug else 'Release'
@@ -83,17 +87,18 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', '--build', '.'] +
                               build_args, cwd=self.build_temp)
 
-# packages = find_packages(exclude=('tools', 'tools.*'))
+packages = find_packages()
 
 setup(
     name='sphconv',
-    version='0.1.4',
-    install_requires=['torch'],
-    setup_requires=['torch>=1.3.0'],
-    packages=['sphconv'],
-    package_dir={'sphconv': './sphconv'},
+    version='0.1.5',
+    # install_requires=['torch'],
+    # setup_requires=['torch>=1.3.0'],
+    packages=packages,
+    # package_dir={'sphconv': './sphconv'},
     ext_modules=[
-        CMakeExtension('sphconv')
+        CMakeExtension('sphconv_cuda'),
+        CMakeExtension('sphconv_utils')
         # CUDAExtension(
         #     name='sphconv_cuda',gg
         #     include_dirs=['./', os.getcwd()+'/sphconv/include'],
