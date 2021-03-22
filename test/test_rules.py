@@ -3,7 +3,7 @@ from types import TracebackType
 
 import spconv
 import sphconv
-import sphconv_cuda
+from sphconv.sphconv_cuda import get_rules_subm
 import torch
 from numpy.lib import stride_tricks
 from sphconv.utils import voxel_generator
@@ -35,16 +35,25 @@ class TestClass:
         stride = 1
         padding = 0
         dilation = 1
-        groups = 1
 
-        zo_idx, zo_ptr, rules, rule_size = sphconv_cuda.get_rules_subm(
-            tensor.z_idx, tensor.z_ptr,
+        assert tensor.z_idx.dim() == 1
+        assert tensor.z_ptr.dim() == 3
+        assert tensor.grid.dim() == 4
+        assert tensor.z_idx.dtype == torch.int32
+        assert tensor.z_ptr.dtype == torch.int32
+        assert tensor.grid.dtype == torch.int32
+
+        zo_idx, zo_ptr, rules, rule_size = get_rules_subm(
+            tensor.z_idx,
+            tensor.z_ptr,
             tensor.grid,
-            kernel_size, kernel_size, kernel_size,
-            stride, stride, stride,
-            padding, padding, padding,
-            dilation, dilation, dilation,
-            groups
+            batch_size,
+            spatial_shape,
+            spatial_shape,
+            [kernel_size, kernel_size, kernel_size],
+            [stride, stride, stride],
+            [padding, padding, padding],
+            [dilation, dilation, dilation]
         )
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
@@ -55,7 +64,7 @@ class TestClass:
         print("indice_pairs = ", indice_pairs)
         print("indice_pair_num = ", indice_pair_num)
 
-        assert torch.full(torch.eq(zo_idx, tensor.z_idx))
-        assert torch.full(torch.eq(zo_ptr, tensor.z_ptr))
+        assert torch.all(torch.eq(zo_idx, tensor.z_idx))
+        assert torch.all(torch.eq(zo_ptr, tensor.z_ptr))
 
 
