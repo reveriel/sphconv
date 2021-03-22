@@ -64,6 +64,13 @@ class TestClass:
         print("indice_pairs = ", indice_pairs)
         print("indice_pair_num = ", indice_pair_num)
 
+        print("rules = ", rules)
+        print("rule size = ", rule_size)
+        assert tensor.grid[0][0][0][0] == 0
+        assert tensor.grid[0][0][1][0] == 1
+        assert tensor.grid[0][1][0][0] == 2
+        assert tensor.grid[0][1][1][0] == 3
+
         assert torch.all(torch.eq(zo_idx, tensor.z_idx))
         assert torch.all(torch.eq(zo_ptr, tensor.z_ptr))
 

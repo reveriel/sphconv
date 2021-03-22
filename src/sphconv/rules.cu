@@ -19,6 +19,10 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
  * @brief init the grid[B, H, W, D],
  *  grid is a mapping from spatial location to its target glaobal physical location
  *
+ * fill grid with global indices
+ *
+ * TODO: fill local indices
+ *
  * @return __global__
  */
 template <typename Index>
@@ -29,7 +33,7 @@ __global__ void prepareSubMGridKernel(
     int B, int H, int W)
 {
     Index x = threadIdx.x + blockDim.x * blockIdx.x;
-    Index y = threadIdx.y + blockDim.y + blockIdx.y;
+    Index y = threadIdx.y + blockDim.y * blockIdx.y;
     if (x >= H || y >= W)
         return;
 
@@ -68,7 +72,7 @@ __global__ void getSubMRulesKernel(
     int dD,  int dH, int dW)
 {
     Index x = threadIdx.x + blockDim.x * blockIdx.x;
-    Index y = threadIdx.y + blockDim.y + blockIdx.y;
+    Index y = threadIdx.y + blockDim.y * blockIdx.y;
     Index k = threadIdx.z + blockDim.z * blockIdx.z;
 
     if (x >= H || y >= W)
@@ -151,6 +155,8 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
         batchSize,
         spatialShape[0], spatialShape[1]);
 
+    printTensor<int>(grid, "grid", 0, 0, outSpatialShape[0], 0, outSpatialShape[1]);
+
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
@@ -183,6 +189,8 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
         dilation[0], dilation[1], dilation[2]
     );
 
+    gpuErrchk(cudaPeekAtLastError());
+    gpuErrchk(cudaDeviceSynchronize());
     // outZPtr
     // outIndices ?
 

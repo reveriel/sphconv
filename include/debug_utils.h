@@ -8,6 +8,8 @@
 #include <iostream>
 #include <vector>
 
+#define DEBUG
+
 #ifdef DEBUG
 #define gpuErrchk(ans)                                                         \
   { gpuAssert((ans), __FILE__, __LINE__); }
