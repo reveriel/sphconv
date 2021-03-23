@@ -169,7 +169,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
         torch::full({NTile, kernelVolume, 2, zIndices.size(0)}, -1, torch::dtype(torch::kInt32).device(zIndices.device()));
     // rules is allocated larger, to be trimed lalter
     // TODO, change 2 to 4, numAct
-    // TODO, last dimension...
+    // TODO, last dimension... is NNZ now, But not NNZ if NTile > 1
 
     torch::Tensor indiceNum =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));

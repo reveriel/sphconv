@@ -7,6 +7,7 @@
 
 #include "indice.h"
 #include "rules.h"
+#include "rule_conv.h"
 #include "indice_conv.h"
 #include "to_dense.h"
 
@@ -24,6 +25,7 @@ PYBIND11_MODULE(sphconv_cuda, m)
   // m.def("get_indice_pairs", &sphconv::get_indice_pairs, "");
   // m.def("get_indice_pairs_subm", &sphconv::get_indice_pairs_subm, "");
   m.def("get_rules_subm", &sphconv::get_rules_subm, "");
+  m.def("rule_conv", &sphconv::rule_conv, "");
   // m.def("indice_conv", &sphconv::indice_conv, "");
   // m.def("indice_conv_gemm", &sphconv::indice_conv_gemm, "");
   // m.def("conv_backward", &sphconv::indice_conv_backward, "");

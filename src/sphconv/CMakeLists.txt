@@ -2,8 +2,9 @@
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
 
 pybind11_add_module(sphconv_cuda
-    rules.cu
     all.cpp
+    rules.cu
+    rule_conv.cu
     # indice_conv.cu
     # indice.cu
     # to_dense.cu
