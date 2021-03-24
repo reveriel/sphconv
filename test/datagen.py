@@ -91,20 +91,20 @@ class VoxelizationVFE():
         ## TODO VFE works on CPU, make it on GPU
 
 
-    def generate(self, file:str) -> torch.Tensor :
+    def generate(self, file:str, device=None) -> torch.Tensor :
         points = np.fromfile(file, dtype=np.float32, count=-1).reshape([-1, 4])
         res = self.voxel_generator.generate(points)
 
         # coordinate is concatenated with batch_id
-        res = merge_second_batch([res])
+        # res = merge_second_batch([res])
 
         raw_voxels, coordinates, num_points_per_voxel, voxel_num = res['voxels'], res[
             'coordinates'], res['num_points_per_voxel'], res['voxel_num']
         # return raw_voxels, coordinates, num_points_per_voxel, voxel_num
 
-        raw_voxels = torch.from_numpy(raw_voxels)
-        coordinates = torch.from_numpy(coordinates)
-        num_points_per_voxel = torch.from_numpy(num_points_per_voxel)
+        raw_voxels = torch.from_numpy(raw_voxels).to(device)
+        coordinates = torch.from_numpy(coordinates).to(device)
+        num_points_per_voxel = torch.from_numpy(num_points_per_voxel).to(device)
 
         voxels = self.vfe(raw_voxels, num_points_per_voxel, coordinates)
         return voxels, coordinates

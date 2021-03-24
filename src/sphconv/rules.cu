@@ -43,10 +43,11 @@ __global__ void prepareSubMGridKernel(
         int zEnd = zPtr[b][x][y];
         int zStart = (x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
-        for (int zi = zStart; zi < zEnd; zi++)
+        // diverge here, but we assume it's quick
+        for (int pos = zStart; pos < zEnd; pos++)
         {
-            Index z = zIndices[zi];
-            grid[b][x][y][z] = zi;
+            Index z = zIndices[pos];
+            grid[b][x][y][z] = pos;
         }
     }
 }
@@ -95,18 +96,18 @@ __global__ void getSubMRulesKernel(
         int zEnd = zPtr[b][x][y];
         int zStart = (x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
-        for (int zi = zStart; zi < zEnd; zi++)
+        for (int pos = zStart; pos < zEnd; pos++)
         {
-            Index z = zIndices[zi];
+            Index z = zIndices[pos];
             Index oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
                 break;
 
             Index counter = atomicAdd(&indiceNum[nTile][k], Index(1));
 
-            // grid[b][x][y][z] = zi;
+            // grid[b][x][y][z] = pos;
             // rules: [NTile, K*K*K, 4, DMax]
-            rules[nTile][k][0][counter] = zi;
+            rules[nTile][k][0][counter] = pos;
             rules[nTile][k][1][counter] = grid[b][oX][oY][oZ];
         }
     }

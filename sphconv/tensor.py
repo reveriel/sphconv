@@ -195,7 +195,7 @@ class SparseConvTensor(SparseTensorBase):
                     end_p = zptr_flat[zptr_idx]
                     for z_p in range(start_p, end_p):
                         z = self.z_idx[z_p].long()
-                        print("b,x,y,z = ",  b, x, y, z)
+                        # print("b,x,y,z = ",  b, x, y, z)
                         res[b, x, y, z] = self.features[z_p]
 
         return res.permute((0, 4, 3, 2, 1)).contiguous()
