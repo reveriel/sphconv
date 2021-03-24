@@ -138,12 +138,8 @@ class TestClass:
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
-        sp_input_dense = spconv.SparseConvTensor(voxel_features, indices, spatial_shape, batch_size).dense()
-        print("sp_input_dense = ", sp_input_dense[0,0,:,:,:])
         spconv_dense = spconv.SparseConvTensor(out_features, indices, spatial_shape, batch_size).dense()
-
         # print("spconv out_features = ", out_features)
-
         sph_out_features = rule_conv(
             tensor.features, weight.reshape((-1, outChannel, inChannel)),
             rules, rule_size, batch_size, spatial_shape, spatial_shape)

@@ -9,6 +9,7 @@ import torch
 
 
 # modifed from second.pytorch
+# for numpy data
 def merge_second_batch(batch_list):
     example_merged = defaultdict(list)
     for example in batch_list:
@@ -47,6 +48,32 @@ def merge_second_batch(batch_list):
         else:
             ret[key] = np.stack(elems, axis=0)
     return ret
+
+
+def merge_batch_torch(batch_list):
+    example_merged = defaultdict(list)
+    for example in batch_list:
+        for k, v in example.items():
+            example_merged[k].append(v)
+    ret = {}
+    for key, elems in example_merged.items():
+        if key in [
+                'voxels', 'voxel', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes'
+        ]:
+            ret[key] = torch.cat(elems, dim=0)
+        elif key == 'coordinates':
+            coors = []
+            for i, coor in enumerate(elems):
+                coor_pad = torch.nn.functional.pad(
+                    coor, (1, 0, 0, 0), mode='constant', value=i)
+                coors.append(coor_pad)
+            ret[key] = torch.cat(coors, dim=0)
+        else:
+            raise ValueError("unidentified key", key)
+            ret[key] = np.stack(elems, axis=0)
+    return ret
+
+
 
 
 class VoxelizationVFE():
