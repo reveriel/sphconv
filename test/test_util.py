@@ -31,7 +31,7 @@ class TestClass:
         assert spconv_dense.shape[3] == vvfe.resolution[1]
         assert spconv_dense.shape[4] == vvfe.resolution[0]
 
-        sphconv_tensor = sphconv.SparseConvTensor(voxels,  coords, vvfe.resolution[::-1], 1)
+        sphconv_tensor = sphconv.SparseConvTensor(voxels, vvfe.resolution[::-1], 1,indices=coords )
         sphconv_dense = sphconv_tensor.dense()
 
         assert spconv_dense.shape == sphconv_dense.shape

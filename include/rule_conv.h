@@ -5,7 +5,7 @@
 
 namespace sphconv {
 
-std::vector<torch::Tensor>
+torch::Tensor
 rule_conv(torch::Tensor feature,  //  [NNZ, C]
           torch::Tensor weight,   // [kernelVolume, Co, Ci]
           torch::Tensor rules,    //  [NTile, kernelVolume, 2, NNZ ],

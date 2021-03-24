@@ -129,7 +129,7 @@ class Conv3d(Convolution):
 
             new_shape = (batch_size, self.out_channels, oD, oH, oW)
 
-        datas = input.find_indice_pair(self.indice_key)
+        datas = input.find_rule(self.indice_key)
         print("========== found in dicts ===========")
 
         if self.indice_key is not None and datas is not None:

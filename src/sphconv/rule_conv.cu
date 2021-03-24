@@ -43,6 +43,7 @@ __global__ void ruleConvKernel(
     {
         // for each voxel
         int kRuleSize = ruleSize[tile][k];
+        // divergence occurr here, so we divie them into blocks
         for (int v = threadIdx.x; v < kRuleSize; v += V_STEP)
         {
             int global_in_idx = rules[tile][k][0][v];
@@ -52,12 +53,13 @@ __global__ void ruleConvKernel(
                  oc < oC && oc < (oc_block + 1) * blockDim.z;
                  oc += OC_BLOCK / OC_ILP)
             {
-                printf("oc = %d\n", oc);
-                // for each inChannel
+                // printf("oc = %d\n", oc);
+                // for each inChannel segment
                 DType sum = 0;
-                for (int ic = threadIdx.y + ic_block * blockDim.y;
-                     ic < iC && ic < (ic_block + 1) * blockDim.y;
-                     ic += IC_BLOCK / IC_ILP)
+#pragma unroll
+                for (int ic = threadIdx.y + ic_block * IC_BLOCK;
+                     ic < iC && ic < (ic_block + 1) * IC_BLOCK;
+                     ic += 1)
                 {
                     // printf("thread((%d,%d,%d), (%d,%d,%d)), feature[%d][%d] = %f\n" ,
                     //     blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
@@ -85,7 +87,7 @@ __global__ void ruleConvKernel(
  * @param ruleSize
  * @return std::vector<torch::Tensor>
  */
-std::vector<torch::Tensor>
+torch::Tensor
 rule_conv(torch::Tensor feature,  //  [NNZ, C]
           torch::Tensor weight,   // [kernelVolume, Co, Ci]
           torch::Tensor rules,    //  [NTile, kernelVolume, 2, NNZ ],
@@ -117,7 +119,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
                      torch::dtype(feature.dtype()).device(feature.device()));
 
     dim3 gridSize = dim3(NTile, divUp(iC, IC_BLOCK), divUp(oC, OC_BLOCK));
-    dim3 blockSize = dim3(VOX_BLOCK, IC_BLOCK / IC_ILP, OC_BLOCK / OC_ILP);
+    dim3 blockSize = dim3(VOX_BLOCK, 1, OC_BLOCK / OC_ILP);
 
     // global version, with no shared memory
     ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, IC_ILP, OC_BLOCK, OC_ILP>
@@ -132,7 +134,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    return {outFeature};
+    return outFeature;
 }
 
 } // namespace sphconv

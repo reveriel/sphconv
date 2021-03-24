@@ -29,7 +29,7 @@ class TestClass:
 
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, indices, spatial_shape, batch_size)
+            voxel_features, spatial_shape, batch_size, indices=indices)
 
         kernel_size = 2
         stride = 1
@@ -80,7 +80,7 @@ class TestClass:
             [0, 0, 0, 0],
             [0, 0, 0, 1],
             [0, 0, 1, 0],
-            [0, 0, 1, 1],
+            # [0, 0, 1, 1],
         ], dtype=torch.int).cuda()
         D = 2
         W = 2
@@ -92,11 +92,12 @@ class TestClass:
             (indices.shape[0], inChannel), dtype=torch.float, device=indices.device)
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, indices, spatial_shape, batch_size)
+            voxel_features, spatial_shape, batch_size, indices=indices)
 
         kernel_size = 2
         stride = 1
-        padding = 0
+        padding = 1
+        # I padding must be 1, I think it's spconv's bug
         dilation = 1
 
         assert tensor.z_idx.dim() == 1
@@ -128,13 +129,35 @@ class TestClass:
         weight = torch.ones((kernel_size, kernel_size, kernel_size,
                              outChannel, inChannel), dtype=torch.float, device=indices.device)
 
+        # print("indice_pairs dtype = ", indice_pairs.dtype)
+        # print("indice_pair_num dtype = ", indice_pair_num.dtype)
+        # indice_pairs = indice_pairs.int()
+        # indice_pair_num = indice_pair_num.int()
+        # print("indice_pairs dtype = ", indice_pairs.dtype)
+        # print("indice_pair_num dtype = ", indice_pair_num.dtype)
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
-        print("spconv out_features = ", out_features)
+        sp_input_dense = spconv.SparseConvTensor(voxel_features, indices, spatial_shape, batch_size).dense()
+        print("sp_input_dense = ", sp_input_dense[0,0,:,:,:])
+        spconv_dense = spconv.SparseConvTensor(out_features, indices, spatial_shape, batch_size).dense()
+
+        # print("spconv out_features = ", out_features)
 
         sph_out_features = rule_conv(
-            tensor.val, weight.reshape((-1, outChannel, inChannel)), rules, rule_size, batch_size, spatial_shape, spatial_shape)
+            tensor.features, weight.reshape((-1, outChannel, inChannel)),
+            rules, rule_size, batch_size, spatial_shape, spatial_shape)
 
-        print("sphconv out_features = ", sph_out_features)
+        print("sph_out_features 's type is ", type(sph_out_features))
+        sphconv_dense = sphconv.SparseConvTensor(
+            sph_out_features, spatial_shape, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
+
+        # print("sphconv out_features = ", sph_out_features)
+
+        # print("spconv_dense = ", spconv_dense[0,0,:,:,:])
+        # print("spconv_dense shape = ", spconv_dense.shape)
+        # print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
+        # print("sphconv_dense shape = ", sphconv_dense.shape)
+
+        assert torch.all(torch.eq(spconv_dense, sphconv_dense))
 
