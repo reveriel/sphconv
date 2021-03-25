@@ -37,6 +37,8 @@ __global__ void ruleConvKernel(
     int tile = blockIdx.x;
     int ic_block = blockIdx.y; // channel block
     int oc_block = blockIdx.z; // channel block
+    // printf("thread((%d,%d,%d), (%d,%d,%d))\n",
+    //        blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
     // for each kernelVolume * NNZ'
     for (int k = 0; k < kernelVolume; k++)

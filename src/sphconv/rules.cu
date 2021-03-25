@@ -79,9 +79,11 @@ __global__ void getSubMRulesKernel(
     if (x >= H || y >= W)
         return;
 
-    Index k_D = k / (KH * KW);
-    Index k_H = (k / KW) % KH;
-    Index k_W = k % KW;
+    // (KH, KW, KD)
+    // k =  kx * KH  ky kz
+    Index k_H = k / (KW * KD);
+    Index k_W = (k / KD) % KW;
+    Index k_D = k % KD;
 
     Index oX = OutSpatial(k_H, x, sH, dH, padH);
     if (oX < 0 || oX >= oH)
@@ -94,21 +96,26 @@ __global__ void getSubMRulesKernel(
 
     for (int b = 0; b < B;  b++) {
         int zEnd = zPtr[b][x][y];
-        int zStart = (x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
+        // diverge here
         for (int pos = zStart; pos < zEnd; pos++)
         {
             Index z = zIndices[pos];
             Index oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
-                break;
+                continue;
+
+            Index global_out_idx = grid[b][oX][oY][oZ];
+            if (global_out_idx < 0)
+                continue;
 
             Index counter = atomicAdd(&indiceNum[nTile][k], Index(1));
 
             // grid[b][x][y][z] = pos;
             // rules: [NTile, K*K*K, 4, DMax]
             rules[nTile][k][0][counter] = pos;
-            rules[nTile][k][1][counter] = grid[b][oX][oY][oZ];
+            rules[nTile][k][1][counter] = global_out_idx;
         }
     }
 }
@@ -156,7 +163,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
         batchSize,
         spatialShape[0], spatialShape[1]);
 
-    printTensor<int>(grid, "grid", 0, 0, outSpatialShape[0], 0, outSpatialShape[1]);
+    // printTensor<int>(grid, "grid", 0, 0, outSpatialShape[0], 0, outSpatialShape[1]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
