@@ -40,15 +40,15 @@ def assert_subm_conv_eq(
         [dilation, dilation, dilation]
     )
 
-    # print("rules = ", rules)
-    # print("rule_size = ", rule_size)
+    print("rules = ", rules)
+    print("rule_size = ", rule_size)
 
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
         indices, batch_size, spatial_shape, kernel_size, stride, padding, dilation,
         out_padding=0, subm=True, transpose=False, grid=None, use_hash=False)
 
-    # print("indice_pairs = ", indice_pairs)
-    # print("indice_pair_num = ", indice_pair_num)
+    print("indice_pairs = ", indice_pairs)
+    print("indice_pair_num = ", indice_pair_num)
 
     # convolution
     out_features = spconv.ops.indice_conv(
@@ -64,10 +64,10 @@ def assert_subm_conv_eq(
     sphconv_dense = sphconv.SparseConvTensor(
         sph_out_features, spatial_shape, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
 
-    # print("sphconv = " , sphconv_dense[:,0,:,:,:])
-    # print("spconv = " , spconv_dense[:,0,:,:,:])
+    print("sphconv = " , sphconv_dense[:,0,:,:,:])
+    print("spconv = " , spconv_dense[:,0,:,:,:])
 
-    assert torch.all(torch.eq(spconv_dense, sphconv_dense))
+    assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
 
 
 class TestClass:
@@ -105,7 +105,7 @@ class TestClass:
             [0, 1, 1],
         ], dtype=torch.int).cuda()
         inChannel = 4
-        features = torch.ones(
+        features = torch.randn(
             (indices.shape[0], inChannel), dtype=torch.float, device=indices.device)
 
         one_example = {'voxel': features, 'coordinates': indices}
@@ -118,7 +118,7 @@ class TestClass:
 
         assert_subm_conv_eq(example['voxel'], example['coordinates'], batch_size=batch_size, spatial_shape=spatial_shape,
                             inChannel=4, outChannel=4,
-                            weight=torch.ones(
+                            weight=torch.randn(
                                 (2, 2, 2, 4, 4), dtype=features.dtype).cuda(),
                             kernel_size=2,
                             stride=1, padding=1, dilation=1)
