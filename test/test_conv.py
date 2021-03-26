@@ -1,15 +1,12 @@
 
-from types import TracebackType
+from typing import List
 
 import spconv
 import sphconv
-from sphconv.sphconv_cuda import get_rules_subm, rule_conv
 import torch
-from numpy.lib import stride_tricks
+from sphconv.datagen import merge_batch_torch
+from sphconv.sphconv_cuda import get_rules_subm, rule_conv
 from sphconv.utils import voxel_generator
-from typing import List
-
-from datagen import merge_batch_torch
 
 
 def assert_subm_conv_eq(

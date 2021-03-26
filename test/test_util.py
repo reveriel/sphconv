@@ -11,7 +11,7 @@
 import spconv
 import sphconv
 import torch
-from datagen import VoxelizationVFE, merge_batch_torch
+from sphconv.datagen import VoxelizationVFE, merge_batch_torch
 from typing import List
 
 POINTS_FILE = "000003.bin"
