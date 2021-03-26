@@ -115,7 +115,7 @@ __global__ void prepareGridKernel(
             if (oZ < 0 || oZ >= oD)
                 continue;
 
-            grid[b][oX][oY][oZ] = pos;
+            grid[b][oX][oY][oZ] = Index(1);
         }
     }
 }
@@ -381,7 +381,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 {
     grid.fill_(0);
 
-    const int H_BLOCK = 4;
+    const int H_BLOCK = 2;
     const int W_BLOCK = 16;
     int num_active = zIndices.size(0);
 
@@ -390,6 +390,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     dim3 blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
 
     printf(" befaore preapre geridf kernel a\n");
+    printf("launch config : (%d,%d,%d),(%d,%d,%d)\n", gridSize.x, gridSize.y, gridSize.z, blockSize.x, blockSize.y, blockSize.z);
 
     prepareGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -414,7 +415,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     // [B, oH, oW]
     PRINT_SHAPE(ozPtr);
     PRINT_SHAPE(grid);
-    grid += ozPtr; // now grid is filled with global output index
+    grid += ozPtr.unsqueeze(-1); // now grid is filled with global output index
 
     int NTile = 1; // TODO, number of Tiles
 
@@ -447,8 +448,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
         batchSize, spatialShape[0], spatialShape[1],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
-        dilation[0], dilation[1], dilation[2],
-        padding[0], padding[1], padding[2]);
+        padding[0], padding[1], padding[2],
+        dilation[0], dilation[1], dilation[2]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
