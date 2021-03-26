@@ -34,6 +34,11 @@ def assert_conv_eq(
             spatial_shape, kernel_size, stride, padding, dilation)
     print("out shape = ", out_spatial_shape)
 
+    # TODO: remove the grid
+    if not subm:
+        tensor.grid = torch.empty(
+            (batch_size, *out_spatial_shape), dtype=indices.dtype, device=indices.device)
+
     get_rule_func = get_rules_subm if subm else get_rules
     oz_idx, oz_ptr, rules, rule_size = get_rule_func(
         tensor.z_idx, tensor.z_ptr, tensor.grid,
@@ -45,17 +50,17 @@ def assert_conv_eq(
 
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
         indices, batch_size, spatial_shape, kernel_size, stride, padding, dilation,
-        out_padding=0, subm=True, transpose=False, grid=None, use_hash=False)
+        out_padding=0, subm=subm, transpose=False, grid=None, use_hash=False)
 
     print("indice_pairs = ", indice_pairs)
     print("indice_pair_num = ", indice_pair_num)
 
     # convolution
     out_features = spconv.ops.indice_conv(
-        features, weight.permute(2, 1, 0, 4, 3).contiguous(), indice_pairs, indice_pair_num, outids.shape[0])
+        features, weight.permute(2, 1, 0, 4, 3).contiguous(), indice_pairs, indice_pair_num, outids.shape[0], subm=subm)
 
     spconv_dense = spconv.SparseConvTensor(
-        out_features, indices, out_spatial_shape, batch_size).dense()
+        out_features, outids, out_spatial_shape, batch_size).dense()
 
     sph_out_features = rule_conv(
         tensor.features, weight.reshape(-1, outChannel, inChannel),
@@ -144,7 +149,7 @@ class TestClass:
 
         assert_correct_cmp_with_spconv(
             indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape=[3, 5, 8],
-            kernel_size=[3, 3, 3], stride=[1, 2, 1], padding=[1, 1, 1], subm=True)
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
     def test_std_conv(self):
         indices = torch.tensor([
@@ -154,9 +159,9 @@ class TestClass:
             [1, 1, 1],
         ], dtype=torch.int).cuda()
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, inChannel=4, outChannel=4, spatial_shape=[2, 2, 2],
-        #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, inChannel=4, outChannel=4, spatial_shape=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
         # assert_correct_cmp_with_spconv(
         #     indices, batch_size=8, inChannel=4, outChannel=4, spatial_shape=[2, 2, 2],

@@ -173,7 +173,6 @@ __global__ void getOzIndicesAndRulesKernel(
 
     for (int b = 0; b < B; b++)
     {
-
         int zEnd = zPtr[b][x][y];
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
@@ -189,12 +188,11 @@ __global__ void getOzIndicesAndRulesKernel(
             Index counter = atomicAdd(&ruleSize[nTile][k], Index(1));
 
             rules[nTile][k][0][counter] = pos;
-            rules[nTile][k][1][counter] = global_out_idx;
+            rules[nTile][k][1][counter] = global_out_idx - 1;
 
             Index pos = ozPtr[b][oX][oY];
-            Index fiberIdx = fiberSize[b][oX][oY];
+            Index fiberIdx = atomicAdd(&fiberSize[b][oX][oY], Index(-1));
             ozIndices[pos - fiberIdx] = oZ;
-            fiberSize[b][oX][oY] = fiberIdx - 1;
         }
     }
 }
