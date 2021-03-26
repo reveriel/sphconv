@@ -297,7 +297,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 {
     grid.fill_(-1);
 
-    const int H_BLOCK = 4;
+    const int H_BLOCK = 2;
     const int W_BLOCK = 16;
     int num_active = zIndices.size(0);
 

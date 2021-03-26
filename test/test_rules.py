@@ -22,6 +22,8 @@ def assert_correct_cmp_with_spconv(
         padding: List[int],
         dilation: List[int] = [1, 1, 1],
         subm: bool = False):
+    if subm:
+        assert dilation == [1, 1, 1] and stride == [1, 1, 1]
 
     if batch_size > 1:
         indices = dup_with_batch_idx(indices, batch_size)
@@ -105,6 +107,10 @@ class TestClass:
         assert_correct_cmp_with_spconv(
             indices, batch_size=3, spatial_shape=[4, 6, 5],
             kernel_size=[2, 3, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
     def test_std_rules(self):
         indices = torch.tensor([

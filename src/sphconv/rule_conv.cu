@@ -17,12 +17,10 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 template <typename IType, typename DType,
           int V_STEP,
           int IC_BLOCK,
-          int IC_ILP,
-          int OC_BLOCK,
-          int OC_ILP>
+          int OC_BLOCK>
 __global__ void ruleConvKernel(
     const GpuTensor<DType, 2> feature,
-    const GpuTensor<DType, 3> weight,
+    const GpuTensor<DType, 3> weight, // [kernelVolume, oC, iC]
     const GpuTensor<IType, 4> rules,
     const GpuTensor<IType, 2> ruleSize,
     GpuTensor<DType, 2> outFeature,
@@ -36,7 +34,9 @@ __global__ void ruleConvKernel(
     // for each NTile
     int tile = blockIdx.x;
     int ic_block = blockIdx.y; // channel block
-    int oc_block = blockIdx.z; // channel block
+    int oc = threadIdx.z + blockIdx.z * blockDim.z; //
+    if (oc >= oC)
+        return ;
     // printf("thread((%d,%d,%d), (%d,%d,%d))\n",
     //        blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
@@ -45,35 +45,31 @@ __global__ void ruleConvKernel(
     {
         // for each voxel
         int kRuleSize = ruleSize[tile][k];
-        // divergence occurr here, so we divie them into blocks
+        // divergence occurs here, so we divie them into blocks,
+        // not serious .. I think
         for (int v = threadIdx.x; v < kRuleSize; v += V_STEP)
         {
             int global_in_idx = rules[tile][k][0][v];
             int global_out_idx = rules[tile][k][1][v];
             // for each outChannel
-            for (int oc = threadIdx.z + oc_block * blockDim.z;
-                 oc < oC && oc < (oc_block + 1) * blockDim.z;
-                 oc += OC_BLOCK / OC_ILP)
-            {
-                // printf("oc = %d\n", oc);
-                // for each inChannel segment
-                DType sum = 0;
+            // printf("oc = %d\n", oc);
+            // for each inChannel segment
+            DType sum = 0;
 #pragma unroll
-                for (int ic = threadIdx.y + ic_block * IC_BLOCK;
-                     ic < iC && ic < (ic_block + 1) * IC_BLOCK;
-                     ic += 1)
-                {
-                    // printf("thread((%d,%d,%d), (%d,%d,%d)), feature[%d][%d] = %f\n" ,
-                    //     blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
-                    //     global_in_idx, ic, feature[global_in_idx][ic]);
-                    sum += feature[global_in_idx][ic] * weight[k][oc][ic];
-                    // printf("weight[%d][%d][%d] = %f\n", k, oc, ic, weight[k][oc][ic]);
-                }
-                // printf("thread((%d,%d,%d), (%d,%d,%d)), outFreature[%d][%d] = %f\n" ,
-                    // blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
-                    // global_out_idx, oc, sum);
-                atomicAdd(&outFeature[global_out_idx][oc],  sum);
+            for (int ic = threadIdx.y + ic_block * IC_BLOCK;
+                 ic < iC && ic < (ic_block + 1) * IC_BLOCK;
+                 ic += 1)
+            {
+                // printf("thread((%d,%d,%d), (%d,%d,%d)), feature[%d][%d] = %f\n" ,
+                //     blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
+                //     global_in_idx, ic, feature[global_in_idx][ic]);
+                sum += feature[global_in_idx][ic] * weight[k][oc][ic];
+                // printf("weight[%d][%d][%d] = %f\n", k, oc, ic, weight[k][oc][ic]);
             }
+            // printf("thread((%d,%d,%d), (%d,%d,%d)), outFreature[%d][%d] = %f\n" ,
+            // blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z,
+            // global_out_idx, oc, sum);
+            atomicAdd(&outFeature[global_out_idx][oc], sum);
         }
     }
 }
@@ -102,29 +98,27 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
 
     // TODO: define shared memory size
     const int IC_BLOCK = 16;
-    const int IC_ILP = 16;
-    assert(IC_BLOCK == IC_ILP); // or you need atomicAdd
     const int OC_BLOCK = 16;
-    const int OC_ILP = 4;
+    // const int OC_ILP = 4;
     const int VOX_BLOCK = 32;
 
     int kernelVolume = weight.size(0);
-    int iC = weight.size(1);
-    int oC = weight.size(2);
+    int oC = weight.size(1);
+    int iC = weight.size(2);
 
     const int NTile = 1; // TODO
 
     // allocate outFeature ?
     // TODO: non subm
     torch::Tensor outFeature =
-        torch::zeros({feature.size(0), feature.size(1)},
+        torch::zeros({feature.size(0), oC},
                      torch::dtype(feature.dtype()).device(feature.device()));
 
     dim3 gridSize = dim3(NTile, divUp(iC, IC_BLOCK), divUp(oC, OC_BLOCK));
-    dim3 blockSize = dim3(VOX_BLOCK, 1, OC_BLOCK / OC_ILP);
+    dim3 blockSize = dim3(VOX_BLOCK, 1, OC_BLOCK);
 
     // global version, with no shared memory
-    ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, IC_ILP, OC_BLOCK, OC_ILP>
+    ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, OC_BLOCK >
     <<<gridSize, blockSize>>>(
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
