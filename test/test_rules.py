@@ -3,15 +3,13 @@ from types import TracebackType
 
 import spconv
 import sphconv
-from sphconv.sphconv_cuda import get_rules_subm, rule_conv
+from sphconv.sphconv_cuda import get_rules_subm, rule_conv, get_rules
 import torch
-from numpy.lib import stride_tricks
-from sphconv.utils import voxel_generator
-
+from sphconv.utils import voxel_generator, out_spatial
 
 class TestClass:
     # voxel feature convert to sphconv.Feature and spconv.SparseTensor
-    def test_rules(self):
+    def test_subm_rules(self):
         indices = torch.tensor([
             [0, 0, 0, 0],
             [0, 0, 0, 1],
@@ -25,16 +23,14 @@ class TestClass:
         inChannel = 4
         batch_size = 1
         voxel_features = torch.ones((indices.shape[0], inChannel), device=indices.device)
-        NNZ = indices.shape[0]
-
 
         tensor = sphconv.SparseConvTensor(
             voxel_features, spatial_shape, batch_size, indices=indices)
 
-        kernel_size = 2
-        stride = 1
-        padding = 0
-        dilation = 1
+        kernel_size = [2, 2, 2]
+        stride = [1, 1, 1]
+        padding = [0, 0, 0]
+        dilation = [1, 1, 1]
 
         assert tensor.z_idx.dim() == 1
         assert tensor.z_ptr.dim() == 3
@@ -43,18 +39,14 @@ class TestClass:
         assert tensor.z_ptr.dtype == torch.int32
         assert tensor.grid.dtype == torch.int32
 
-        zo_idx, zo_ptr, rules, rule_size = get_rules_subm(
+        oz_idx, oz_ptr, rules, rule_size = get_rules_subm(
             tensor.z_idx,
             tensor.z_ptr,
             tensor.grid,
             batch_size,
             spatial_shape,
-            spatial_shape,
-            [kernel_size, kernel_size, kernel_size],
-            [stride, stride, stride],
-            [padding, padding, padding],
-            [dilation, dilation, dilation]
-        )
+            out_spatial(spatial_shape, kernel_size, stride, padding, dilation),
+            kernel_size, stride, padding, dilation)
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
             indices, batch_size, spatial_shape, kernel_size, stride, padding, dilation,
@@ -71,11 +63,67 @@ class TestClass:
         assert tensor.grid[0][1][0][0] == 2
         assert tensor.grid[0][1][1][0] == 3
 
-        assert torch.all(torch.eq(zo_idx, tensor.z_idx))
-        assert torch.all(torch.eq(zo_ptr, tensor.z_ptr))
+        assert torch.all(torch.eq(oz_idx, tensor.z_idx))
+        assert torch.all(torch.eq(oz_ptr, tensor.z_ptr))
+
+    def test_std_rules(self):
+        indices = torch.tensor([
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 0, 1, 1],
+        ], dtype=torch.int).cuda()
+        spatial_shape = [2, 2, 2]
+        inChannel = 4
+        batch_size = 1
+        voxel_features = torch.ones((indices.shape[0], inChannel), device=indices.device)
+
+        tensor = sphconv.SparseConvTensor(
+            voxel_features, spatial_shape, batch_size, indices=indices)
+
+        kernel_size = [2, 2, 2]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        assert tensor.z_idx.dim() == 1
+        assert tensor.z_ptr.dim() == 3
+        assert tensor.grid.dim() == 4
+        assert tensor.z_idx.dtype == torch.int32
+        assert tensor.z_ptr.dtype == torch.int32
+        assert tensor.grid.dtype == torch.int32
+
+        out_spatial_shape = out_spatial(spatial_shape, kernel_size, stride, padding, dilation)
+        print("out shape = ", out_spatial_shape)
+        oz_idx, oz_ptr, rules, rule_size = get_rules(
+            tensor.z_idx,
+            tensor.z_ptr,
+            torch.empty([batch_size, *out_spatial_shape], dtype=torch.int32, device=indices.device),
+            batch_size,
+            spatial_shape,
+            out_spatial_shape,
+            kernel_size, stride, padding, dilation)
+
+        outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
+            indices, batch_size, spatial_shape, kernel_size, stride, padding, dilation,
+            out_padding=0, subm=False, transpose=False, grid=None, use_hash=False)
+
+        print("outids = ", outids)
+        print("indice_pairs = ", indice_pairs)
+        print("indice_pair_num = ", indice_pair_num)
+
+        print("oz_idx = ", oz_idx)
+        print("oz_ptr = ", oz_ptr)
+        print("rules = ", rules)
+        print("rule size = ", rule_size)
+        # assert tensor.grid[0][0][0][0] == 0
+        # assert tensor.grid[0][0][1][0] == 1
+        # assert tensor.grid[0][1][0][0] == 2
+        # assert tensor.grid[0][1][1][0] == 3
 
 
-    def test_rule_conv(self):
+
+    def test_rule_submconv(self):
         indices = torch.tensor([
             [0, 0, 0, 0],
             [0, 0, 0, 1],
@@ -107,7 +155,7 @@ class TestClass:
         assert tensor.z_ptr.dtype == torch.int32
         assert tensor.grid.dtype == torch.int32
 
-        zo_idx, zo_ptr, rules, rule_size = get_rules_subm(
+        oz_idx, oz_ptr, rules, rule_size = get_rules_subm(
             tensor.z_idx,
             tensor.z_ptr,
             tensor.grid,

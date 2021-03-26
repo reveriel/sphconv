@@ -27,7 +27,7 @@ def assert_subm_conv_eq(
     tensor = sphconv.SparseConvTensor(
         features, spatial_shape, batch_size, indices=indices)
 
-    zo_idx, zo_ptr, rules, rule_size = get_rules_subm(
+    oz_idx, oz_ptr, rules, rule_size = get_rules_subm(
         tensor.z_idx,
         tensor.z_ptr,
         tensor.grid,
@@ -96,7 +96,7 @@ class TestClass:
 
     def test_batch_size(self):
 
-        batch_size = 2
+        batch_size = 8
 
         indices = torch.tensor([
             [0, 0, 0],

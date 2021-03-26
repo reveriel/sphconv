@@ -13,12 +13,33 @@
 # limitations under the License.
 
 
+import math
 from itertools import product, repeat
+from typing import List
 
 from sphconv.utils.voxel_generator import (VoxelGenerator, VoxelGeneratorV2,
                                            VoxelGeneratorV3)
 from torch._six import container_abcs
 
+
+def out_spatial(
+    in_spatial: List[int],
+    kernel_size: List[int],
+    stride: List[int],
+    padding: List[int],
+    dilation: List[int] = [1, 1, 1]
+) -> List[int]:
+    iH, iW, iD = in_spatial
+    kH, kW, kD = kernel_size
+    sH, sW, sD = stride
+    padH, padW, padD = padding
+    dH, dW, dD = dilation
+
+    oH = math.floor((iH + 2 * padH - dH * (kH - 1) - 1) / sH + 1)
+    oW = math.floor((iW + 2 * padW - dW * (kW - 1) - 1) / sW + 1)
+    oD = math.floor((iD + 2 * padD - dD * (kD - 1) - 1) / sD + 1)
+
+    return [oH, oW, oD]
 
 def _triple(x):
     """If x is a single number, repeat three times."""

@@ -59,6 +59,17 @@ __device__ __inline__ Index OutSpatial(Index k, Index x, Index s, Index d,
   return -1;
 }
 
+#define PRINT_SHAPE(x) (printShape(x, #x))
+
+inline void printShape(torch::Tensor A, std::string name) {
+  printf("%s shape = (", name.c_str());
+  for (int i = 0; i < A.dim() - 1; i++)
+  {
+    printf("%ld,", A.size(i));
+  }
+  printf("%ld)\n", A.size(A.dim() - 1));
+}
+
 // Print a some tile, for debugging.
 template <typename T>
 void printTensor(at::Tensor A, std::string name, int batch_idx, int H_start,
