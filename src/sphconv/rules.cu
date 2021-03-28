@@ -3,11 +3,13 @@
 #include <stdio.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include <iostream>
 #include <torch/extension.h>
 #include "indice.cu.h"
 #include "timer.h"
 
 using namespace std;
+using namespace torch::indexing;
 
 namespace sphconv
 {
@@ -134,8 +136,6 @@ __global__ void getOzIndicesAndRulesKernel(
     const GpuTensor<Index, 1> zIndices, // [NNZ]
     GpuTensor<Index, 1> ozIndices,      // [NNZ']
     const GpuTensor<Index, 3> zPtr,     // [B, H, W]
-    GpuTensor<Index, 3> ozPtr,          // [B, oH, oW]
-    GpuTensor<Index, 3> fiberSize,      // [B, oH, oW]
     const GpuTensor<Index, 4> grid,
     GpuTensor<Index, 4> rules,    // [NTile, KKK, 4(2), DMax]
     GpuTensor<Index, 2> ruleSize, // number active index, [NTile, KKK]
@@ -180,19 +180,22 @@ __global__ void getOzIndicesAndRulesKernel(
         {
             Index z = zIndices[pos];
             Index oZ = OutSpatial(k_D, z, sD, dD, padD);
+
             if (oZ < 0 || oZ >= oD)
                 continue;
 
-            Index global_out_idx = grid[b][oX][oY][oZ];
+            Index global_out_idx = grid[b][oX][oY][oZ] - 1;
+
+            printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
 
             Index counter = atomicAdd(&ruleSize[nTile][k], Index(1));
 
             rules[nTile][k][0][counter] = pos;
-            rules[nTile][k][1][counter] = global_out_idx - 1;
+            rules[nTile][k][1][counter] = global_out_idx;
 
-            Index pos = ozPtr[b][oX][oY];
-            Index fiberIdx = atomicAdd(&fiberSize[b][oX][oY], Index(-1));
-            ozIndices[pos - fiberIdx] = oZ;
+
+            // this assigned for many times, with the same value
+            ozIndices[global_out_idx] = oZ;
         }
     }
 }
@@ -404,16 +407,22 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+    std::cout << "grid(1) = " << grid << std::endl;
 
-    torch::Tensor fiberSize = torch::sum(grid, {3}, false, torch::kInt32); // [B, oH, oW]
-    PRINT_SHAPE(fiberSize);
-    torch::Tensor ozPtr = torch::cumsum(fiberSize.reshape({-1}), 0)
-                              .reshape({batchSize, outSpatialShape[0], outSpatialShape[1]})
-                              .toType(torch::kInt32);
+    grid = torch::cumsum(grid, 3, torch::kInt32); // [B, oH, oW, oD]
+
+    std::cout << "grid(2) = " << grid << std::endl;
+    // here we want non inclusive scan, but pytorch only provides this.
+    torch::Tensor ozPtr = torch::cumsum(grid.index({Slice(), Slice(), Slice(), -1}).reshape({-1}), 0, torch::kInt32)
+                                .reshape({batchSize, outSpatialShape[0], outSpatialShape[1]});
     // [B, oH, oW]
     PRINT_SHAPE(ozPtr);
     PRINT_SHAPE(grid);
-    grid += ozPtr.unsqueeze(-1); // now grid is filled with global output index
+    std::cout << "ozPtr = " << ozPtr << std::endl;
+    torch::Tensor exclusiveScan = ozPtr.roll(1);
+    exclusiveScan.index_put_({0,0,0}, 0);
+    grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
+    std::cout << "grid(3) = " << grid << std::endl;
 
     int NTile = 1; // TODO, number of Tiles
 
@@ -429,8 +438,6 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     PRINT_SHAPE(ruleSize);
 
     int outNNZ = ozPtr.view({-1}).index({-1}).item<int>();
-    PRINT_SHAPE(ozPtr);
-
     torch::Tensor ozIndices = torch::empty({outNNZ}, torch::dtype(torch::kInt32).device(zIndices.device()));
     PRINT_SHAPE(ozIndices);
 
@@ -438,8 +445,6 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         ozIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        ozPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        fiberSize.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),

@@ -13,6 +13,60 @@ def dup_with_batch_idx(indices, batch_size):
     example = {"coordinates": indices[:, 1:]}
     return merge_batch_torch([example]*batch_size)["coordinates"]
 
+
+def assert_correct_cmp_with_torch(
+        indices: torch.Tensor,
+        batch_size: int,
+        spatial_shape: List[int],
+        kernel_size: List[int],
+        stride: List[int],
+        padding: List[int],
+        dilation: List[int] = [1, 1, 1],
+        subm: bool = False):
+    assert subm == False
+
+    if batch_size > 1:
+        indices = dup_with_batch_idx(indices, batch_size)
+
+    voxel_features = torch.ones((indices.shape[0], 1), device=indices.device)
+    test_func = get_rules_subm if subm else get_rules
+    tensor = sphconv.SparseConvTensor(
+        voxel_features, spatial_shape, batch_size, indices=indices)
+    out_spatial_shape = spatial_shape
+    if not subm:
+        out_spatial_shape = out_spatial(
+            spatial_shape, kernel_size, stride, padding, dilation)
+    print("out shape = ", out_spatial_shape)
+
+    oz_idx, oz_ptr, rules, rule_size = test_func(
+        tensor.z_idx,
+        tensor.z_ptr,
+        torch.empty([batch_size, *out_spatial_shape],
+                    dtype=torch.int32, device=indices.device),
+        batch_size,
+        spatial_shape,
+        out_spatial_shape,
+        kernel_size, stride, padding, dilation)
+
+    # assert torch.sum(indice_pair_num) == torch.sum(rule_size)
+
+    sphconv_dense = sphconv.SparseConvTensor(
+        torch.ones((oz_idx.shape[0], 1)), out_spatial_shape[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(indices.device)
+
+    weight = torch.ones((1, 1, *kernel_size),
+                        dtype=torch.float32, device=indices.device)
+
+    torch_dense = torch.nn.functional.conv3d(tensor.dense(
+        indices.device), weight, None, stride, padding, dilation)
+    torch_dense[torch_dense != 0] = 1
+
+    print("sphconv_dense = ", sphconv_dense)
+    print("torch_dense = ", torch_dense)
+
+    assert (torch.isclose(sphconv_dense, torch_dense)).all()
+
+
+
 def assert_correct_cmp_with_spconv(
         indices: torch.Tensor,
         batch_size: int,
@@ -42,9 +96,13 @@ def assert_correct_cmp_with_spconv(
     assert tensor.z_ptr.dtype == torch.int32
     assert tensor.grid.dtype == torch.int32
 
-    out_spatial_shape = out_spatial(
-        spatial_shape, kernel_size, stride, padding, dilation)
+    out_spatial_shape = spatial_shape
+    if not subm:
+        out_spatial_shape = out_spatial(
+            spatial_shape, kernel_size, stride, padding, dilation)
     print("out shape = ", out_spatial_shape)
+    print("z_idx = ", tensor.z_idx)
+    print("z_ptr = ", tensor.z_ptr)
 
     oz_idx, oz_ptr, rules, rule_size = test_func(
         tensor.z_idx,
@@ -72,19 +130,26 @@ def assert_correct_cmp_with_spconv(
 
     # assert torch.sum(indice_pair_num) == torch.sum(rule_size)
     assert (indice_pair_num.view(-1).sort()[0] == rule_size.view(-1).sort()[0]).all()
+    assert (outids[:,1].sort()[0] == oz_idx.sort()[0]).all()
 
 
     if not subm:
         # check oz_ptr
         spconv_dense = spconv.SparseConvTensor(
-            torch.ones((outids.shape[0], 1)), outids, out_spatial_shape, batch_size).dense()
+            torch.ones((outids.shape[0], 1)), outids, out_spatial_shape[::-1], batch_size).dense()
         sphconv_dense = sphconv.SparseConvTensor(
-            torch.ones((oz_idx.shape[0],1)), out_spatial_shape, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense()
+            torch.ones((oz_idx.shape[0],1)), out_spatial_shape[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense()
 
         print("sphconv = ", sphconv_dense)
         print("spconv = ", spconv_dense)
-        print("sphconv shape ", sphconv_dense.shape)
-        print("spconv shape ", spconv_dense.shape)
+
+        weight = torch.ones((1, 1, *kernel_size),
+                        dtype=torch.float32, device=indices.device)
+        torch_dense = torch.nn.functional.conv3d(tensor.dense(
+            indices.device), weight, None, stride, padding, dilation)
+        torch_dense[torch_dense != 0] = 1
+
+        print("torch_dense = ", torch_dense)
 
         assert (spconv_dense == sphconv_dense).all()
 
@@ -140,37 +205,92 @@ class TestClass:
             indices, batch_size=1, spatial_shape=[2, 2, 2],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[2, 2, 3],
-        #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[2, 2, 4],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[2, 2, 2],
-        #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 0, 1])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[3, 3, 3],
-        #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
+        assert_correct_cmp_with_torch(
+            indices, batch_size=1, spatial_shape=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[3, 3, 3],
-        #     kernel_size=[2, 2, 2], stride=[1, 2, 1], padding=[0, 0, 0])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[3, 3, 3],
-        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[0, 0, 0])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[2, 2, 2], stride=[1, 2, 1], padding=[0, 0, 0])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[8, 8, 8],
-        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[0, 0, 0])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, spatial_shape=[8, 3, 8],
-        #     kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[8, 8, 8],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1])
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=3, spatial_shape=[8, 3, 8],
-        #     kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[8, 3, 8],
+            kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=3, spatial_shape=[8, 3, 8],
+            kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+
+        indices = torch.tensor([
+            [0, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 0, 1],
+            [0, 1, 0, 1],
+            [0, 1, 1, 1],
+            [0, 0, 1, 1],
+        ], dtype=torch.int).cuda()
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[2, 2, 2],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[2, 2, 4],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 0, 1])
+
+        assert_correct_cmp_with_torch(
+            indices, batch_size=1, spatial_shape=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[2, 2, 2], stride=[1, 2, 1], padding=[0, 0, 0])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[0, 0, 0])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[8, 8, 8],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, spatial_shape=[8, 3, 8],
+            kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=3, spatial_shape=[8, 3, 8],
+            kernel_size=[3, 3, 1], stride=[2, 2, 2], padding=[1, 1, 1])
+
+
 
     def test_rule_submconv(self):
         indices = torch.tensor([
