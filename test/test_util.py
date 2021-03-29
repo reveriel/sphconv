@@ -16,20 +16,46 @@ from typing import List
 
 POINTS_FILE = "000003.bin"
 
-def assert_dense_eq(features: torch.Tensor, indices: torch.Tensor,
-                    batch_size, spatial_shape: List[int]):
+def batch_artifical_inputs(
+    indices_zyx:torch.Tensor,
+    channel:int,
+    batch_size:int
+) :
+    """
+    create batched inputs from indices_zyx
+    """
+    features = torch.randn(
+        (indices_zyx.shape[0], channel), dtype=torch.float, device=indices_zyx.device)
 
-    assert features.shape[1] == 4
+    one_example = {'voxel': features, 'coordinates': indices_zyx}
+    example = merge_batch_torch([one_example] * batch_size)
+
+    return example['voxel'], example['coordinates']
+
+
+def assert_dense_eq(
+        features: torch.Tensor,
+        indices_zyx: torch.Tensor,
+        batch_size: int = 1,
+        spatial_shape_DWH: List[int] = []):
+    """
+    assert dense is coorect
+    """
+
     assert features.dim() == 2
-    assert indices.shape[1] == 4
-    assert indices.dim() == 2
+    assert indices_zyx.shape[1] == 4 # four coodinates
+    assert indices_zyx.dim() == 2
+
     spconv_tensor = spconv.SparseConvTensor(
-        features, indices, spatial_shape, batch_size)
+        features, indices_zyx, spatial_shape_DWH, batch_size)
     spconv_dense = spconv_tensor.dense()
 
     sphconv_tensor = sphconv.SparseConvTensor(
-        features, spatial_shape, batch_size, indices=indices)
+        features, spatial_shape_DWH, batch_size, indices=indices_zyx)
+    assert sphconv_tensor.z_ptr.view(-1).shape[0] == batch_size * spatial_shape_DWH[1] * spatial_shape_DWH[2]
+
     sphconv_dense = sphconv_tensor.dense().cuda()
+    print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
 
     assert torch.all(torch.eq(sphconv_dense, spconv_dense))
 
@@ -61,25 +87,28 @@ class TestClass:
         assert torch.all(torch.eq(spconv_dense, sphconv_dense))
 
     def test_batch(self):
-        batch_size = 8
-        indices = torch.tensor([
+        indices_zyx = torch.tensor([
             [0, 0, 0],
             [0, 0, 1],
             [0, 1, 0],
             [0, 1, 1],
         ], dtype=torch.int).cuda()
-        inChannel = 4
-        features = torch.randn(
-            (indices.shape[0], inChannel), dtype=torch.float, device=indices.device)
-
-        one_example = {'voxel': features, 'coordinates': indices}
-        example = merge_batch_torch([one_example] * batch_size)
-
-        spatial_shape = [2, 2, 2]  # D, W, H
-
-        # print("example[coordinates] = ", example['coordinates'])
+        feature, indices_zyx = batch_artifical_inputs(
+            indices_zyx, channel=4, batch_size=3)
         assert_dense_eq(
-            example['voxel'], example['coordinates'], batch_size, spatial_shape)
+            feature, indices_zyx, batch_size=3, spatial_shape_DWH=[2, 2, 2])
+
+    def test_init(self):
+        indices_zyx = torch.tensor([
+            [0, 0, 0],
+        ], dtype=torch.int).cuda()
+
+        feature, indices_zyx = batch_artifical_inputs(
+            indices_zyx, channel=4, batch_size=2)
+        assert_dense_eq(
+            feature, indices_zyx, batch_size=2, spatial_shape_DWH=[1, 1, 2])
+
+
 
     def test_batch2(self):
         batch_size = 4
@@ -93,7 +122,7 @@ class TestClass:
             example_list.append(one_example)
 
         example = merge_batch_torch(example_list)
-        spatial_shape = [64, 511, 512]
 
-        assert_dense_eq(example['voxels'], example['coordinates'], batch_size, spatial_shape)
+        assert_dense_eq(
+            example['voxels'], example['coordinates'],batch_size=batch_size, spatial_shape_DWH=[64, 511, 512])
 

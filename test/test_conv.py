@@ -151,6 +151,51 @@ class TestClass:
             indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape=[3, 5, 8],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
+    def test_subm_conv2(self):
+        indices = torch.tensor([
+            [0, 1, 0, 7],
+            [0, 1, 1, 6],
+            [0, 2, 1, 6],
+            [0, 3, 3, 6],
+            [0, 3, 3, 3],
+            [0, 0, 0, 1],
+            [0, 1, 3, 3],
+            [0, 1, 3, 4],
+            [0, 1, 3, 5],
+            [0, 2, 3, 5],
+            [0, 3, 3, 5],
+            [0, 4, 3, 5],
+            [0, 7, 3, 5],
+        ], dtype=torch.int).cuda()
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, inChannel=4, outChannel=4, spatial_shape=[8, 8, 8],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=4, outChannel=4, spatial_shape=[8, 9, 9],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, inChannel=4, outChannel=5, spatial_shape=[9, 9, 9],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, inChannel=4, outChannel=8, spatial_shape=[8, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=4, outChannel=128, spatial_shape=[9, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape=[11, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape=[10, 9, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
     def test_std_conv(self):
         indices = torch.tensor([
             [0, 0, 0],

@@ -30,7 +30,7 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 template <typename Index>
 __global__ void prepareSubMGridKernel(
     const GpuTensor<Index, 1> zIndices,
-    const GpuTensor<Index, 3> zPtr,
+    const GpuTensor<Index, 3> zPtr, // TODO replace zPtr with exclusiveScan
     GpuTensor<Index, 4> grid,
     int B, int H, int W)
 {
@@ -186,13 +186,12 @@ __global__ void getOzIndicesAndRulesKernel(
 
             Index global_out_idx = grid[b][oX][oY][oZ] - 1;
 
-            printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
+            // printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
 
             Index counter = atomicAdd(&ruleSize[nTile][k], Index(1));
 
             rules[nTile][k][0][counter] = pos;
             rules[nTile][k][1][counter] = global_out_idx;
-
 
             // this assigned for many times, with the same value
             ozIndices[global_out_idx] = oZ;
@@ -316,6 +315,8 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
+
+    std::cout << "grid = " << grid << std::endl;
 
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
     blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);

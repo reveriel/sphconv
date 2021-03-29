@@ -86,7 +86,7 @@ class SparseTensorBase:
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
                  voxel_features: torch.Tensor,
-                 spatial_shape: List[int],
+                 spatial_shape: List[int], #[D, W, H]
                  batch_size: int,
                  indices: Union[torch.Tensor, None] = None,
                  z_idx: Union[torch.Tensor, None] = None,
@@ -196,7 +196,7 @@ class SparseConvTensor(SparseTensorBase):
                     end_p = zptr_flat[zptr_idx]
                     for z_p in range(start_p, end_p):
                         z = self.z_idx[z_p].long()
-                        print("b,x,y,z = ",  b, x, y, z.item())
+                        # print("b,x,y,z = ",  b, x, y, z.item(), "z_p = ", z_p)
                         res[b, x, y, z] = self.features[z_p]
 
         return res.permute((0, 4, 3, 2, 1)).contiguous()
