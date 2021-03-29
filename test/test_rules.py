@@ -202,19 +202,19 @@ class TestClass:
 
     def test_subm_rules_2(self):
         indices = torch.tensor([
-            # [1, 0, 7],
-            # [1, 1, 6],
-            # [2, 1, 6],
-            # [3, 3, 6],
-            # [3, 3, 3],
+            [1, 0, 7],
+            [1, 1, 6],
+            [2, 1, 6],
+            [3, 3, 6],
+            [3, 3, 3],
             [0, 0, 0],
-            # [1, 3, 3],
-            # [1, 3, 4],
-            # [1, 3, 5],
-            # [2, 3, 5],
-            # [3, 3, 5],
-            # [4, 3, 5],
-            # [7, 3, 5],
+            [1, 3, 3],
+            [1, 3, 4],
+            [1, 3, 5],
+            [2, 3, 5],
+            [3, 3, 5],
+            [4, 3, 5],
+            [7, 3, 5],
         ], dtype=torch.int).cuda()
 
         assert_correct_cmp_with_spconv(
@@ -447,7 +447,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.features, weight.reshape((-1, outChannel, inChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH)
+            rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
 
         print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(

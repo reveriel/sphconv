@@ -92,7 +92,8 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
           torch::Tensor ruleSize, // [Ntile, kernelVolume]
           int batchSize,
           std::vector<int64_t> spatialShape, // H, W, D
-          std::vector<int64_t> outSpatialShape
+          std::vector<int64_t> outSpatialShape,
+          int outNNZ
 )
 {
 
@@ -109,9 +110,8 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     const int NTile = 1; // TODO
 
     // allocate outFeature ?
-    // TODO: non subm
     torch::Tensor outFeature =
-        torch::zeros({feature.size(0), oC},
+        torch::zeros({outNNZ, oC},
                      torch::dtype(feature.dtype()).device(feature.device()));
 
     dim3 gridSize = dim3(NTile, divUp(iC, IC_BLOCK), divUp(oC, OC_BLOCK));

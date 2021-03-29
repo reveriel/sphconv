@@ -86,7 +86,7 @@ class SparseTensorBase:
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
                  voxel_features: torch.Tensor,
-                 spatial_shape: List[int], #[D, W, H]
+                 spatial_shape_DWH: List[int], #[D, W, H]
                  batch_size: int,
                  indices: Union[torch.Tensor, None] = None,
                  z_idx: Union[torch.Tensor, None] = None,
@@ -111,7 +111,7 @@ class SparseConvTensor(SparseTensorBase):
 
         if z_idx is not None and z_ptr is not None:
             super().__init__(
-                batch_size, spatial_shape[2], spatial_shape[1], spatial_shape[0],
+                batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
                 voxel_features.shape[-1],
                 voxel_features.device, voxel_features.dtype,
                 z_idx.dtype, voxel_features, z_idx, z_ptr)
@@ -122,7 +122,7 @@ class SparseConvTensor(SparseTensorBase):
             # assert voxel_features.device == indices.device
 
             super().__init__(
-                batch_size, spatial_shape[2], spatial_shape[1], spatial_shape[0],
+                batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
                 voxel_features.shape[-1],
                 voxel_features.device, voxel_features.dtype,
                 indices.dtype, None, None, None)

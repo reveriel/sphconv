@@ -12,7 +12,8 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
           torch::Tensor ruleSize, // [Ntile, kernelVolume]
           int batchSize,
           std::vector<int64_t> spatialShape, // H, W, D
-          std::vector<int64_t> outSpatialShape
+          std::vector<int64_t> outSpatialShape,
+          int outNNZ
 );
 
 }
