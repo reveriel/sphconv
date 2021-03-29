@@ -1,9 +1,10 @@
 import torch
 
-# import sphconv.sphconv_cuda
+from sphconv.sphconv_cuda import rule_conv
+from typing import List
 
 class ConvFunction(torch.autograd.Function):
-    """ Applies a 3D convolution on Range Images
+    """ Applies a 3D convolution on sparse 3d tensor
 
     Args:
 
@@ -40,48 +41,32 @@ class ConvFunction(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx,
-                feature,
-                weight,
-                in_rules,
-                out_rules,
-                num_in,
-                # bias,
-                stride,
-                padding,
-                dilation,
-                groups,
-                D,
-                oT,
-                subm):
+                feature: torch.Tensor,
+                weight: torch.Tensor, # [KKK, oC, iC]
+                rules: torch.Tensor,
+                rule_size: torch.Tensor,
+                batch_size: int,
+                spatial_shape_HWD: List[int],
+                out_spatial_shape_HWD: List[int],
+                outNNZ:int):
 
-        # if bias is None:
-        feature_out, = None, None
-        # # sphconv_cuda.indice_conv_gemm(
-        #     feature,
-        #     weight,
-        #     # bias,
-        #     in_rules,
-        #     out_rules,
-        #     num_in,
-        #     oT,
-        #     *stride,
-        #     *padding,
-        #     *dilation,
-        #     groups)
-        # else:
-        #     raise Exception("bias not immplemented yet")
+        feature_out = rule_conv(
+            feature, weight, rules, rule_size, batch_size, spatial_shape_HWD,
+            out_spatial_shape_HWD, outNNZ)
 
+        ctx.feature = feature
+        ctx.weight = weight
+        ctx.rules = rules
+        ctx.rule_size = rule_size
+        ctx.batch_size = batch_size
+        ctx.spatial_shape_HWD = spatial_shape_HWD
+        ctx.out_spatial_shape_HWD = out_spatial_shape_HWD
+        ctx.outNNZ = outNNZ
 
-        ctx.stride = stride
-        ctx.padding = padding
-        ctx.dilation = dilation
-        ctx.groups = groups
-        ctx.D = D
-        ctx.subm = subm
+        ctx.feature_out = feature_out
 
-        variables = [feature, weight, in_rules, out_rules, num_in]
-        ctx.save_for_backward(*variables)
-
+        # variables = [feature, weight, in_rules, out_rules, num_in]
+        # ctx.save_for_backward(*variables)
 
         return feature_out
 
@@ -89,7 +74,7 @@ class ConvFunction(torch.autograd.Function):
     def backward(ctx, d_featureOut):
 
         # bias
-        feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
+        # feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
 
         # d_bias
         d_feature, d_weight = \
@@ -110,7 +95,7 @@ class ConvFunction(torch.autograd.Function):
 
         # no bias now
         # should match the input of forward
-        return d_feature, d_weight, None, None, None, None, None, None, None, None, None, None
+        return d_feature, d_weight, None, None, None, None, None, None
 
 
 class ToDenseFunction(torch.autograd.Function):

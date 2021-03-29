@@ -65,7 +65,7 @@ def assert_conv_eq(
         out_features, outids, out_spatial_shape_HWD[::-1], batch_size).dense()
 
     sph_out_features = rule_conv(
-        tensor.features, weight.reshape(-1, outChannel, inChannel),
+        tensor.feature, weight.reshape(-1, outChannel, inChannel),
         rules, rule_size, batch_size, spatial_shape_HWD, out_spatial_shape_HWD, oz_idx.shape[0])
 
     assert sph_out_features.dim() == 2

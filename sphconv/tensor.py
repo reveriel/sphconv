@@ -1,7 +1,9 @@
-import torch
-from typing import List
+from typing import List, Optional
 
-def init_csf(features: torch.Tensor, indices: torch.Tensor,
+import torch
+
+
+def init_csf(feature: torch.Tensor, indices: torch.Tensor,
              B: int,  # batch size
              H: int, W: int, D: int, C: int,
              NNZ: int,
@@ -21,7 +23,8 @@ def init_csf(features: torch.Tensor, indices: torch.Tensor,
     z = indices[:, 1].long()
 
     # set one on occupied voxels
-    grid.index_put_((b, x, y, z), torch.ones(NNZ, dtype=torch.int32, device=device))
+    grid.index_put_((b, x, y, z), torch.ones(
+        NNZ, dtype=torch.int32, device=device))
 
     # prefix sum on each D fiber
     # sumgrid = torch.cumsum(grid, dim=3)
@@ -49,14 +52,12 @@ def init_csf(features: torch.Tensor, indices: torch.Tensor,
         # fill z_idx
         fiber_pos = fiber_size[b, x, y]
         # fiber_pos -= 1
-        val[val_pos - fiber_pos] = features[i]
+        val[val_pos - fiber_pos] = feature[i]
         z_idx[val_pos - fiber_pos] = z
         fiber_size[b, x, y] = fiber_pos - 1
         # fill val
-    return z_ptr.reshape(B,H,W)
+    return z_ptr.reshape(B, H, W)
 
-
-from typing import Union
 
 class SparseTensorBase:
     """ a simple plain old python object"""
@@ -66,9 +67,9 @@ class SparseTensorBase:
                  H: int, W: int, D: int,
                  C: int,
                  device: torch.device,
-                 data_type: torch.dtype,
-                 idx_type: torch.dtype,
-                 features: torch.Tensor,
+                 dtype: torch.dtype,
+                 itype: torch.dtype,
+                 feature: torch.Tensor,
                  z_idx: torch.Tensor,
                  z_ptr: torch.Tensor):
         self.B = B
@@ -77,21 +78,22 @@ class SparseTensorBase:
         self.D = D
         self.C = C
         self.device = device
-        self.data_type = data_type
-        self.idx_type = idx_type
-        self.features = features
+        self.dtype = dtype
+        self.itype = itype
+        self.feature = feature
         self.z_idx = z_idx
         self.z_ptr = z_ptr
 
+
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
-                 voxel_features: torch.Tensor,
-                 spatial_shape_DWH: List[int], #[D, W, H]
+                 feature: torch.Tensor,
+                 spatial_shape_DWH: List[int],  # [D, W, H]
                  batch_size: int,
-                 indices: Union[torch.Tensor, None] = None,
-                 z_idx: Union[torch.Tensor, None] = None,
-                 z_ptr: Union[torch.Tensor, None] = None,
-                 grid: Union[torch.Tensor, None] = None
+                 indices: Optional[torch.Tensor] = None,
+                 z_idx: Optional[torch.Tensor] = None,
+                 z_ptr: Optional[torch.Tensor] = None,
+                 grid: Optional[torch.Tensor] = None
                  ):
         """
         if z_idx and z_ptr is not empty, we create an object using them
@@ -106,15 +108,14 @@ class SparseConvTensor(SparseTensorBase):
 
         """
 
-
         self.rule_cache = {}
 
         if z_idx is not None and z_ptr is not None:
             super().__init__(
                 batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
-                voxel_features.shape[-1],
-                voxel_features.device, voxel_features.dtype,
-                z_idx.dtype, voxel_features, z_idx, z_ptr)
+                feature.shape[-1],
+                feature.device, feature.dtype,
+                z_idx.dtype, feature, z_idx, z_ptr)
             return
 
         elif indices is not None:
@@ -123,24 +124,25 @@ class SparseConvTensor(SparseTensorBase):
 
             super().__init__(
                 batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
-                voxel_features.shape[-1],
-                voxel_features.device, voxel_features.dtype,
+                feature.shape[-1],
+                feature.device, feature.dtype,
                 indices.dtype, None, None, None)
 
             # the number of non zero elements
-            NNZ = voxel_features.shape[0]
+            NNZ = feature.shape[0]
 
             # all nonzeros are in the 'val'
             # size: NNZ * C
             # the 'val' stores all nonzeros
             # its a pointer points to an array of
-            self.features = torch.empty(
-                (NNZ, self.C), device=self.device, dtype=self.data_type)
+            self.feature = torch.empty(
+                (NNZ, self.C), device=self.device, dtype=self.dtype)
 
             # the 'z_idx' stores the z indexes of the elements in 'val'
             # if val[k] = A[b,x,y,z,c], then z_idx[k]  = z
             # size: NNZ
-            self.z_idx = torch.zeros((NNZ), device=self.device, dtype=self.idx_type)
+            self.z_idx = torch.zeros(
+                (NNZ), device=self.device, dtype=self.itype)
 
             # the 'z_ptr' stores the locations in 'val' that start a 'C' vector.
             # if val[k] = A[b,x,y,z,c], then  z_ptr[b,x,y] <= k < z_ptr[b,x,y + 1]
@@ -157,20 +159,18 @@ class SparseConvTensor(SparseTensorBase):
             # TODO: should I release it here
             if grid is None:
                 grid = torch.empty((self.B, self.H, self.W, self.D),
-                                device=self.device, dtype=self.idx_type)
+                                   device=self.device, dtype=self.itype)
             self.grid = grid
 
-            self.z_ptr = init_csf(voxel_features, indices, self.B, self.H, self.W,
-                                self.D, self.C, NNZ, grid, self.features, self.z_idx,
-                                self.device)
-
+            self.z_ptr = init_csf(feature, indices, self.B, self.H, self.W,
+                                  self.D, self.C, NNZ, grid, self.feature, self.z_idx,
+                                  self.device)
 
     @property
     def shape(self):
         return [self.B, self.C, self.D, self.H, self.W]
 
-
-    def find_rule(self, key:str):
+    def find_rule(self, key: str):
         if key is None:
             return None
         if key in self.rule_cache:
@@ -183,8 +183,9 @@ class SparseConvTensor(SparseTensorBase):
         """
 
         # res = torch.zeros((self.B, self.C, self.D, self.W, self.H))
-        res = torch.zeros((self.B, self.H, self.W, self.D, self.C), device=device)
-        zptr_flat = self.z_ptr.reshape(-1);
+        res = torch.zeros(
+            (self.B, self.H, self.W, self.D, self.C), device=device)
+        zptr_flat = self.z_ptr.reshape(-1)
 
         # TODO, parallel
         # fill val to res, based on z index
@@ -197,10 +198,9 @@ class SparseConvTensor(SparseTensorBase):
                     for z_p in range(start_p, end_p):
                         z = self.z_idx[z_p].long()
                         # print("b,x,y,z = ",  b, x, y, z.item(), "z_p = ", z_p)
-                        res[b, x, y, z] = self.features[z_p]
+                        res[b, x, y, z] = self.feature[z_p]
 
         return res.permute((0, 4, 3, 2, 1)).contiguous()
 
         # return torch.randn(
         #     (self.batch_size, self.C, self.D, self.W, self.H))
-
