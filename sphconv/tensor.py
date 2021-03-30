@@ -7,15 +7,13 @@ def init_csf(feature: torch.Tensor, indices: torch.Tensor,
              B: int,  # batch size
              H: int, W: int, D: int, C: int,
              NNZ: int,
-             grid: torch.Tensor,
              val: torch.Tensor,
              z_idx: torch.Tensor, device) -> torch.Tensor:
     """
     init val, z_idx, and z_ptr from features and indices
     return, z_ptr,
     """
-
-    grid.zero_()
+    grid = torch.zeros((B,H,W,D), device=indices.device, dtype=indices.dtype)
 
     b = indices[:, 0].long()
     x = indices[:, 3].long()
@@ -84,7 +82,6 @@ class SparseTensorBase:
         self.z_idx = z_idx
         self.z_ptr = z_ptr
 
-
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
                  feature: torch.Tensor,
@@ -92,8 +89,7 @@ class SparseConvTensor(SparseTensorBase):
                  batch_size: int,
                  indices: Optional[torch.Tensor] = None,
                  z_idx: Optional[torch.Tensor] = None,
-                 z_ptr: Optional[torch.Tensor] = None,
-                 grid: Optional[torch.Tensor] = None
+                 z_ptr: Optional[torch.Tensor] = None
                  ):
         """
         if z_idx and z_ptr is not empty, we create an object using them
@@ -156,14 +152,9 @@ class SparseConvTensor(SparseTensorBase):
             #     (B * H * W), device=self.device, dtype=self.ptrtype)
 
             # size   B H W D, for counting in get_rules() and init_csf()
-            # TODO: should I release it here
-            if grid is None:
-                grid = torch.empty((self.B, self.H, self.W, self.D),
-                                   device=self.device, dtype=self.itype)
-            self.grid = grid
 
             self.z_ptr = init_csf(feature, indices, self.B, self.H, self.W,
-                                  self.D, self.C, NNZ, grid, self.feature, self.z_idx,
+                                  self.D, self.C, NNZ, self.feature, self.z_idx,
                                   self.device)
 
     @property

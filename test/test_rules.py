@@ -40,8 +40,6 @@ def assert_correct_cmp_with_torch(
     oz_idx, oz_ptr, rules, rule_size = test_func(
         tensor.z_idx,
         tensor.z_ptr,
-        torch.empty([batch_size, *out_spatial_shape],
-                    dtype=torch.int32, device=indices.device),
         batch_size,
         spatial_shape_HWD, # [HWD]
         out_spatial_shape,
@@ -89,10 +87,8 @@ def assert_correct_cmp_with_spconv(
 
     assert tensor.z_idx.dim() == 1
     assert tensor.z_ptr.dim() == 3
-    assert tensor.grid.dim() == 4
     assert tensor.z_idx.dtype == torch.int32
     assert tensor.z_ptr.dtype == torch.int32
-    assert tensor.grid.dtype == torch.int32
 
     out_spatial_shape_HWD = spatial_shape_HWD
     if not subm:
@@ -105,8 +101,6 @@ def assert_correct_cmp_with_spconv(
     oz_idx, oz_ptr, rules, rule_size = test_func(
         tensor.z_idx,
         tensor.z_ptr,
-        torch.empty([batch_size, *out_spatial_shape_HWD],
-                    dtype=torch.int32, device=indices.device),
         batch_size,
         spatial_shape_HWD,
         out_spatial_shape_HWD,
@@ -115,7 +109,7 @@ def assert_correct_cmp_with_spconv(
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
         indices, batch_size, spatial_shape_HWD[::-1], kernel_size[::-1],
         stride[::-1], padding[::-1], dilation[::-1],
-        out_padding=0, subm=subm, transpose=False, grid=None, use_hash=False)
+        out_padding=0, subm=subm, transpose=False, use_hash=False)
 
     print("outids = ", outids)
     print("indice_pairs = ", indice_pairs)
@@ -407,18 +401,12 @@ class TestClass:
 
         assert tensor.z_idx.dim() == 1
         assert tensor.z_ptr.dim() == 3
-        assert tensor.grid.dim() == 4
         assert tensor.z_idx.dtype == torch.int32
         assert tensor.z_ptr.dtype == torch.int32
-        assert tensor.grid.dtype == torch.int32
 
         oz_idx, oz_ptr, rules, rule_size = get_rules_subm(
-            tensor.z_idx,
-            tensor.z_ptr,
-            tensor.grid,
-            batch_size,
-            spatial_shape_DWH,
-            spatial_shape_DWH,
+            tensor.z_idx, tensor.z_ptr,
+            batch_size, spatial_shape_DWH, spatial_shape_DWH,
             [kernel_size, kernel_size, kernel_size],
             [stride, stride, stride],
             [padding, padding, padding],
@@ -427,7 +415,7 @@ class TestClass:
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
             indices, batch_size, spatial_shape_DWH, kernel_size, stride, padding, dilation,
-            out_padding=0, subm=True, transpose=False, grid=None, use_hash=False)
+            out_padding=0, subm=True, transpose=False, use_hash=False)
 
         # convolution
         outChannel = 4

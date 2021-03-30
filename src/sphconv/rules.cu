@@ -286,7 +286,7 @@ __global__ void getSubMRulesKernel(
 std::vector<torch::Tensor>
 get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
                 torch::Tensor zPtr,                   // [B, H, W]
-                torch::Tensor grid,                   // [B, H, W, D]
+                // torch::Tensor grid,                   // [B, H, W, D]
                 int batchSize,
                 std::vector<int64_t> spatialShape,    // H, W, D
                 std::vector<int64_t> outSpatialShape, // H, W, D
@@ -295,14 +295,15 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
                 std::vector<int64_t> padding,
                 std::vector<int64_t> dilation)
 {
-    grid.fill_(-1);
-
     const int H_BLOCK = 2;
     const int W_BLOCK = 16;
     int num_active = zIndices.size(0);
 
     dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
     dim3 blockSize = dim3(H_BLOCK, W_BLOCK, 1);
+
+    torch::Tensor grid = torch::full({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
+                                     /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
     prepareSubMGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -372,7 +373,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 std::vector<torch::Tensor>
 get_rules(torch::Tensor zIndices, //  [NNZ]
           torch::Tensor zPtr,     // [B, H, W]
-          torch::Tensor grid,     // [B, oH, oW, oD]
+        //   torch::Tensor grid,     // [B, oH, oW, oD]
           int batchSize,
           std::vector<int64_t> spatialShape,    // H, W, D
           std::vector<int64_t> outSpatialShape, // oH, oW, oD
@@ -381,8 +382,6 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
           std::vector<int64_t> padding,
           std::vector<int64_t> dilation)
 {
-    grid.fill_(0);
-
     const int H_BLOCK = 2;
     const int W_BLOCK = 16;
     int num_active = zIndices.size(0);
@@ -393,6 +392,9 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     printf(" befaore preapre geridf kernel a\n");
     printf("launch config : (%d,%d,%d),(%d,%d,%d)\n", gridSize.x, gridSize.y, gridSize.z, blockSize.x, blockSize.y, blockSize.z);
+
+    torch::Tensor grid = torch::zeros({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
+        torch::dtype(torch::kInt32).device(zIndices.device()));
 
     prepareGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -427,8 +429,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     int NTile = 1; // TODO, number of Tiles
 
-    torch::Tensor rules =
-        torch::full({NTile, kernelVolume, 2, zIndices.size(0)}, -1, torch::dtype(torch::kInt32).device(zIndices.device()));
+    torch::Tensor rules = torch::full({NTile, kernelVolume, 2, zIndices.size(0)},
+                                      /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
     // rules is allocated larger, to be trimed lalter
     // TODO, change 2 to 4, numAct
     // TODO, last dimension... is NNZ now, But not NNZ if NTile > 1

@@ -34,14 +34,9 @@ def assert_conv_eq(
             spatial_shape_HWD, kernel_size, stride, padding, dilation)
     print("out shape = ", out_spatial_shape_HWD)
 
-    # TODO: remove the grid
-    if not subm:
-        tensor.grid = torch.empty(
-            (batch_size, *out_spatial_shape_HWD), dtype=indices_zyx.dtype, device=indices_zyx.device)
-
     get_rule_func = get_rules_subm if subm else get_rules
     oz_idx, oz_ptr, rules, rule_size = get_rule_func(
-        tensor.z_idx, tensor.z_ptr, tensor.grid,
+        tensor.z_idx, tensor.z_ptr,
         batch_size, spatial_shape_HWD, out_spatial_shape_HWD,
         kernel_size, stride, padding, dilation)
 
@@ -51,7 +46,7 @@ def assert_conv_eq(
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
         indices_zyx, batch_size, spatial_shape_HWD[::-1], kernel_size[::-1],
         stride[::-1], padding[::-1], dilation[::-1], out_padding=0, subm=subm,
-        transpose=False, grid=None, use_hash=False)
+        transpose=False, use_hash=False)
 
     print("indice_pairs = ", indice_pairs)
     print("indice_pair_num = ", indice_pair_num)

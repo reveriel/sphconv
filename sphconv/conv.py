@@ -130,18 +130,13 @@ class Conv3d(Convolution):
         datas = input.find_rule(self.indice_key)
         print("========== found in dicts ===========")
 
-        # TODO: remove the grid
-        if not self.subm:
-            input.grid = torch.empty(
-                (batch_size, *out_spatial_shape_HWD), dtype=input.itype, device=input.device)
-
         if self.indice_key is not None and datas is not None:
             oz_idx, oz_ptr, rules, rule_size = datas
 
         else:  # not found, compute it
             get_rule_func = get_rules_subm if self.subm else get_rules
             oz_idx, oz_ptr, rules, rule_size = get_rule_func(
-                input.z_idx, input.z_ptr, input.grid,
+                input.z_idx, input.z_ptr,
                 batch_size, in_spatial_shape_HWD, out_spatial_shape_HWD,
                 self.kernel_size, self.stride, self.padding, self.dilation)
 
