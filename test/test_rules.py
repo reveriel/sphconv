@@ -446,7 +446,7 @@ class TestClass:
         spconv_dense = spconv.SparseConvTensor(out_features, indices, spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
-            tensor.features, weight.reshape((-1, outChannel, inChannel)),
+            tensor.feature, weight.reshape((-1, outChannel, inChannel)),
             rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
 
         print("sph_out_features 's type is ", type(sph_out_features))

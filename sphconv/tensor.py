@@ -184,7 +184,7 @@ class SparseConvTensor(SparseTensorBase):
 
         # res = torch.zeros((self.B, self.C, self.D, self.W, self.H))
         res = torch.zeros(
-            (self.B, self.H, self.W, self.D, self.C), device=device)
+            (self.B, self.H, self.W, self.D, self.C), device=device if device else self.device)
         zptr_flat = self.z_ptr.reshape(-1)
 
         # TODO, parallel
