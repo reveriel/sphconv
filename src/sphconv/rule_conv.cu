@@ -1,12 +1,11 @@
-#include <debug_utils.h>
-#include <stdio.h>
+#include <cstdio>
+#include <vector>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
-#include "timer.h"
 
-#include <vector>
-#include <torch/extension.h>
+#include "timer.h"
+#include "debug_utils.h"
 
 namespace sphconv
 {
@@ -33,10 +32,10 @@ __global__ void ruleConvKernel(
 
     // for each NTile
     int tile = blockIdx.x;
-    int ic_block = blockIdx.y; // channel block
+    int ic_block = blockIdx.y;                      // channel block
     int oc = threadIdx.z + blockIdx.z * blockDim.z; //
     if (oc >= oC)
-        return ;
+        return;
     // printf("thread((%d,%d,%d), (%d,%d,%d))\n",
     //        blockIdx.x, blockIdx.y, blockIdx.z, threadIdx.x, threadIdx.y, threadIdx.z);
 
@@ -93,8 +92,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
           int batchSize,
           std::vector<int64_t> spatialShape, // H, W, D
           std::vector<int64_t> outSpatialShape,
-          int outNNZ
-)
+          int outNNZ)
 {
 
     // TODO: define shared memory size
@@ -118,14 +116,14 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     dim3 blockSize = dim3(VOX_BLOCK, 1, OC_BLOCK);
 
     // global version, with no shared memory
-    ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, OC_BLOCK >
-    <<<gridSize, blockSize>>>(
-        feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-        weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
-        rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-        ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-        outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-        kernelVolume, iC, oC);
+    ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, OC_BLOCK>
+        <<<gridSize, blockSize>>>(
+            feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+            weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+            rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+            ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+            outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+            kernelVolume, iC, oC);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());

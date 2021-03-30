@@ -1,12 +1,12 @@
 
-#include <debug_utils.h>
-#include <stdio.h>
+#include <cstdio>
+#include <iostream>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <iostream>
 #include <torch/extension.h>
-#include "indice.cu.h"
+
 #include "timer.h"
+#include "debug_utils.h"
 
 using namespace std;
 using namespace torch::indexing;

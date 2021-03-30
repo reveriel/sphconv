@@ -1,7 +1,9 @@
+from typing import List
+
 import torch
 
 from sphconv.sphconv_cuda import rule_conv
-from typing import List
+
 
 class ConvFunction(torch.autograd.Function):
     """ Applies a 3D convolution on sparse 3d tensor
@@ -42,13 +44,13 @@ class ConvFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx,
                 feature: torch.Tensor,
-                weight: torch.Tensor, # [KKK, oC, iC]
+                weight: torch.Tensor,  # [KKK, oC, iC]
                 rules: torch.Tensor,
                 rule_size: torch.Tensor,
                 batch_size: int,
                 spatial_shape_HWD: List[int],
                 out_spatial_shape_HWD: List[int],
-                outNNZ:int):
+                outNNZ: int):
 
         feature_out = rule_conv(
             feature, weight, rules, rule_size, batch_size, spatial_shape_HWD,

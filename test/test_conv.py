@@ -79,6 +79,7 @@ def assert_conv_eq(
     print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
     assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.1))
 
+
 def assert_correct_cmp_with_spconv(
     indices_zyx: torch.Tensor,
     batch_size: int,
@@ -219,7 +220,6 @@ class TestClass:
             indices, batch_size=1, inChannel=4, outChannel=8, spatial_shape_HWD=[3, 3, 3],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
-
     def test_std_conv2(self):
         indices = torch.tensor([
             [1, 0, 7],
@@ -252,5 +252,3 @@ class TestClass:
         assert_correct_cmp_with_spconv(
             indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape_HWD=[12, 13, 14],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
-
-

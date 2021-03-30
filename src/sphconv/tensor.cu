@@ -1,13 +1,12 @@
-#include <debug_utils.h>
-#include <stdio.h>
+#include <cstdio>
+#include <vector>
+#include <iostream>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <iostream>
 #include <torch/extension.h>
-#include "timer.h"
 
-#include <vector>
-#include <torch/extension.h>
+#include "timer.h"
+#include "debug_utils.h"
 
 namespace sphconv
 {

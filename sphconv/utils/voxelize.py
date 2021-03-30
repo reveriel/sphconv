@@ -2,12 +2,12 @@
 from typing import List
 
 import numpy as np
-from torch import dtype
 from sphconv.sphconv_utils import (points_to_voxel_3d, points_to_voxel_3d_np,
                                    points_to_voxel_3d_np_mean,
                                    points_to_voxel_3d_sphere_np,
                                    points_to_voxel_3d_with_filtering)
 from sphconv.utils.coord_transform import transform_funcs
+from torch import dtype
 
 
 def points_to_voxel(points,

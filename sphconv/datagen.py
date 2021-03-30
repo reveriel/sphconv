@@ -3,9 +3,10 @@
 from collections import defaultdict
 
 import numpy as np
+import torch
+
 from sphconv.utils import VoxelGeneratorV3, voxel_generator
 from sphconv.vfe import SimpleVoxel
-import torch
 
 
 # modifed from second.pytorch
@@ -18,8 +19,7 @@ def merge_second_batch(batch_list):
     ret = {}
     for key, elems in example_merged.items():
         if key in [
-                'voxels', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes'
-                ,'points'
+                'voxels', 'num_points', 'num_gt', 'voxel_labels', 'gt_names', 'gt_classes', 'gt_boxes', 'points'
         ]:
             ret[key] = np.concatenate(elems, axis=0)
         elif key == 'metadata':
@@ -74,8 +74,6 @@ def merge_batch_torch(batch_list):
     return ret
 
 
-
-
 class VoxelizationVFE():
     """voxeliation + VFE"""
 
@@ -90,8 +88,7 @@ class VoxelizationVFE():
         self.vfe = SimpleVoxel(4)
         ## TODO VFE works on CPU, make it on GPU
 
-
-    def generate(self, file:str, device=None) -> torch.Tensor :
+    def generate(self, file: str, device=None) -> torch.Tensor:
         points = np.fromfile(file, dtype=np.float32, count=-1).reshape([-1, 4])
         res = self.voxel_generator.generate(points)
 
@@ -104,7 +101,8 @@ class VoxelizationVFE():
 
         raw_voxels = torch.from_numpy(raw_voxels).to(device)
         coordinates = torch.from_numpy(coordinates).to(device)
-        num_points_per_voxel = torch.from_numpy(num_points_per_voxel).to(device)
+        num_points_per_voxel = torch.from_numpy(
+            num_points_per_voxel).to(device)
 
         voxels = self.vfe(raw_voxels, num_points_per_voxel, coordinates)
         return voxels, coordinates
@@ -116,6 +114,3 @@ class VoxelizationVFE():
 #         self.resolution = resolution
 
 #     def voxe,
-
-
-

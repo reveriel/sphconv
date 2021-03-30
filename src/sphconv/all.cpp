@@ -1,9 +1,7 @@
-
-#include <torch/extension.h>
-
 #include <iostream>
 #include <vector>
 #include <string>
+#include <torch/extension.h>
 
 #include "rules.h"
 #include "rule_conv.h"

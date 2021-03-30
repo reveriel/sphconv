@@ -28,8 +28,8 @@ def batch_artifical_inputs(
 
 
 def assert_correct_cmp_with_spconv(
-    indices_zyx:torch.Tensor,
-    batch_size:int,
+    indices_zyx: torch.Tensor,
+    batch_size: int,
     in_channels: int, out_channels: int,
     spatial_shape_HWD: List[int],
     kernel_size: List[int],
@@ -39,7 +39,7 @@ def assert_correct_cmp_with_spconv(
     subm: bool = False
 ):
     if subm:
-        assert dilation ==  stride == dilation == [1, 1, 1]
+        assert dilation == stride == dilation == [1, 1, 1]
 
     feature, indices = batch_artifical_inputs(
         indices_zyx, channel=in_channels, batch_size=batch_size)
@@ -59,7 +59,7 @@ def assert_correct_cmp_with_spconv(
 
     # same weight
     weight = torch.randn((*kernel_size, out_channels, in_channels),
-                            dtype=torch.float, device=indices.device)
+                         dtype=torch.float, device=indices.device)
 
     sph_conv.weight = torch.nn.Parameter(weight.clone())
     sp_conv.weight = torch.nn.Parameter(
@@ -73,7 +73,6 @@ def assert_correct_cmp_with_spconv(
     print("spconv = ", spconv_dense)
 
     assert torch.isclose(spconv_dense, sphconv_dense, rtol=0.01).all()
-
 
 
 class TestClass:
@@ -96,7 +95,6 @@ class TestClass:
             indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 8],
             kernel_size=[2, 2, 2], stride=[2, 1, 1], padding=[0, 1, 1], subm=False)
 
-
         assert_correct_cmp_with_spconv(
             indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 2],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
@@ -107,7 +105,5 @@ class TestClass:
             indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 8],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
-
     def test_rule_cache(self):
         assert True
-

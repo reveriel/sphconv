@@ -4,9 +4,9 @@ from typing import List
 import spconv
 import sphconv
 import torch
+from sphconv.datagen import merge_batch_torch
 from sphconv.sphconv_cuda import get_rules, get_rules_subm, rule_conv
 from sphconv.utils import out_spatial, voxel_generator
-from sphconv.datagen import merge_batch_torch
 
 
 def dup_with_batch_idx(indices_zyx:torch.Tensor, batch_size:int):
