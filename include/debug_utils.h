@@ -35,7 +35,7 @@
 inline void gpuAssert(cudaError_t code, const char *file, int line,
                       bool abort = true) {
   if (code != cudaSuccess) {
-    fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file,
+    fprintf(stderr, "GPUassert: %s %s:%d\n", cudaGetErrorString(code), file,
             line);
     if (abort)
       exit(code);
@@ -49,9 +49,9 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
 
 inline int divUp(int x, int y) { return (x + y - 1) / y; };
 
-template <typename Index>
-__device__ __inline__ Index OutSpatial(Index k, Index x, Index s, Index d,
-                                       Index pad) {
+template <typename IType>
+__device__ __inline__ IType OutSpatial(IType k, IType x, IType s, IType d,
+                                       IType pad) {
   // forgive me. do nothing with the dillation
   // TODO
   if ((x + pad - k) % s == 0)

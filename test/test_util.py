@@ -16,11 +16,12 @@ from typing import List
 
 POINTS_FILE = "000003.bin"
 
+
 def batch_artifical_inputs(
-    indices_zyx:torch.Tensor,
-    channel:int,
-    batch_size:int
-) :
+    indices_zyx: torch.Tensor,
+    channel: int,
+    batch_size: int
+):
     """
     create batched inputs from indices_zyx
     """
@@ -43,7 +44,7 @@ def assert_dense_eq(
     """
 
     assert features.dim() == 2
-    assert indices_zyx.shape[1] == 4 # four coodinates
+    assert indices_zyx.shape[1] == 4  # four coodinates
     assert indices_zyx.dim() == 2
 
     spconv_tensor = spconv.SparseConvTensor(
@@ -52,39 +53,51 @@ def assert_dense_eq(
 
     sphconv_tensor = sphconv.SparseConvTensor(
         features, spatial_shape_DWH, batch_size, indices=indices_zyx)
-    assert sphconv_tensor.z_ptr.view(-1).shape[0] == batch_size * spatial_shape_DWH[1] * spatial_shape_DWH[2]
 
     sphconv_dense = sphconv_tensor.dense().cuda()
-    print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
-
-    assert torch.all(torch.eq(sphconv_dense, spconv_dense))
+    # print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
+    # print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+    assert torch.all(torch.isclose(sphconv_dense, spconv_dense))
 
 
 class TestClass:
     # voxel feature convert to sphconv.Feature and spconv.SparseTensor
     def test_todense(self):
-        vvfe = VoxelizationVFE(resolution=[512, 511, 64])
-        voxels, coords = vvfe.generate(POINTS_FILE)
-        assert voxels.shape[1] == 4
-        assert coords.shape[1] == 3
-        example = merge_batch_torch([{'voxels':voxels, 'coordinates':coords}])
+        spatial_shape_HWD = [2, 2, 2]
+        vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_HWD)
+        features, coords = vvfe.generate(POINTS_FILE, torch.device('cuda:0'))
+        assert features.shape[1] == 4
+        assert coords.shape[1] == 3  # zyx
+        example = merge_batch_torch(
+            [{'voxels': features, 'coordinates': coords}])
+        indices = example['coordinates']
+        features = example['voxels']
 
         spconv_tensor = spconv.SparseConvTensor(
-            voxels, example['coordinates'], vvfe.resolution[::-1], 1)
+            features, indices, vvfe.resolution_HWD[::-1], 1)
         spconv_dense = spconv_tensor.dense()  # torch
         # N C D W H
         assert spconv_dense.shape[0] == 1
         assert spconv_dense.shape[1] == 4
-        assert spconv_dense.shape[2] == vvfe.resolution[2]
-        assert spconv_dense.shape[3] == vvfe.resolution[1]
-        assert spconv_dense.shape[4] == vvfe.resolution[0]
+        assert spconv_dense.shape[2] == vvfe.resolution_HWD[2]  # D
+        assert spconv_dense.shape[3] == vvfe.resolution_HWD[1]  # W
+        assert spconv_dense.shape[4] == vvfe.resolution_HWD[0]  # H
+
+        # print("features = ", features)
+        # print("feautures.dtype = ", features.dtype)
+        # print("indices = ", indices)
 
         sphconv_tensor = sphconv.SparseConvTensor(
-            voxels, vvfe.resolution[::-1], 1, indices=example['coordinates'])
-        sphconv_dense = sphconv_tensor.dense()
+            features, vvfe.resolution_HWD[::-1], 1, indices=indices)
+        # print("sphconv_tensor.feature = ", sphconv_tensor.feature)
+        # print("sphconv_tensor.z_ptr = ", sphconv_tensor.z_ptr)
 
+        sphconv_dense = sphconv_tensor.dense()
+        # print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+        # print("sphconv = ", sphconv_dense)
+        # print("spconv = ", spconv_dense)
         assert spconv_dense.shape == sphconv_dense.shape
-        assert torch.all(torch.eq(spconv_dense, sphconv_dense))
+        assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
 
     def test_batch(self):
         indices_zyx = torch.tensor([
@@ -96,7 +109,7 @@ class TestClass:
         feature, indices_zyx = batch_artifical_inputs(
             indices_zyx, channel=4, batch_size=3)
         assert_dense_eq(
-            feature, indices_zyx, batch_size=3, spatial_shape_DWH=[2, 2, 2])
+            feature, indices_zyx, batch_size=3, spatial_shape_DWH=[2, 2, 3])
 
     def test_init(self):
         indices_zyx = torch.tensor([
@@ -108,15 +121,15 @@ class TestClass:
         assert_dense_eq(
             feature, indices_zyx, batch_size=2, spatial_shape_DWH=[1, 1, 2])
 
-
-
     def test_batch2(self):
         batch_size = 4
-        vvfe = VoxelizationVFE(resolution=[512, 511, 64])
+        spatial_shape_DWH = [64, 511, 512]
+        vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_DWH[::-1])
 
         example_list = []
         for i in range(4):
-            voxels, coords = vvfe.generate('{:06d}.bin'.format(i), torch.device('cuda:0'))
+            voxels, coords = vvfe.generate(
+                '{:06d}.bin'.format(i), torch.device('cuda:0'))
             # print("coords shape = ", coords.shape)
             one_example = {'voxels': voxels, 'coordinates': coords}
             example_list.append(one_example)
@@ -124,5 +137,5 @@ class TestClass:
         example = merge_batch_torch(example_list)
 
         assert_dense_eq(
-            example['voxels'], example['coordinates'],batch_size=batch_size, spatial_shape_DWH=[64, 511, 512])
-
+            example['voxels'], example['coordinates'], batch_size=batch_size,
+            spatial_shape_DWH=spatial_shape_DWH)

@@ -48,7 +48,7 @@ def assert_correct_cmp_with_torch(
     # assert torch.sum(indice_pair_num) == torch.sum(rule_size)
 
     sphconv_dense = sphconv.SparseConvTensor(
-        torch.ones((oz_idx.shape[0], 1)), out_spatial_shape[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(indices.device)
+        torch.ones((oz_idx.shape[0], 1), device=indices.device), out_spatial_shape[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(indices.device)
 
     weight = torch.ones((1, 1, *kernel_size),
                         dtype=torch.float32, device=indices.device)
@@ -128,9 +128,9 @@ def assert_correct_cmp_with_spconv(
     if not subm:
         # check oz_ptr
         spconv_dense = spconv.SparseConvTensor(
-            torch.ones((outids.shape[0], 1)), outids, out_spatial_shape_HWD[::-1], batch_size).dense()
+            torch.ones((outids.shape[0], 1), device=indices.device), outids, out_spatial_shape_HWD[::-1], batch_size).dense()
         sphconv_dense = sphconv.SparseConvTensor(
-            torch.ones((oz_idx.shape[0],1)), out_spatial_shape_HWD[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense()
+            torch.ones((oz_idx.shape[0], 1), device=indices.device), out_spatial_shape_HWD[::-1], batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense()
 
         print("sphconv = ", sphconv_dense)
         print("spconv = ", spconv_dense)

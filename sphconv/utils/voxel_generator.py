@@ -10,7 +10,7 @@ class VoxelGeneratorV3:
                  point_cloud_sphere_range,
                  max_num_points,
                  max_voxels=30000,
-                 resolution: List[int] = None,
+                 resolution_HWD: List[int] = None,
                  coord_system=None,
                  append_mode=0):
         """
@@ -24,8 +24,8 @@ class VoxelGeneratorV3:
         voxel_size = np.array(voxel_size, dtype=np.float32)
 
         # compute grid_size
-        if resolution is not None:
-            grid_size = np.array(resolution, dtype=np.int64)
+        if resolution_HWD is not None:
+            grid_size = np.array(resolution_HWD, dtype=np.int64)
         else:
             grid_size = (
                 point_cloud_sphere_range[3:] - point_cloud_sphere_range[:3]) / voxel_size
@@ -46,21 +46,21 @@ class VoxelGeneratorV3:
         self._max_voxels = max_voxels
         self._grid_size = grid_size
         # self._full_mean = full_mean
-        self._resolution = resolution
+        self._resolution_HWD = resolution_HWD
         self._coord_system = coord_system
         print("self._coord_system =", coord_system)
         self._append_mode = append_mode
 
     def generate(self, points, max_voxels=None):
         res = points_to_voxel_v2(
-            points,
+            points, # xyzr
             self._voxel_size,
             self._point_cloud_range,
             self._point_cloud_sphere_range,
             self._coor_to_voxelidx,
             self._max_num_points,
             max_voxels or self._max_voxels,
-            resolution=self._resolution,
+            resolution_HWD=self._resolution_HWD,
             coord_system=self._coord_system,
             append_mode=self._append_mode)
 
@@ -70,7 +70,7 @@ class VoxelGeneratorV3:
         return res
 
     def generate_multi_gpu(self, points, max_voxels=None):
-        res = points_to_voxel_v2(points,
+        res = points_to_voxel_v2(points, # bzyx
                                  self._voxel_size,
                                  self._point_cloud_sphere_range,
                                  self._coor_to_voxelidx,

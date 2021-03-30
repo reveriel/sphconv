@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 import torch
-
+from sphconv.sphconv_cuda import init_tensor, to_dense
 
 def init_csf(feature: torch.Tensor, indices: torch.Tensor,
              B: int,  # batch size
@@ -24,15 +24,11 @@ def init_csf(feature: torch.Tensor, indices: torch.Tensor,
     grid.index_put_((b, x, y, z), torch.ones(
         NNZ, dtype=torch.int32, device=device))
 
-    # prefix sum on each D fiber
-    # sumgrid = torch.cumsum(grid, dim=3)
-    #  now we know the thickness on each fiber.
-    #  stored at, {:, :, :, D-1}
-    #  z_ptr is the prefix sum on these numbers
-
-    # fiber_size = sumgrid[:, :, :, self.D-1]
+    # sum on each D fiber
     fiber_size = torch.sum(grid, dim=3)
 
+    # now we know the thickness on each fiber.
+    # z_ptr is the prefix sum on these numbers
     z_ptr = torch.cumsum(fiber_size.reshape(-1), dim=0).type(torch.int32)
     assert z_ptr.shape[0] == B * H * W
     assert z_ptr[-1] == NNZ
@@ -84,12 +80,12 @@ class SparseTensorBase:
 
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
-                 feature: torch.Tensor,
-                 spatial_shape_DWH: List[int],  # [D, W, H]
-                 batch_size: int,
-                 indices: Optional[torch.Tensor] = None,
-                 z_idx: Optional[torch.Tensor] = None,
-                 z_ptr: Optional[torch.Tensor] = None
+                 feature: torch.Tensor,                   # [NNZ, C]
+                 spatial_shape_DWH: List[int],            # [D, W, H]
+                 batch_size: int,                         # B
+                 indices: Optional[torch.Tensor] = None,  # [NNZ, 4], bzyx
+                 z_idx: Optional[torch.Tensor] = None,    # [NNZ]
+                 z_ptr: Optional[torch.Tensor] = None     # [B, H, W]
                  ):
         """
         if z_idx and z_ptr is not empty, we create an object using them
@@ -114,9 +110,15 @@ class SparseConvTensor(SparseTensorBase):
                 z_idx.dtype, feature, z_idx, z_ptr)
             return
 
+
         elif indices is not None:
+            # we need to reorder the feature
             assert indices.dtype == torch.int32
-            # assert voxel_features.device == indices.device
+            assert indices.dim() == 2
+            assert indices.shape[1] == 4
+            assert feature.dim() == 2
+            assert feature.shape[0] == indices.shape[0]
+            assert feature.device == indices.device
 
             super().__init__(
                 batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
@@ -153,9 +155,8 @@ class SparseConvTensor(SparseTensorBase):
 
             # size   B H W D, for counting in get_rules() and init_csf()
 
-            self.z_ptr = init_csf(feature, indices, self.B, self.H, self.W,
-                                  self.D, self.C, NNZ, self.feature, self.z_idx,
-                                  self.device)
+            self.z_ptr = init_tensor(
+                feature, indices, self.B, [self.H, self.W, self.D], self.feature, self.z_idx)
 
     @property
     def shape(self):
@@ -176,20 +177,22 @@ class SparseConvTensor(SparseTensorBase):
         # res = torch.zeros((self.B, self.C, self.D, self.W, self.H))
         res = torch.zeros(
             (self.B, self.H, self.W, self.D, self.C), device=device if device else self.device)
-        zptr_flat = self.z_ptr.reshape(-1)
 
-        # TODO, parallel
-        # fill val to res, based on z index
-        for b in range(self.B):
-            for x in range(self.H):
-                for y in range(self.W):
-                    zptr_idx = ((b * self.H + x) * self.W + y)
-                    start_p = 0 if zptr_idx == 0 else zptr_flat[zptr_idx - 1]
-                    end_p = zptr_flat[zptr_idx]
-                    for z_p in range(start_p, end_p):
-                        z = self.z_idx[z_p].long()
-                        # print("b,x,y,z = ",  b, x, y, z.item(), "z_p = ", z_p)
-                        res[b, x, y, z] = self.feature[z_p]
+        # zptr_flat = self.z_ptr.reshape(-1)
+
+        # # TODO, parallel
+        # # fill val to res, based on z index
+        # for b in range(self.B):
+        #     for x in range(self.H):
+        #         for y in range(self.W):
+        #             zptr_idx = ((b * self.H + x) * self.W + y)
+        #             start_p = 0 if zptr_idx == 0 else zptr_flat[zptr_idx - 1]
+        #             end_p = zptr_flat[zptr_idx]
+        #             for z_p in range(start_p, end_p):
+        #                 z = self.z_idx[z_p].long()
+        #                 # print("b,x,y,z = ",  b, x, y, z.item(), "z_p = ", z_p)
+        #                 res[b, x, y, z] = self.feature[z_p]
+        to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res);
 
         return res.permute((0, 4, 3, 2, 1)).contiguous()
 

@@ -79,13 +79,13 @@ def merge_batch_torch(batch_list):
 class VoxelizationVFE():
     """voxeliation + VFE"""
 
-    def __init__(self, resolution=[512, 512, 64]):
-        self.resolution = resolution
+    def __init__(self, resolution_HWD=[512, 512, 64]):
+        self.resolution_HWD = resolution_HWD
         self.voxel_generator = VoxelGeneratorV3(
             None,
             [6, -40, -3, 70.4, 40, 1],
             [6, -45, 87.5, 70.4, 45, 100], 2, 24000,
-            self.resolution, coord_system="spherical")
+            self.resolution_HWD, coord_system="spherical")
 
         self.vfe = SimpleVoxel(4)
         ## TODO VFE works on CPU, make it on GPU

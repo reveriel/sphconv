@@ -119,7 +119,7 @@ def points_to_voxel(points,
     return res
 
 
-def points_to_voxel_v2(points,
+def points_to_voxel_v2(points,  # xyz
                        voxel_size,
                        coors_range,
                        sphere_coors_range,
@@ -127,7 +127,7 @@ def points_to_voxel_v2(points,
                        max_points=1,
                        max_voxels=30000,
                        pad_output=False,
-                       resolution: List[int] = None,
+                       resolution_HWD: List[int] = None,
                        coord_system: str = None,
                        append_mode: int = 0
                        ):
@@ -135,7 +135,7 @@ def points_to_voxel_v2(points,
     convert 3d points(x,y,z), to voxels in.. any coordiante system,
 
         coors_range, in degree
-        resolution: 3d resolution in (xyz), or (r, phi, theta) or (r, phi, h)
+        resolution_HWD: 3d resolution in (xyz), or (r, phi, theta) or (r, phi, h)
         coord_system: one of
             "spherical" or None : default
             "l-spherical"
@@ -150,7 +150,6 @@ def points_to_voxel_v2(points,
     #
     # points
     # we do avg pooling here.
-
 
     num_points_per_voxel = np.zeros(shape=(max_voxels,), dtype=np.int32)
 
@@ -175,7 +174,7 @@ def points_to_voxel_v2(points,
         "voxel_point_mask": voxel_point_mask,
     }
 
-    if resolution is None:
+    if resolution_HWD is None:
         # "spherical"
 
         # convert degree to rad
@@ -208,7 +207,7 @@ def points_to_voxel_v2(points,
                 points, system_points, voxels, voxel_point_mask, coors,
                 num_points_per_voxel, coor_to_voxelidx,
                 system_range,
-                resolution,
+                resolution_HWD,
                 max_points, max_voxels, append_mode)
         else:
             print("unkown coord_system")

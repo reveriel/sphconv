@@ -5,6 +5,7 @@ pybind11_add_module(sphconv_cuda
     all.cpp
     rules.cu
     rule_conv.cu
+    tensor.cu
     # indice_conv.cu
     # indice.cu
     # to_dense.cu

@@ -11,7 +11,7 @@ from sphconv.utils import out_spatial, voxel_generator
 
 def assert_conv_eq(
     features: torch.Tensor,
-    indices_zyx: torch.Tensor,
+    indices_bzyx: torch.Tensor,
     batch_size: int,
     spatial_shape_HWD: List[int],
     inChannel: int, outChannel: int,
@@ -26,7 +26,7 @@ def assert_conv_eq(
     Note: weight for spconv needs to be permuted
     """
     tensor = sphconv.SparseConvTensor(
-        features, spatial_shape_HWD[::-1], batch_size, indices=indices_zyx)
+        features, spatial_shape_HWD[::-1], batch_size, indices=indices_bzyx)
 
     out_spatial_shape_HWD = spatial_shape_HWD
     if not subm:
@@ -44,7 +44,7 @@ def assert_conv_eq(
     # print("rule_size = ", rule_size)
 
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
-        indices_zyx, batch_size, spatial_shape_HWD[::-1], kernel_size[::-1],
+        indices_bzyx, batch_size, spatial_shape_HWD[::-1], kernel_size[::-1],
         stride[::-1], padding[::-1], dilation[::-1], out_padding=0, subm=subm,
         transpose=False, use_hash=False)
 
