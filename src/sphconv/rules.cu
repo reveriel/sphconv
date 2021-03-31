@@ -295,8 +295,8 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
                 std::vector<int64_t> padding,
                 std::vector<int64_t> dilation)
 {
-    const int H_BLOCK = 2;
-    const int W_BLOCK = 16;
+    int H_BLOCK = 4;
+    int W_BLOCK = 32;
 
     dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
     dim3 blockSize = dim3(H_BLOCK, W_BLOCK, 1);
@@ -316,11 +316,9 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    std::cout << "grid = " << grid << std::endl;
+    // std::cout << "grid = " << grid << std::endl;
 
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
-    blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
-
     int NTile = 1; // TODO, number of Tiles
     // allocate rules and indice Num
     torch::Tensor rules =
@@ -332,6 +330,11 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
+
+    H_BLOCK = 4;
+    W_BLOCK = 4;
+    gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
+    blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
 
     getSubMRulesKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -387,8 +390,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
     dim3 blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
 
-    printf(" befaore preapre geridf kernel a\n");
-    printf("launch config : (%d,%d,%d),(%d,%d,%d)\n", gridSize.x, gridSize.y, gridSize.z, blockSize.x, blockSize.y, blockSize.z);
+    // printf(" befaore preapre geridf kernel a\n");
+    // printf("launch config : (%d,%d,%d),(%d,%d,%d)\n", gridSize.x, gridSize.y, gridSize.z, blockSize.x, blockSize.y, blockSize.z);
 
     torch::Tensor grid = torch::zeros({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
                                       torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -407,22 +410,22 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    std::cout << "grid(1) = " << grid << std::endl;
+    // std::cout << "grid(1) = " << grid << std::endl;
 
     grid = torch::cumsum(grid, 3, torch::kInt32); // [B, oH, oW, oD]
 
-    std::cout << "grid(2) = " << grid << std::endl;
+    // std::cout << "grid(2) = " << grid << std::endl;
     // here we want non inclusive scan, but pytorch only provides this.
     torch::Tensor ozPtr = torch::cumsum(grid.index({Slice(), Slice(), Slice(), -1}).reshape({-1}), 0, torch::kInt32)
                               .reshape({batchSize, outSpatialShape[0], outSpatialShape[1]});
     // [B, oH, oW]
-    PRINT_SHAPE(ozPtr);
-    PRINT_SHAPE(grid);
-    std::cout << "ozPtr = " << ozPtr << std::endl;
+    // PRINT_SHAPE(ozPtr);
+    // PRINT_SHAPE(grid);
+    // std::cout << "ozPtr = " << ozPtr << std::endl;
     torch::Tensor exclusiveScan = ozPtr.roll(1);
     exclusiveScan.index_put_({0, 0, 0}, 0);
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
-    std::cout << "grid(3) = " << grid << std::endl;
+    // std::cout << "grid(3) = " << grid << std::endl;
 
     int NTile = 1; // TODO, number of Tiles
 
@@ -431,15 +434,15 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     // rules is allocated larger, to be trimed lalter
     // TODO, change 2 to 4, numAct
     // TODO, last dimension... is NNZ now, But not NNZ if NTile > 1
-    PRINT_SHAPE(rules);
+    // PRINT_SHAPE(rules);
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
-    PRINT_SHAPE(ruleSize);
+    // PRINT_SHAPE(ruleSize);
 
     int outNNZ = ozPtr.view({-1}).index({-1}).item<int>();
     torch::Tensor ozIndices = torch::empty({outNNZ}, torch::dtype(torch::kInt32).device(zIndices.device()));
-    PRINT_SHAPE(ozIndices);
+    // PRINT_SHAPE(ozIndices);
 
     getOzIndicesAndRulesKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),

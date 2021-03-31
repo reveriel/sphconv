@@ -130,4 +130,4 @@ class SparseConvTensor(SparseTensorBase):
 
         to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res)
 
-        return res.permute((0, 4, 3, 2, 1)).contiguous()
+        return res.permute((0, 4, 3, 2, 1))

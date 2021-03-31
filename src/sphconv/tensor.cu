@@ -126,14 +126,15 @@ __global__ void toDenseKernel(
     const GpuTensor<DType, 2> feature,  // [NNZ ,C]
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
     const GpuTensor<IType, 1> zIndices, // [NNZ]
-    GpuTensor<DType, 5> out)            // [B, H, W, D]
+    GpuTensor<DType, 5> out,            // [B, H, W, D]
+    int C_BLOCK)
 {
     int B = zPtr.size(0);
     int H = zPtr.size(1);
     int W = zPtr.size(2);
     int C = feature.size(1);
-    IType x = threadIdx.x + blockDim.x * blockIdx.x;
-    IType y = threadIdx.y + blockDim.y * blockIdx.y;
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
     if (x >= H || y >= W)
         return;
 
@@ -145,7 +146,7 @@ __global__ void toDenseKernel(
         {
             IType z = zIndices[pos];
             // grid[b][x][y][z] = pos;
-            for (int c = 0; c < C; c++)
+            for (int c = threadIdx.z; c < C; c += C_BLOCK)
             {
                 out[b][x][y][z][c] = feature[pos][c];
             }
@@ -158,26 +159,41 @@ torch::Tensor to_dense(
     const torch::Tensor zIndices, // [NNZ]
     const torch::Tensor zPtr,     // [B, H, W]
     int D,
-    torch::Tensor out)
+    torch::Tensor out) // [B, H, W, D, C]
 {
     CHECK_INPUT(feature);
     CHECK_INPUT(zIndices);
     CHECK_INPUT(zPtr);
     CHECK_INPUT(out);
 
-    const int H_BLOCK = 8;
-    const int W_BLOCK = 16;
+    int H_BLOCK = 1;
+    int W_BLOCK = 16;
+    int C_BLOCK = 16;
+
+    int B = zPtr.size(0);
     int H = zPtr.size(1);
     int W = zPtr.size(2);
+    int C = feature.size(1);
+
+    if (C <= 4) {
+        C_BLOCK = 4;
+    } else if (C <= 8) {
+        C_BLOCK = 8;
+    } else {
+        C_BLOCK = 16;
+    }
+
+    W_BLOCK = 512 / C_BLOCK;
 
     dim3 gridSize = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
-    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, 1);
+    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
 
     toDenseKernel<int32_t, float><<<gridSize, blockSize>>>(
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
-        out.packed_accessor32<float, 5, torch::RestrictPtrTraits>());
+        out.packed_accessor32<float, 5, torch::RestrictPtrTraits>(),
+        C_BLOCK);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());

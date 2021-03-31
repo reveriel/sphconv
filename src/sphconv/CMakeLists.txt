@@ -1,5 +1,5 @@
 
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -gencode=arch=compute_75,code=sm_75")
 
 pybind11_add_module(sphconv_cuda
     all.cpp

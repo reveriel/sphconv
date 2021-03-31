@@ -1,13 +1,10 @@
 
-
 from typing import List
 
 import spconv
 import sphconv
 import torch
 from sphconv.datagen import merge_batch_torch
-from sphconv.sphconv_cuda import get_rules, get_rules_subm, rule_conv
-from sphconv.utils import out_spatial, voxel_generator
 
 
 def batch_artifical_inputs(
@@ -28,7 +25,7 @@ def batch_artifical_inputs(
 
 
 def assert_correct_cmp_with_spconv(
-    indices_zyx: torch.Tensor,
+    indices_zyx: torch.Tensor, # [NNZ, 3]
     batch_size: int,
     in_channels: int, out_channels: int,
     spatial_shape_HWD: List[int],
@@ -94,6 +91,9 @@ class TestClass:
         assert_correct_cmp_with_spconv(
             indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 8],
             kernel_size=[2, 2, 2], stride=[2, 1, 1], padding=[0, 1, 1], subm=False)
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[4, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 2], padding=[1, 1, 0], subm=False)
 
         assert_correct_cmp_with_spconv(
             indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 2],

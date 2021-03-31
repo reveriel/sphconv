@@ -56,8 +56,10 @@ def assert_dense_eq(
         features, spatial_shape_DWH, batch_size, indices=indices_zyx)
 
     sphconv_dense = sphconv_tensor.dense().cuda()
-    # print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
-    # print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+    print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
+    print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+    print("sphconv = ", sphconv_dense)
+    print("spconv = ", spconv_dense)
     assert torch.all(torch.isclose(sphconv_dense, spconv_dense))
 
 

@@ -125,10 +125,10 @@ class Conv3d(Convolution):
             out_spatial_shape_HWD = out_spatial(
                 in_spatial_shape_HWD, self.kernel_size, self.stride, self.padding, self.dilation)
 
-        print("out shape = ", out_spatial_shape_HWD)
+        # print("out shape = ", out_spatial_shape_HWD)
 
         datas = input.find_rule(self.indice_key)
-        print("========== found in dicts ===========")
+        # print("========== found in dicts ===========")
 
         if self.indice_key is not None and datas is not None:
             oz_idx, oz_ptr, rules, rule_size = datas

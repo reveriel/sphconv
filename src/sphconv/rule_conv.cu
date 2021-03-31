@@ -95,9 +95,18 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
           int outNNZ)
 {
 
+    int C = feature.size(1);
+    int IC_BLOCK = 16;
     // TODO: define shared memory size
-    const int IC_BLOCK = 16;
-    const int OC_BLOCK = 16;
+    if (C <= 16)
+    {
+        IC_BLOCK = 16;
+    }
+    else
+    {
+        IC_BLOCK = 32;
+    }
+    const int OC_BLOCK = 32;
     // const int OC_ILP = 4;
     const int VOX_BLOCK = 32;
 
@@ -116,14 +125,37 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     dim3 blockSize = dim3(VOX_BLOCK, 1, OC_BLOCK);
 
     // global version, with no shared memory
-    ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, OC_BLOCK>
-        <<<gridSize, blockSize>>>(
-            feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-            weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
-            rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-            ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-            outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-            kernelVolume, iC, oC);
+    switch (IC_BLOCK)
+    {
+    case 16:
+        ruleConvKernel<int32_t, float, VOX_BLOCK, 16, OC_BLOCK>
+            <<<gridSize, blockSize>>>(
+                feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+                weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+                rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+                outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+                kernelVolume, iC, oC);
+        break;
+    case 32:
+        ruleConvKernel<int32_t, float, VOX_BLOCK, 32, OC_BLOCK>
+            <<<gridSize, blockSize>>>(
+                feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+                weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+                rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+                outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+                kernelVolume, iC, oC);
+        break;
+    }
+    // ruleConvKernel<int32_t, float, VOX_BLOCK, IC_BLOCK, OC_BLOCK>
+    //     <<<gridSize, blockSize>>>(
+    //         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+    //         weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+    //         rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+    //         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+    //         outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+    //         kernelVolume, iC, oC);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());

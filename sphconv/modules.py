@@ -111,7 +111,7 @@ class Sequential(SphModule):
     def forward(self, input):
         for k, module in self._modules.items():
             if is_sph_module(module):
-                assert isinstance(input, sphconv.RangeVoxel)
+                assert isinstance(input, sphconv.SparseConvTensor)
                 if isinstance(module, sphconv.SubMConv3d):
                     nvtx.range_push("SubMConv3d:{}".format(k))
                 elif isinstance(module, sphconv.Conv3d):
@@ -121,15 +121,8 @@ class Sequential(SphModule):
                 input = module(input)
                 nvtx.range_pop()
             else:
-                if isinstance(input, sphconv.RangeVoxel):
-                    batch_size = input.feature.size(0)
-                    channel_size = input.feature.size(1)
-                    T = input.feature.size(2)
-                    H = input.feature.size(3)
-                    W = input.feature.size(4)
-                    input_view = input.feature.view(batch_size, channel_size, -1)
-                    input.feature = module(input_view).reshape(
-                        batch_size, channel_size, T, H, W)
+                if isinstance(input, sphconv.SparseConvTensor):
+                    input.feature = module(input.feature)
                 else:
                     input = module(input)
         return input
