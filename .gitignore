@@ -71,3 +71,7 @@ compile_commands.json
 
 .vscode/
 .eggs/
+
+# nvidia nsight system
+*.qdrep
+*.qdstrm

@@ -30,9 +30,9 @@ __global__ void fillGridKernel(
         return;
 
     IType b = indicesZYX[n][0];
-    IType z = indicesZYX[n][1];
-    IType y = indicesZYX[n][2];
-    IType x = indicesZYX[n][3];
+    IType x = indicesZYX[n][1];  // this is convention disagreement..  not a bug
+    IType y = indicesZYX[n][2];  // this is convention disagreement..  not a bug
+    IType z = indicesZYX[n][3];  // this is convention disagreement..  not a bug
 
     grid[b][x][y][z] = IType(1);
 }
@@ -53,9 +53,9 @@ __global__ void reorderFeatureKernel(
         return;
 
     IType b = indicesZYX[n][0];
-    IType z = indicesZYX[n][1];
-    IType y = indicesZYX[n][2];
-    IType x = indicesZYX[n][3];
+    IType x = indicesZYX[n][1];  // this is convention disagreement..  not a bug
+    IType y = indicesZYX[n][2];  // this is convention disagreement..  not a bug
+    IType z = indicesZYX[n][3];  // this is convention disagreement..  not a bug
 
     IType val_pos = zPtr[b][x][y];
     IType fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
@@ -126,7 +126,7 @@ __global__ void toDenseKernel(
     const GpuTensor<DType, 2> feature,  // [NNZ ,C]
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
     const GpuTensor<IType, 1> zIndices, // [NNZ]
-    GpuTensor<DType, 5> out,            // [B, H, W, D]
+    GpuTensor<DType, 5> out,            // [B, H, W, D, C]
     int C_BLOCK)
 {
     int B = zPtr.size(0);

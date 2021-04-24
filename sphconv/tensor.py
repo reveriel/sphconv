@@ -10,7 +10,7 @@ class SparseTensorBase:
 
     def __init__(self,
                  B: int,
-                 H: int, W: int, D: int,
+                 D: int, W: int, H: int,
                  C: int,
                  device: torch.device,
                  dtype: torch.dtype,
@@ -19,9 +19,9 @@ class SparseTensorBase:
                  z_idx: torch.Tensor,
                  z_ptr: torch.Tensor):
         self.B = B
-        self.H = H
-        self.W = W
         self.D = D
+        self.W = W
+        self.H = H
         self.C = C
         self.device = device
         self.dtype = dtype
@@ -34,7 +34,7 @@ class SparseTensorBase:
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
                  feature: torch.Tensor,                   # [NNZ, C]
-                 spatial_shape_DWH: List[int],            # [D, W, H]
+                 spatial_shape_DWH: List[int],            # [D, W, H] or, zyx
                  batch_size: int,                         # B
                  indices: Optional[torch.Tensor] = None,  # [NNZ, 4], bzyx
                  z_idx: Optional[torch.Tensor] = None,    # [NNZ]
@@ -57,7 +57,7 @@ class SparseConvTensor(SparseTensorBase):
 
         if z_idx is not None and z_ptr is not None:
             super().__init__(
-                batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
+                batch_size, spatial_shape_DWH[0], spatial_shape_DWH[1], spatial_shape_DWH[2],
                 feature.shape[-1],
                 feature.device, feature.dtype,
                 z_idx.dtype, feature, z_idx, z_ptr)
@@ -73,7 +73,7 @@ class SparseConvTensor(SparseTensorBase):
             assert feature.device == indices.device
 
             super().__init__(
-                batch_size, spatial_shape_DWH[2], spatial_shape_DWH[1], spatial_shape_DWH[0],
+                batch_size, spatial_shape_DWH[0], spatial_shape_DWH[1], spatial_shape_DWH[2],
                 feature.shape[-1],
                 feature.device, feature.dtype,
                 indices.dtype, None, None, None)
@@ -108,7 +108,7 @@ class SparseConvTensor(SparseTensorBase):
             # size   B H W D, for counting in get_rules() and init_csf()
 
             self.z_ptr = init_tensor(
-                feature, indices, self.B, [self.H, self.W, self.D], self.feature, self.z_idx)
+                feature, indices, self.B, [self.D, self.W, self.H], self.feature, self.z_idx)
 
     @property
     def shape(self):
@@ -126,8 +126,8 @@ class SparseConvTensor(SparseTensorBase):
         return dense tensor of shape ,B C D W H
         """
         res = torch.zeros(
-            (self.B, self.H, self.W, self.D, self.C), device=device if device else self.device)
+            (self.B, self.D, self.W, self.H, self.C), device=device if device else self.device)
 
-        to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res)
+        to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res) # B D W H C
 
-        return res.permute((0, 4, 3, 2, 1))
+        return res.permute((0, 4, 1, 2, 3))

@@ -112,20 +112,20 @@ class Conv3d(Convolution):
 
     def forward(self, input: SparseConvTensor):
         start_time = time.time()
-        batch_size, in_channels, iD, iH, iW = input.B, input.C, input.D, input.H, input.W
+        batch_size, in_channels = input.B, input.C
         out_channels = self.weight.shape[3]
 
         assert (self.in_channels == in_channels), "input channel does not match \
             Expect: {}, got {}".format(self.in_channels, in_channels)
 
-        in_spatial_shape_HWD = [input.H, input.W, input.D]
+        in_spatial_shape_DWH = [input.D, input.W, input.H]
 
-        out_spatial_shape_HWD = in_spatial_shape_HWD
+        out_spatial_shape_DWH = in_spatial_shape_DWH
         if not self.subm:
-            out_spatial_shape_HWD = out_spatial(
-                in_spatial_shape_HWD, self.kernel_size, self.stride, self.padding, self.dilation)
+            out_spatial_shape_DWH = out_spatial(
+                in_spatial_shape_DWH, self.kernel_size, self.stride, self.padding, self.dilation)
 
-        # print("out shape = ", out_spatial_shape_HWD)
+        # print("out shape = ", out_spatial_shape_DWH)
 
         datas = input.find_rule(self.indice_key)
         # print("========== found in dicts ===========")
@@ -137,7 +137,7 @@ class Conv3d(Convolution):
             get_rule_func = get_rules_subm if self.subm else get_rules
             oz_idx, oz_ptr, rules, rule_size = get_rule_func(
                 input.z_idx, input.z_ptr,
-                batch_size, in_spatial_shape_HWD, out_spatial_shape_HWD,
+                batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
                 self.kernel_size, self.stride, self.padding, self.dilation)
 
             input.rule_cache[self.indice_key] = (
@@ -148,12 +148,12 @@ class Conv3d(Convolution):
             input.feature, self.weight.reshape(
                 (-1, out_channels, in_channels)),
             rules, rule_size, batch_size,
-            in_spatial_shape_HWD, out_spatial_shape_HWD, oz_idx.shape[0])
+            in_spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
         # torch.cuda.synchronize()
         # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000
         # ))
-        return SparseConvTensor(out_feature, out_spatial_shape_HWD[::-1],
+        return SparseConvTensor(out_feature, out_spatial_shape_DWH,
                                 batch_size, z_ptr=oz_ptr, z_idx=oz_idx)
 
 

@@ -28,7 +28,7 @@ def assert_correct_cmp_with_spconv(
     indices_zyx: torch.Tensor, # [NNZ, 3]
     batch_size: int,
     in_channels: int, out_channels: int,
-    spatial_shape_HWD: List[int],
+    spatial_shape_DWH: List[int],
     kernel_size: List[int],
     stride: List[int],
     padding: List[int],
@@ -42,17 +42,17 @@ def assert_correct_cmp_with_spconv(
         indices_zyx, channel=in_channels, batch_size=batch_size)
 
     sphconv_tensor = sphconv.SparseConvTensor(
-        feature, spatial_shape_HWD[::-1], batch_size, indices=indices)
+        feature, spatial_shape_DWH, batch_size, indices=indices)
 
     spconv_tensor = spconv.SparseConvTensor(
-        feature, indices, spatial_shape_HWD[::-1], batch_size)
+        feature, indices, spatial_shape_DWH, batch_size)
 
     sph_conv = sphconv.Conv3d(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False, subm=subm).cuda()
 
     Spconv_Conv3d = spconv.SubMConv3d if subm else spconv.SparseConv3d
     sp_conv = Spconv_Conv3d(
-        in_channels, out_channels, kernel_size[::-1], stride=stride[::-1], padding=padding[::-1], dilation=dilation[::-1], bias=False).cuda()
+        in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False).cuda()
 
     # same weight
     weight = torch.randn((*kernel_size, out_channels, in_channels),
@@ -60,7 +60,7 @@ def assert_correct_cmp_with_spconv(
 
     sph_conv.weight = torch.nn.Parameter(weight.clone())
     sp_conv.weight = torch.nn.Parameter(
-        weight.clone().permute(2, 1, 0, 4, 3).contiguous())
+        weight.clone().permute(0, 1, 2, 4, 3).contiguous())
 
     with torch.no_grad():
         spconv_dense = sp_conv(spconv_tensor).dense()
@@ -83,26 +83,26 @@ class TestClass:
         ], dtype=torch.int).cuda()
 
         assert_correct_cmp_with_spconv(
-            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 2],
+            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
         assert_correct_cmp_with_spconv(
-            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[3, 3, 3],
+            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
         assert_correct_cmp_with_spconv(
-            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 8],
+            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 8],
             kernel_size=[2, 2, 2], stride=[2, 1, 1], padding=[0, 1, 1], subm=False)
         assert_correct_cmp_with_spconv(
-            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[4, 8, 8],
+            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[4, 8, 8],
             kernel_size=[3, 3, 3], stride=[1, 1, 2], padding=[1, 1, 0], subm=False)
 
         assert_correct_cmp_with_spconv(
-            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 2],
+            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
         assert_correct_cmp_with_spconv(
-            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_HWD=[3, 3, 3],
+            indices, batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
         assert_correct_cmp_with_spconv(
-            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_HWD=[2, 2, 8],
+            indices, batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 8],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
     def test_rule_cache(self):
