@@ -47,7 +47,7 @@ inline void gpuAssert(cudaError_t code, const char *file, int line,
    threadIdx.z == thread_z && blockIdx.x == block_x &&                         \
    blockIdx.y == block_y && blockIdx.z == block_z)
 
-inline int divUp(int x, int y) { return (x + y - 1) / y; };
+__host__ __device__ __forceinline__ int divUp(int x, int y) { return (x + y - 1) / y; }
 
 template <typename IType>
 __device__ __inline__ IType OutSpatial(IType k, IType x, IType s, IType d,

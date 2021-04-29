@@ -121,7 +121,10 @@ def assert_correct_cmp_with_spconv(
     print("rule size = ", rule_size)
 
     assert torch.sum(indice_pair_num) == torch.sum(rule_size)
-    assert (indice_pair_num.view(-1).sort()[0] == rule_size.view(-1).sort()[0]).all()
+    if (rule_size.shape[0] == 1) :
+        assert (indice_pair_num.view(-1).sort()[0] == rule_size.view(-1).sort()[0]).all()
+    else : # tiled version
+        assert (indice_pair_num.view(-1).sort()[0] == rule_size.sum(dim=0).view(-1).sort()[0]).all()
     assert (outids[:,3].sort()[0] == oz_idx.sort()[0]).all()
 
 
