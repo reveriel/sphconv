@@ -117,7 +117,7 @@ __global__ void prepareSubMGridKernel(
 }
 
 /**
- * @brief init the grid[B, H, W, D],
+ * @brief init the grid[B, oH, oW, oD],
  *  grid is a mapping from spatial location to its target global physical location
  *
  * fill grid with global indices,
@@ -185,37 +185,36 @@ __global__ void prepareGridKernel(
 }
 
 /**
- *  create ozIndices
- *   -- recompute all oZ, like we did in prepareGridKernel
- *      is there a way to reuse info in 'grid' ?
- *
- *      YES: but we don't know if it would be faster or not.
- *      we can scan on grid,
- *      TODO: implement both and compare
+ *  for std conv
+ *  create ozIndices and Rule s.
  */
 template <typename IType>
 __global__ void getOzIndicesAndRulesKernel(
     const GpuTensor<IType, 1> zIndices, // [NNZ]
     GpuTensor<IType, 1> ozIndices,      // [NNZ']
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
+    const GpuTensor<IType, 3> ozPtr,    // [B, oH, oW]
     const GpuTensor<IType, 4> grid,
-    GpuTensor<IType, 4> rules,    // [NTile, KKK, 4(2), DMax]
-    GpuTensor<IType, 2> ruleSize, // number active index, [NTile, KKK]
-    int B, int H, int W,
+    GpuTensor<IType, 4> localRules,  // [NTile, KKK, 4(2), DMax]
+    GpuTensor<IType, 2> ruleSize,    // number active index, [NTile, KKK]
+    GpuTensor<IType, 3> globalRules, // [NTile, 2, MAX]
+    int B, int H, int W,  // TODO, cleanup unnaccesary
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
-    int dH, int dW, int dD)
+    int dH, int dW, int dD,
+    int inTileSize0, int inTileSize1,
+    int outTileSize0, int outTileSize1)
 {
     IType oH = grid.size(1);
     IType oW = grid.size(2);
     IType oD = grid.size(3);
 
-    IType x = threadIdx.x + blockDim.x * blockIdx.x;
-    IType y = threadIdx.y + blockDim.y * blockIdx.y;
+    // IType x = threadIdx.x + blockDim.x * blockIdx.x;
+    IType y = threadIdx.y + blockDim.y * blockIdx.y; // TODO
     IType k = threadIdx.z + blockDim.z * blockIdx.z;
 
-    if (x >= H || y >= W)
+    if (y >= W)
         return;
 
     // (KH, KW, KD)
@@ -223,42 +222,70 @@ __global__ void getOzIndicesAndRulesKernel(
     IType k_H = k / (KW * KD);
     IType k_W = (k / KD) % KW;
     IType k_D = k % KD;
+    printf("K =  %d, (%d,%d,%d)\n", k, k_H, k_W, k_D);
 
-    IType oX = OutSpatial(k_H, x, sH, dH, padH);
-    if (oX < 0 || oX >= oH)
-        return;
     IType oY = OutSpatial(k_W, y, sW, dW, padW);
     if (oY < 0 || oY >= oW)
         return;
 
-    IType nTile = 0; // TODO
+    int TileGridW = divUp(oW, outTileSize1);
 
+    int baseIn = 0;
+    int baseOut = 0;
     for (int b = 0; b < B; b++)
     {
-        int zEnd = zPtr[b][x][y];
-        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
-
-        for (int pos = zStart; pos < zEnd; pos++)
+        for (int x = 0; x < H; x++)
         {
-            IType z = zIndices[pos];
-            IType oZ = OutSpatial(k_D, z, sD, dD, padD);
-
-            if (oZ < 0 || oZ >= oD)
+            IType oX = OutSpatial(k_H, x, sH, dH, padH);
+            if (oX < 0 || oX >= oH)
                 continue;
 
-            IType global_out_idx = grid[b][oX][oY][oZ] - 1;
+            int zEnd = zPtr[b][x][y];
+            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
-            // printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
+            IType nTile = getLinearTileIdx(outTileSize0, outTileSize1, oX, oY, TileGridW);
 
-            IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
+            for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++)
+            {
+                IType z = zIndices[globalInIdx];
+                IType oZ = OutSpatial(k_D, z, sD, dD, padD);
+                if (oZ < 0 || oZ >= oD)
+                    continue;
 
-            rules[nTile][k][0][counter] = pos;
-            rules[nTile][k][1][counter] = global_out_idx;
+                IType globalOutIdx = grid[b][oX][oY][oZ] - 1;
+                if (k == 7) {
+                    printf("k7, globalOutIdx = %d\n", globalOutIdx);
+                }
 
-            // this assigned for many times, with the same value
-            ozIndices[global_out_idx] = oZ;
-        }
-    }
+                // printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
+
+                IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
+
+                localRules[nTile][k][0][counter] = globalInIdx;
+                localRules[nTile][k][1][counter] = globalOutIdx;
+
+                // local input index
+                int localInIdx = globalInIdx + getLocalShift(zPtr, inTileSize0, inTileSize1,
+                                                             H, W, baseIn, b, x, y);
+                // local output index
+                int localOutIdx = globalOutIdx + getLocalShift(ozPtr, outTileSize0, outTileSize1,
+                                                               oH, oW, baseOut, b, oX, oY);
+                localRules[nTile][k][2][counter] = localInIdx;
+                localRules[nTile][k][3][counter] = localOutIdx;
+
+                assert(localInIdx < TILE_N_MAX);
+                assert(localOutIdx < TILE_N_MAX);
+
+                globalRules[nTile][0][localInIdx] = globalInIdx;
+                globalRules[nTile][1][localOutIdx] = globalOutIdx;
+
+                // this assigned for many times, with the same value
+                ozIndices[globalOutIdx] = oZ;
+            }
+            baseIn = baseIn + updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1);
+            baseOut = baseOut + updateBase(ozPtr, oH, oW, b, oX, oY, outTileSize0, outTileSize1);
+        } // x
+    } // b
 }
 
 /***
@@ -336,7 +363,7 @@ __global__ void getSubMRulesKernel(
                 if (globalOutIdx < 0)
                     continue;
 
-                printf("nTile = %d\n", nTile);
+                // printf("nTile = %d\n", nTile);
                 IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
 
                 // grid[b][x][y][z] = pos;
@@ -348,7 +375,7 @@ __global__ void getSubMRulesKernel(
                                                              H, W, baseIn, b, x, y);
                 // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileSize0, outTileSize1,
-                                                               H, W, baseOut, b, oX, oY);
+                                                               oH, oW, baseOut, b, oX, oY);
                 localRules[nTile][k][2][counter] = localInIdx;
                 localRules[nTile][k][3][counter] = localOutIdx;
 
@@ -381,16 +408,15 @@ __global__ void getSubMRulesKernel(
  * ref:   getIndicePair
  */
 std::vector<torch::Tensor>
-get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
-                torch::Tensor zPtr,                   // [B, H, W]
-                // torch::Tensor grid,                   // [B, H, W, D]
-                int batchSize,
-                std::vector<int64_t> spatialShape,    // H, W, D
-                std::vector<int64_t> outSpatialShape, // H, W, D
-                std::vector<int64_t> kernelSize,
-                std::vector<int64_t> stride,
-                std::vector<int64_t> padding,
-                std::vector<int64_t> dilation)
+get_rules_subm(torch::Tensor zIndices, //  [NNZ]
+               torch::Tensor zPtr,     // [B, H, W]
+               int batchSize,
+               std::vector<int64_t> spatialShape,    // H, W, D
+               std::vector<int64_t> outSpatialShape, // H, W, D
+               std::vector<int64_t> kernelSize,
+               std::vector<int64_t> stride,
+               std::vector<int64_t> padding,
+               std::vector<int64_t> dilation)
 {
     int H_BLOCK = 4;
     int W_BLOCK = 32;
@@ -426,7 +452,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
     torch::Tensor localRules =
         torch::full({NTile, kernelVolume, 4, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed, not elegent
                     /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
-    // rules is allocated larger, to be trimed lalter // TODO
+    // TODO: rules is allocated larger, to be trimed lalter
 
     torch::Tensor globalRules =
         torch::full({NTile, 2, TILE_N_MAX}, /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -438,7 +464,7 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
     int inTileSize0 = getInTileSize(outTileSize0, stride[0], kernelSize[0]);
     int inTileSize1 = getInTileSize(outTileSize1, stride[1], kernelSize[1]);
 
-    W_BLOCK = 8;
+    W_BLOCK = 16;
     gridSize = dim3(1, divUp(spatialShape[1], W_BLOCK), 1);
     blockSize = dim3(1, W_BLOCK, kernelVolume);
     // int inTileGridSize = batchSize * inTileSize0 * inTileSize1 * spatialShape[2];
@@ -494,7 +520,6 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 std::vector<torch::Tensor>
 get_rules(torch::Tensor zIndices, //  [NNZ]
           torch::Tensor zPtr,     // [B, H, W]
-                                  //   torch::Tensor grid,     // [B, oH, oW, oD]
           int batchSize,
           std::vector<int64_t> spatialShape,    // H, W, D
           std::vector<int64_t> outSpatialShape, // oH, oW, oD
@@ -503,8 +528,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
           std::vector<int64_t> padding,
           std::vector<int64_t> dilation)
 {
-    const int H_BLOCK = 2;
-    const int W_BLOCK = 16;
+    int H_BLOCK = 2; // TODO
+    int W_BLOCK = 16;
 
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
     dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
@@ -547,14 +572,18 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
     // std::cout << "grid(3) = " << grid << std::endl;
 
-    int NTile = 1; // TODO, number of Tiles
+    int outTileSize0 = 2; // TODO
+    int outTileSize1 = 2;
+    int inTileSize0 = getInTileSize(outTileSize0, stride[0], kernelSize[0]);
+    int inTileSize1 = getInTileSize(outTileSize1, stride[1], kernelSize[1]);
 
-    torch::Tensor rules = torch::full({NTile, kernelVolume, 2, zIndices.size(0)},
+    int NTile = divUp(outSpatialShape[0], outTileSize0) * divUp(outSpatialShape[1], outTileSize1);
+
+    torch::Tensor localRules = torch::full({NTile, kernelVolume, 4, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
                                       /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
-    // rules is allocated larger, to be trimed lalter
-    // TODO, change 2 to 4, numAct
-    // TODO, last dimension... is NNZ now, But not NNZ if NTile > 1
-    // PRINT_SHAPE(rules);
+    // TODO: rules is allocated larger, to be trimed lalter
+    torch::Tensor globalRules =
+        torch::full({NTile, 2, TILE_N_MAX}, /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -564,18 +593,26 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     torch::Tensor ozIndices = torch::empty({outNNZ}, torch::dtype(torch::kInt32).device(zIndices.device()));
     // PRINT_SHAPE(ozIndices);
 
+    W_BLOCK = 16; // TODO
+    gridSize = dim3(1, divUp(spatialShape[1], W_BLOCK), 1);
+    blockSize = dim3(1, W_BLOCK, kernelVolume);
+
     getOzIndicesAndRulesKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         ozIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+        ozPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-        rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+        globalRules.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         batchSize, spatialShape[0], spatialShape[1],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
-        dilation[0], dilation[1], dilation[2]);
+        dilation[0], dilation[1], dilation[2],
+        inTileSize0, inTileSize1,
+        outTileSize0, outTileSize1);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -583,7 +620,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     // outZPtr
     // outIndices ?
 
-    return {ozIndices, ozPtr, rules, ruleSize};
+    return {ozIndices, ozPtr, localRules, ruleSize, globalRules};
 }
 
 } // namespace sphconv

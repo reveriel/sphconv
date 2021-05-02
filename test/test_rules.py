@@ -249,7 +249,7 @@ class TestClass:
             indices, batch_size=8, spatial_shape_DWH=[10, 9, 8],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
-    def test_std_rules(self):
+    def test_std_rules_1(self):
         indices_zyx = torch.tensor([
             [0, 0, 0],
             [0, 0, 1],
@@ -259,7 +259,7 @@ class TestClass:
 
         assert_correct_cmp_with_spconv(
             indices_zyx, batch_size=1, spatial_shape_DWH=[2, 2, 2],
-            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1])
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1])
 
         assert_correct_cmp_with_spconv(
             indices_zyx, batch_size=1, spatial_shape_DWH=[2, 2, 4],
