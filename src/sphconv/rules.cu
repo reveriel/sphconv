@@ -7,6 +7,7 @@
 
 #include "timer.h"
 #include "debug_utils.h"
+#include "assert.h"
 
 using namespace std;
 using namespace torch::indexing;
@@ -269,8 +270,9 @@ __global__ void getSubMRulesKernel(
     const GpuTensor<IType, 1> zIndices,
     const GpuTensor<IType, 3> zPtr,
     const GpuTensor<IType, 4> grid,
-    GpuTensor<IType, 4> rules,
+    GpuTensor<IType, 4> localRules,
     GpuTensor<IType, 2> ruleSize, // number active index, [NTile, KKK]
+    GpuTensor<IType, 3> globalRules,
     int B, int H, int W,
     int KH, int KW, int KD,
     int sH, int sW, int sD,
@@ -339,16 +341,23 @@ __global__ void getSubMRulesKernel(
 
                 // grid[b][x][y][z] = pos;
                 // rules: [NTile, K*K*K, 4, DMax]
-                rules[nTile][k][0][counter] = globalInIdx;
-                rules[nTile][k][1][counter] = globalOutIdx;
+                localRules[nTile][k][0][counter] = globalInIdx;
+                localRules[nTile][k][1][counter] = globalOutIdx;
                 // local input index
-                rules[nTile][k][2][counter] = globalInIdx + getLocalShift(
-                                                                zPtr, inTileSize0, inTileSize1,
-                                                                H, W, baseIn, b, x, y);
+                int localInIdx = globalInIdx + getLocalShift(zPtr, inTileSize0, inTileSize1,
+                                                             H, W, baseIn, b, x, y);
                 // local output index
-                rules[nTile][k][3][counter] = globalOutIdx + getLocalShift(
-                                                                 zPtr, outTileSize0, outTileSize1,
-                                                                 H, W, baseOut, b, oX, oY);
+                int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileSize0, outTileSize1,
+                                                               H, W, baseOut, b, oX, oY);
+                localRules[nTile][k][2][counter] = localInIdx;
+                localRules[nTile][k][3][counter] = localOutIdx;
+
+                assert(localInIdx < TILE_N_MAX);
+                assert(localOutIdx < TILE_N_MAX);
+
+                globalRules[nTile][0][localInIdx] = globalInIdx;
+                globalRules[nTile][1][localOutIdx] = globalOutIdx;
+
             }
             // __syncthreads();
             baseIn = baseIn + updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1);
@@ -410,13 +419,17 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 
     int outTileSize0 = 2; // TODO
     int outTileSize1 = 2;
+
     int NTile = divUp(outSpatialShape[0], outTileSize0) * divUp(outSpatialShape[1], outTileSize1);
 
     // allocate rules and indice Num
-    torch::Tensor rules =
-        torch::full({NTile, kernelVolume, 4, zIndices.size(0)},
+    torch::Tensor localRules =
+        torch::full({NTile, kernelVolume, 4, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed, not elegent
                     /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
-    // rules is allocated larger, to be trimed lalter
+    // rules is allocated larger, to be trimed lalter // TODO
+
+    torch::Tensor globalRules =
+        torch::full({NTile, 2, TILE_N_MAX}, /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -436,8 +449,9 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-        rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+        globalRules.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         batchSize,
         spatialShape[0], spatialShape[1],
         kernelSize[0], kernelSize[1], kernelSize[2],
@@ -449,12 +463,20 @@ get_rules_subm(torch::Tensor zIndices,               //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    // outZPtr
-    // outIndices ?
 
-    return {zIndices, zPtr, rules, ruleSize};
+    // loadingRule, global indices for each tile
+    // shape [NTile, NMax]
+    // Note Rule have indiex of '-1'
+    // uniq loadingRule  =  tensor([[-1,  0,  1,  2,  3],
+    //     [-1, -1, -1, -1, -1],
+    //     [-1, -1, -1, -1, -1],
+    //     [-1, -1, -1, -1, -1]],
+    // torch::Tensor loadingRule =
+    //     std::get<0>(
+    //         torch::unique_dim(rules.index({Slice(), Slice(), 0, Slice()}).reshape({NTile, -1}), /*dim=*/1));
+
+    return {zIndices, zPtr, localRules, ruleSize, globalRules};
 }
-
 
 /**
  *  tile_size: tile_size is on the output feature map.

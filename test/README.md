@@ -25,3 +25,6 @@ in spconv, it uses [D, W, H, inChannel, outChannel],
 ## BUT!
 
 we treat zyx as xyz in c++/CUDA code !!!
+
+记住, Python 这边 DW是稠密维度
+c++ 那边 HW 是稠密维度

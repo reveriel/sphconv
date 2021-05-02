@@ -2,6 +2,7 @@
 from typing import List
 
 import spconv
+from torch.jit import load
 import sphconv
 import torch
 from sphconv.datagen import merge_batch_torch
@@ -37,7 +38,7 @@ def assert_correct_cmp_with_torch(
             spatial_shape_DWH, kernel_size, stride, padding, dilation)
     print("out shape(DWH) = ", out_spatial_shape)
 
-    oz_idx, oz_ptr, rules, rule_size = test_func(
+    oz_idx, oz_ptr, rules, rule_size, _ = test_func(
         tensor.z_idx,
         tensor.z_ptr,
         batch_size,
@@ -98,7 +99,7 @@ def assert_correct_cmp_with_spconv(
     print("z_idx = ", tensor.z_idx)
     print("z_ptr = ", tensor.z_ptr)
 
-    oz_idx, oz_ptr, rules, rule_size = test_func(
+    oz_idx, oz_ptr, local_rules, rule_size, global_rules = test_func(
         tensor.z_idx,
         tensor.z_ptr,
         batch_size,
@@ -117,7 +118,7 @@ def assert_correct_cmp_with_spconv(
 
     print("oz_idx = ", oz_idx)
     print("oz_ptr = ", oz_ptr)
-    print("rules = ", rules)
+    print("rules = ", local_rules)
     print("rule size = ", rule_size)
 
     assert torch.sum(indice_pair_num) == torch.sum(rule_size)
@@ -125,6 +126,12 @@ def assert_correct_cmp_with_spconv(
         assert (indice_pair_num.view(-1).sort()[0] == rule_size.view(-1).sort()[0]).all()
     else : # tiled version
         assert (indice_pair_num.view(-1).sort()[0] == rule_size.sum(dim=0).view(-1).sort()[0]).all()
+        # NTile = rules.shape[0]
+        # loadingRule = rules[:,:,0,:].reshape([NTile,-1])
+        # print("loadingRule.shape  = ", loadingRule.shape)
+        # print("uniq loadingRule  = ", loadingRule.unique(dim=1))
+        # print("uniq loadingRule. shape  = ", loadingRule.unique(dim=1).shape)
+
     assert (outids[:,3].sort()[0] == oz_idx.sort()[0]).all()
 
 
@@ -407,7 +414,7 @@ class TestClass:
         assert tensor.z_idx.dtype == torch.int32
         assert tensor.z_ptr.dtype == torch.int32
 
-        oz_idx, oz_ptr, rules, rule_size = get_rules_subm(
+        oz_idx, oz_ptr, rules, rule_size, global_rules = get_rules_subm(
             tensor.z_idx, tensor.z_ptr,
             batch_size, spatial_shape_DWH, spatial_shape_DWH,
             [kernel_size, kernel_size, kernel_size],
@@ -416,21 +423,22 @@ class TestClass:
             [dilation, dilation, dilation]
         )
 
+        torch.set_printoptions(edgeitems=100)
+        print("rules = ", rules[:,:,:,:4])
+        print("ruleSize = ", rule_size)
+        print("global_rules = ", global_rules)
+
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
             indices_zyx, batch_size, spatial_shape_DWH, kernel_size, stride, padding, dilation,
             out_padding=0, subm=True, transpose=False, use_hash=False)
+
+        print("indice_pair_num = ", indice_pair_num)
 
         # convolution
         outChannel = 4
         weight = torch.ones((kernel_size, kernel_size, kernel_size,
                              outChannel, inChannel), dtype=torch.float, device=indices_zyx.device)
 
-        # print("indice_pairs dtype = ", indice_pairs.dtype)
-        # print("indice_pair_num dtype = ", indice_pair_num.dtype)
-        # indice_pairs = indice_pairs.int()
-        # indice_pair_num = indice_pair_num.int()
-        # print("indice_pairs dtype = ", indice_pairs.dtype)
-        # print("indice_pair_num dtype = ", indice_pair_num.dtype)
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
@@ -438,18 +446,18 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, outChannel, inChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, global_rules, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
 
-        print("sph_out_features 's type is ", type(sph_out_features))
+        # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
             sph_out_features, spatial_shape_DWH, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
 
-        # print("sphconv out_features = ", sph_out_features)
+        print("sphconv out_features = ", sph_out_features)
 
-        # print("spconv_dense = ", spconv_dense[0,0,:,:,:])
-        # print("spconv_dense shape = ", spconv_dense.shape)
-        # print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
-        # print("sphconv_dense shape = ", sphconv_dense.shape)
+        print("spconv_dense = ", spconv_dense[0,0,:,:,:])
+        print("spconv_dense shape = ", spconv_dense.shape)
+        print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
+        print("sphconv_dense shape = ", sphconv_dense.shape)
 
-        assert torch.all(torch.eq(spconv_dense, sphconv_dense))
+        assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
 
