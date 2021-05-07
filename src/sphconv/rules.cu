@@ -23,7 +23,7 @@ __host__ __device__ __forceinline__
 int getInTileSize(int outTileSize, int stride, int kernelSize)
 {
     assert(stride <= kernelSize);
-    return (stride - 1) * outTileSize + kernelSize;
+    return stride * (outTileSize - 1) + kernelSize;
 }
 
 __host__ __device__ __forceinline__
@@ -46,18 +46,48 @@ __device__ __forceinline__
 int getLocalShift(const GpuTensor<IType, 3> &zPtr, // [B, H, W]
                   int TileSizeH, int TileSizeW,
                   int H, int W, int base,
-                  int b, int x, int y)
+                  int b, int x, int y,
+                  int padH, int padW)
 {
-    // int tileIdxX = x / TileSizeH;
-    int tileIdxY = y / TileSizeW;
+    // int tileIdxX = (x + padH) / TileSizeH;
+    int tileIdxY = (y + padW) / TileSizeW;
     // int x0 = tileIdxX * TileSizeH;
-    int y0 = tileIdxY * TileSizeW;
+    int y0 = max((tileIdxY * TileSizeW) - padW, 0);
 
     // last element outside the tile,
     int a = ((b == 0 && x == 0 && y0 == 0) ?  0 : zPtr[b][x][y0 - 1]);
 
     return (-a + base);
 }
+
+// virtual index to real index
+// virtual index is counted including padding
+__device__ __forceinline__
+int v2r(int v, int pad) {
+    return max(v - pad, 0);
+}
+
+template <typename IType>
+__device__ __forceinline__
+int getLocalInShift(const GpuTensor<IType, 3> &zPtr, // [B, H, W]
+                  int TileSizeH, int TileSizeW,
+                  int H, int W, int base,
+                  int b, int x, int y,
+                  int padH, int padW,
+                  int oY, int outTileSizeW, int sW)
+{
+    // int tileIdxX = (x + padH) / TileSizeH;
+    int tileIdxY = oY / outTileSizeW;
+    // int x0 = tileIdxX * TileSizeH;
+    int y0 = (tileIdxY * sW * outTileSizeW);
+    int ry0 = v2r(y0, padW);
+
+    // last element outside the tile,
+    int a = ((b == 0 && x == 0 && ry0 == 0) ?  0 : zPtr[b][x][ry0 - 1]);
+
+    return (-a + base);
+}
+
 
 __device__ __forceinline__
 int getLinearTileIdx(int TileSize0, int TileSize1, int x, int y, int TileGridW)
@@ -67,15 +97,31 @@ int getLinearTileIdx(int TileSize0, int TileSize1, int x, int y, int TileGridW)
     return linearIdx(tileIdxX, tileIdxY, TileGridW);
 }
 
+/** number of num zero in this line (x), at this tile */
 template <typename IType>
 __device__ __forceinline__
 int updateBase(const GpuTensor<IType, 3> &zPtr, int H, int W,
-               int b, int x, int y, int TileSizeH, int TileSizeW)
+               int b, int x, int y, int TileSizeH, int TileSizeW, int padH, int padW)
 {
-    int tileIdxY = y / TileSizeW;
-    int y0 = tileIdxY * TileSizeW;
+    int tileIdxY = (y + padW) / TileSizeW;
+    // y0 is the first y in this line (x) in this tile.
+    int y0 = max((tileIdxY * TileSizeW) - padW, 0); // wrong
 
     return zPtr[b][x][min(y0 + TileSizeW - 1, W - 1)] - ((b == 0 && x == 0 && y0 == 0) ? 0 : zPtr[b][x][y0 - 1]);
+}
+
+/** number of num zero in this line (x), at this tile */
+template <typename IType>
+__device__ __forceinline__
+int updateBaseIn(const GpuTensor<IType, 3> &zPtr, int H, int W,
+               int b, int x, int y, int TileSizeH, int TileSizeW, int padH, int padW, int oY, int outTileSizeW, int sW)
+{
+    int tileIdxY = oY / outTileSizeW;
+    // y0 is the first y in this line (x) in this tile.
+    int y0 = (tileIdxY * sW * outTileSizeW);
+    int ry0 = v2r(y0, padW);
+
+    return zPtr[b][x][min( v2r(y0 + TileSizeW - 1, padW), W - 1)] - ((b == 0 && x == 0 && ry0 == 0) ? 0 : zPtr[b][x][ry0 - 1]);
 }
 
 
@@ -222,7 +268,7 @@ __global__ void getOzIndicesAndRulesKernel(
     IType k_H = k / (KW * KD);
     IType k_W = (k / KD) % KW;
     IType k_D = k % KD;
-    printf("K =  %d, (%d,%d,%d)\n", k, k_H, k_W, k_D);
+    // printf("K =  %d, (%d,%d,%d)\n", k, k_H, k_W, k_D);
 
     IType oY = OutSpatial(k_W, y, sW, dW, padW);
     if (oY < 0 || oY >= oW)
@@ -234,16 +280,28 @@ __global__ void getOzIndicesAndRulesKernel(
     int baseOut = 0;
     for (int b = 0; b < B; b++)
     {
+        int oldOutX = 0; // refresh
+
         for (int x = 0; x < H; x++)
         {
             IType oX = OutSpatial(k_H, x, sH, dH, padH);
-            if (oX < 0 || oX >= oH)
-                continue;
-
             int zEnd = zPtr[b][x][y];
-            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y-1];
 
             IType nTile = getLinearTileIdx(outTileSize0, outTileSize1, oX, oY, TileGridW);
+
+            if (x != 0)
+                baseIn += updateBaseIn(zPtr, H, W, b, x - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
+            while (oldOutX < oX) {
+                baseOut += updateBase(ozPtr, oH, oW, b, oldOutX, oY, outTileSize0, outTileSize1, 0, 0);
+                oldOutX++;
+            }
+
+
+            if (oX < 0)
+                continue;
+            if (oX >= oH)
+                break; // next batch ?
 
             for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++)
             {
@@ -253,9 +311,6 @@ __global__ void getOzIndicesAndRulesKernel(
                     continue;
 
                 IType globalOutIdx = grid[b][oX][oY][oZ] - 1;
-                if (k == 7) {
-                    printf("k7, globalOutIdx = %d\n", globalOutIdx);
-                }
 
                 // printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
 
@@ -265,11 +320,19 @@ __global__ void getOzIndicesAndRulesKernel(
                 localRules[nTile][k][1][counter] = globalOutIdx;
 
                 // local input index
-                int localInIdx = globalInIdx + getLocalShift(zPtr, inTileSize0, inTileSize1,
-                                                             H, W, baseIn, b, x, y);
+                int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
+                                                             H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
+                printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
+                       "localInIdx:%d, globaInIdx:%d, nTile:%d\n",
+                       inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
+                       localInIdx, globalInIdx, nTile);
                 // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(ozPtr, outTileSize0, outTileSize1,
-                                                               oH, oW, baseOut, b, oX, oY);
+                                                               oH, oW, baseOut, b, oX, oY, 0, 0);
+                printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
+                       "localOutIdx:%d, globaOutIdx:%d, nTile:%d\n",
+                       outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
+                       localOutIdx, globalOutIdx, nTile);
                 localRules[nTile][k][2][counter] = localInIdx;
                 localRules[nTile][k][3][counter] = localOutIdx;
 
@@ -282,9 +345,13 @@ __global__ void getOzIndicesAndRulesKernel(
                 // this assigned for many times, with the same value
                 ozIndices[globalOutIdx] = oZ;
             }
-            baseIn = baseIn + updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1);
-            baseOut = baseOut + updateBase(ozPtr, oH, oW, b, oX, oY, outTileSize0, outTileSize1);
         } // x
+
+        baseIn += updateBaseIn(zPtr, H, W, b, H - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
+        while (oldOutX < oH) {
+            baseOut += updateBase(ozPtr, oH, oW, b, oldOutX, oY, outTileSize0, outTileSize1, 0, 0);
+            oldOutX++;
+        }
     } // b
 }
 
@@ -340,16 +407,20 @@ __global__ void getSubMRulesKernel(
     int baseOut = 0;
     for (int b = 0; b < B; b++)
     {
+        int oX_start = OutSpatial(k_H, /*x=*/0, sH, dH, padH);
+        for (int i = 0; i < oX_start; i++)
+            baseOut += updateBase(zPtr, oH, oW, b, i, oY, outTileSize0, outTileSize1, 0, 0);
+
         for (int x = 0; x < H; x++)
         {
-            IType oX = OutSpatial(k_H, x, sH, dH, padH);
-            if (oX < 0 || oX >= oH)
-                continue;
+            IType oX = OutSpatial(k_H, x, sH, dH, padH); // TODO, iterative
 
             int zEnd = zPtr[b][x][y];
             int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
-
             IType nTile = getLinearTileIdx(outTileSize0, outTileSize1, oX, oY, TileGridW);
+
+            if (oX < 0 || oX >= oH)
+                goto tail;
 
             // diverge here
             for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++)
@@ -372,10 +443,19 @@ __global__ void getSubMRulesKernel(
                 localRules[nTile][k][1][counter] = globalOutIdx;
                 // local input index
                 int localInIdx = globalInIdx + getLocalShift(zPtr, inTileSize0, inTileSize1,
-                                                             H, W, baseIn, b, x, y);
+                                                             H, W, baseIn, b, x, y, padH, padW);
+
+                printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
+                       "localInIdx:%d, globaInIdx:%d\n",
+                       inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
+                       localInIdx, globalInIdx);
                 // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileSize0, outTileSize1,
-                                                               oH, oW, baseOut, b, oX, oY);
+                                                               oH, oW, baseOut, b, oX, oY, 0, 0);
+                printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
+                       "localOutIdx:%d, globaOutIdx:%d\n",
+                       outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
+                       localOutIdx, globalOutIdx);
                 localRules[nTile][k][2][counter] = localInIdx;
                 localRules[nTile][k][3][counter] = localOutIdx;
 
@@ -384,11 +464,13 @@ __global__ void getSubMRulesKernel(
 
                 globalRules[nTile][0][localInIdx] = globalInIdx;
                 globalRules[nTile][1][localOutIdx] = globalOutIdx;
+                // printf("localOutIdx:%d, globaOutIdx:%d\n",  localOutIdx, globalOutIdx);
 
             }
             // __syncthreads();
-            baseIn = baseIn + updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1);
-            baseOut = baseOut + updateBase(zPtr, oH, oW, b, oX, oY, outTileSize0, outTileSize1);
+tail:
+            baseIn += updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1, padH, padW);
+            baseOut += updateBase(zPtr, oH, oW, b, oX, oY, outTileSize0, outTileSize1, 0, 0);
         } // x
     } // b
 }

@@ -131,23 +131,23 @@ class Conv3d(Convolution):
         # print("========== found in dicts ===========")
 
         if self.indice_key is not None and datas is not None:
-            oz_idx, oz_ptr, rules, rule_size, loading_rule = datas
+            oz_idx, oz_ptr, local_rules, rule_size, global_rules = datas
 
         else:  # not found, compute it
             get_rule_func = get_rules_subm if self.subm else get_rules
-            oz_idx, oz_ptr, rules, rule_size, loading_rule = get_rule_func(
+            oz_idx, oz_ptr, local_rules, rule_size, global_rules = get_rule_func(
                 input.z_idx, input.z_ptr,
                 batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
                 self.kernel_size, self.stride, self.padding, self.dilation)
 
             input.rule_cache[self.indice_key] = (
-                oz_idx, oz_ptr, rules, rule_size, loading_rule)
+                oz_idx, oz_ptr, local_rules, rule_size, global_rules)
 
         # print("oT =", oT);
         out_feature = ConvFunction.apply(
             input.feature, self.weight.reshape(
                 (-1, out_channels, in_channels)),
-            rules, rule_size, loading_rule, batch_size,
+            local_rules, rule_size, global_rules, batch_size,
             in_spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
         # torch.cuda.synchronize()

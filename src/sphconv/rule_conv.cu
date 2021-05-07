@@ -27,13 +27,12 @@ __global__ void ruleConvKernel(
     int kernelVolume,
     int iC, int oC)
 {
-
-    __shared__ DType input[V_BLOCK][IC_BLOCK];
-    __shared__ DType output[V_BLOCK][OC_BLOCK];
+    __shared__ DType input[TILE_N_MAX][IC_BLOCK];
+    __shared__ DType output[TILE_N_MAX][OC_BLOCK];
     __shared__ DType subKernel[IC_BLOCK][OC_BLOCK];
 
     // set output to zeros
-    for (int v = threadIdx.x; v < V_BLOCK; v += blockDim.x) {
+    for (int v = threadIdx.x; v < TILE_N_MAX; v += blockDim.x) {
         for (int oc = threadIdx.y; oc < oC; oc += blockDim.y) {
             output[v][oc] = DType(0);
         }
@@ -46,7 +45,7 @@ __global__ void ruleConvKernel(
     for (int v = threadIdx.x; v < globalRules.size(2); v += blockDim.x) {
         int global_in_idx = globalRules[tile][0][v];
         if (global_in_idx == -1)
-            break;
+            continue;
 
         for (int ic = threadIdx.y; ic < iC; ic += blockDim.y) {
             input[v][ic] = feature[global_in_idx][ic];
@@ -88,9 +87,10 @@ __global__ void ruleConvKernel(
                     sum += input[local_in_idx][ic] * subKernel[ic][oc];
                 }
 
-                if (threadIdx.y == 0)
-                    printf("sum = %f, in  v(%d)\n", sum, v);
                 output[local_out_idx][oc] += sum;
+                if (threadIdx.y == 0)
+                    printf("sum = %f, in  v(%d),  output[local_out_idx:%d][0] = %f\n", sum, v,
+                           local_out_idx, output[local_out_idx][0]);
             }
         }
         __syncthreads();
@@ -101,7 +101,7 @@ __global__ void ruleConvKernel(
     for (int v = threadIdx.x; v < globalRules.size(2); v += blockDim.x) {
         int global_out_idx = globalRules[tile][1][v];
         if (global_out_idx == -1)
-            break;
+            continue;
         for (int oc = threadIdx.y; oc < oC; oc += blockDim.y) {
             outFeature[global_out_idx][oc] = output[v][oc];
         }
