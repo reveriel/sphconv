@@ -263,12 +263,9 @@ __global__ void getOzIndicesAndRulesKernel(
     if (y >= W)
         return;
 
-    // (KH, KW, KD)
-    // k =  kx * KH  ky kz
     IType k_H = k / (KW * KD);
     IType k_W = (k / KD) % KW;
     IType k_D = k % KD;
-    // printf("K =  %d, (%d,%d,%d)\n", k, k_H, k_W, k_D);
 
     IType oY = OutSpatial(k_W, y, sW, dW, padW);
     if (oY < 0 || oY >= oW)
@@ -309,25 +306,12 @@ __global__ void getOzIndicesAndRulesKernel(
                     continue;
 
                 IType globalOutIdx = grid[b][oX][oY][oZ] - 1;
-
-                // printf("k_D, z  = %d, %d,(oX,oY,oZ) = %d,%d,%d iIdx = %d,  oIdx = %d\n", k_D, z, oX,oY,oZ, pos, global_out_idx);
-
                 IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
 
-                // local input index
                 int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
-                // printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
-                //        "localInIdx:%d, globaInIdx:%d, nTile:%d\n",
-                //        inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
-                //        localInIdx, globalInIdx, nTile);
-                // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(ozPtr, outTileSize0, outTileSize1,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                // printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
-                //        "localOutIdx:%d, globaOutIdx:%d, nTile:%d\n",
-                //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
-                //        localOutIdx, globalOutIdx, nTile);
                 localRules[nTile][k][0][counter] = localInIdx;
                 localRules[nTile][k][1][counter] = localOutIdx;
 
@@ -385,8 +369,6 @@ __global__ void getSubMRulesKernel(
     if (y >= W)
         return;
 
-    // (KH, KW, KD)
-    // k =  kx * KH  ky kz
     IType k_H = k / (KW * KD);
     IType k_W = (k / KD) % KW;
     IType k_D = k % KD;
@@ -435,24 +417,12 @@ __global__ void getSubMRulesKernel(
                 if (globalOutIdx < 0)
                     continue;
 
-                // printf("nTile = %d\n", nTile);
                 IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
 
-                // local input index
                 int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
-
-                // printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
-                //        "localInIdx:%d, globaInIdx:%d\n",
-                //        inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
-                //        localInIdx, globalInIdx);
-                // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileSize0, outTileSize1,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                // printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
-                //        "localOutIdx:%d, globaOutIdx:%d\n",
-                //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
-                //        localOutIdx, globalOutIdx);
                 localRules[nTile][k][0][counter] = localInIdx;
                 localRules[nTile][k][1][counter] = localOutIdx;
 
@@ -461,8 +431,6 @@ __global__ void getSubMRulesKernel(
 
                 globalRules[nTile][0][localInIdx] = globalInIdx;
                 globalRules[nTile][1][localOutIdx] = globalOutIdx;
-                // printf("localOutIdx:%d, globaOutIdx:%d\n",  localOutIdx, globalOutIdx);
-
             }
         } // x
         baseIn += updateBaseIn(zPtr, H, W, b, H - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
