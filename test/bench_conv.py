@@ -103,8 +103,8 @@ def bench_against_spconv(
         start_time = time()
         for i in range (loop):
             x = sp_conv(spconv_tensor)
-            # x = sp_conv(x)
-            # x = sp_conv(x)
+            x = sp_conv(x)
+            x = sp_conv(x)
             spconv_sparse = x
         torch.cuda.synchronize()
         end_time = time()
@@ -123,8 +123,8 @@ def bench_against_spconv(
         start_time = time()
         for i in range (loop):
             x:spconv.SparseConvTensor = sph_conv(sphconv_tensor)
-            # x = sph_conv(x)
-            # x = sph_conv(x)
+            x = sph_conv(x)
+            x = sph_conv(x)
             sphconv_sparse = x
 
         torch.cuda.synchronize()
@@ -139,15 +139,12 @@ def bench_against_spconv(
 
     assert True
 
-
-
-
 class TestClass:
     def test_speed(self):
 
         bench_against_spconv(
-            loop=10, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[16, 200, 200],
-            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+            loop=10, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[20, 256, 256],
+            kernel_size=[3, 3, 3], stride=[3, 3, 3], padding=[1, 1, 1], subm=False)
 
 
 
@@ -155,3 +152,4 @@ if __name__ == '__main__':
     t = TestClass()
     t.test_speed()
     print("ha")
+

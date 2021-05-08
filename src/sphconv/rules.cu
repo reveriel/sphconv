@@ -241,7 +241,7 @@ __global__ void getOzIndicesAndRulesKernel(
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
     const GpuTensor<IType, 3> ozPtr,    // [B, oH, oW]
     const GpuTensor<IType, 4> grid,
-    GpuTensor<IType, 4> localRules,  // [NTile, KKK, 4(2), DMax]
+    GpuTensor<IType, 4> localRules,  // [NTile, KKK, 2, DMax]
     GpuTensor<IType, 2> ruleSize,    // number active index, [NTile, KKK]
     GpuTensor<IType, 3> globalRules, // [NTile, 2, MAX]
     int B, int H, int W,  // TODO, cleanup unnaccesary
@@ -314,9 +314,6 @@ __global__ void getOzIndicesAndRulesKernel(
 
                 IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
 
-                localRules[nTile][k][0][counter] = globalInIdx;
-                localRules[nTile][k][1][counter] = globalOutIdx;
-
                 // local input index
                 int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
@@ -331,8 +328,8 @@ __global__ void getOzIndicesAndRulesKernel(
                 //        "localOutIdx:%d, globaOutIdx:%d, nTile:%d\n",
                 //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
                 //        localOutIdx, globalOutIdx, nTile);
-                localRules[nTile][k][2][counter] = localInIdx;
-                localRules[nTile][k][3][counter] = localOutIdx;
+                localRules[nTile][k][0][counter] = localInIdx;
+                localRules[nTile][k][1][counter] = localOutIdx;
 
                 assert(localInIdx < TILE_N_MAX);
                 assert(localOutIdx < TILE_N_MAX); //
@@ -441,10 +438,6 @@ __global__ void getSubMRulesKernel(
                 // printf("nTile = %d\n", nTile);
                 IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
 
-                // grid[b][x][y][z] = pos;
-                // rules: [NTile, K*K*K, 4, DMax]
-                localRules[nTile][k][0][counter] = globalInIdx;
-                localRules[nTile][k][1][counter] = globalOutIdx;
                 // local input index
                 int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
@@ -460,8 +453,8 @@ __global__ void getSubMRulesKernel(
                 //        "localOutIdx:%d, globaOutIdx:%d\n",
                 //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
                 //        localOutIdx, globalOutIdx);
-                localRules[nTile][k][2][counter] = localInIdx;
-                localRules[nTile][k][3][counter] = localOutIdx;
+                localRules[nTile][k][0][counter] = localInIdx;
+                localRules[nTile][k][1][counter] = localOutIdx;
 
                 assert(localInIdx < TILE_N_MAX);
                 assert(localOutIdx < TILE_N_MAX);
@@ -537,7 +530,7 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
 
     // allocate rules and indice Num
     torch::Tensor localRules =
-        torch::full({NTile, kernelVolume, 4, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed, not elegent
+        torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed, not elegent
                     /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
     // TODO: rules is allocated larger, to be trimed lalter
 
@@ -666,7 +659,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     int NTile = divUp(outSpatialShape[0], outTileSize0) * divUp(outSpatialShape[1], outTileSize1);
 
-    torch::Tensor localRules = torch::full({NTile, kernelVolume, 4, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
+    torch::Tensor localRules = torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
                                       /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
     // TODO: rules is allocated larger, to be trimed lalter
     torch::Tensor globalRules =

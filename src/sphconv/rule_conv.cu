@@ -20,7 +20,7 @@ template <typename IType, typename DType,
 __global__ void ruleConvKernel(
     const GpuTensor<DType, 2> feature,
     const GpuTensor<DType, 3> weight, // [kernelVolume, oC, iC]
-    const GpuTensor<IType, 4> localRules,  // [ NTile, kernelVolume, 4, NNZ']
+    const GpuTensor<IType, 4> localRules,  // [ NTile, kernelVolume, 2, NNZ']
     const GpuTensor<IType, 2> ruleSize,  // [NTile, kernelVolume]
     const GpuTensor<IType, 3> globalRules, // [NTile, 2, TILE_N_MAX]
     GpuTensor<DType, 2> outFeature,
@@ -73,8 +73,8 @@ __global__ void ruleConvKernel(
 
         // matrix multiply
         for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x) {
-            int local_in_idx = localRules[tile][k][2][v];
-            int local_out_idx = localRules[tile][k][3][v];
+            int local_in_idx = localRules[tile][k][0][v];
+            int local_out_idx = localRules[tile][k][1][v];
             // if (threadIdx.y == 0)
             //     printf("lcal in/ out idx = %d / %d \n", local_in_idx, local_out_idx);
             for (int oc = threadIdx.y; oc < oC; oc += blockDim.y) {
