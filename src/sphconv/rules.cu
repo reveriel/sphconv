@@ -315,13 +315,17 @@ __global__ void getOzIndicesAndRulesKernel(
                 localRules[nTile][k][0][counter] = localInIdx;
                 localRules[nTile][k][1][counter] = localOutIdx;
 
-                assert(localInIdx < TILE_N_MAX);
-                assert(localOutIdx < TILE_N_MAX); //
+                // these assignment to globalRules executes many times, with the same value
+                if (localInIdx < TILE_N_MAX)
+                    globalRules[nTile][0][localInIdx] = globalInIdx;
+                else
+                    printf("mem overflow, localInIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localInIdx, TILE_N_MAX, nTile, x, y ,k);
 
-                globalRules[nTile][0][localInIdx] = globalInIdx;
-                globalRules[nTile][1][localOutIdx] = globalOutIdx;
+                if (localOutIdx < TILE_N_MAX)
+                    globalRules[nTile][1][localOutIdx] = globalOutIdx;
+                else
+                    printf("mem overflow, localOutIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localOutIdx, TILE_N_MAX, nTile, x, y ,k);
 
-                // this assigned for many times, with the same value
                 ozIndices[globalOutIdx] = oZ;
             }
         } // x
@@ -426,11 +430,16 @@ __global__ void getSubMRulesKernel(
                 localRules[nTile][k][0][counter] = localInIdx;
                 localRules[nTile][k][1][counter] = localOutIdx;
 
-                assert(localInIdx < TILE_N_MAX);
-                assert(localOutIdx < TILE_N_MAX);
+                // these assignment to globalRules executes many times, with the same value
+                if (localInIdx < TILE_N_MAX)
+                    globalRules[nTile][0][localInIdx] = globalInIdx;
+                else
+                    printf("mem overflow, localInIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localInIdx, TILE_N_MAX, nTile, x, y ,k);
 
-                globalRules[nTile][0][localInIdx] = globalInIdx;
-                globalRules[nTile][1][localOutIdx] = globalOutIdx;
+                if (localOutIdx < TILE_N_MAX)
+                    globalRules[nTile][1][localOutIdx] = globalOutIdx;
+                else
+                    printf("mem overflow, localOutIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localOutIdx, TILE_N_MAX, nTile, x, y ,k);
             }
         } // x
         baseIn += updateBaseIn(zPtr, H, W, b, H - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
@@ -487,8 +496,6 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    std::cout << "grid = " << grid << std::endl;
-
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
 
     int outTileSize0 = 2; // TODO
@@ -507,7 +514,6 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
-
 
     int inTileSize0 = getInTileSize(outTileSize0, stride[0], kernelSize[0]);
     int inTileSize1 = getInTileSize(outTileSize1, stride[1], kernelSize[1]);

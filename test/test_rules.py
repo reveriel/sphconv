@@ -404,7 +404,8 @@ class TestClass:
         W = 2
         H = 2
         spatial_shape_DWH = [D, W, H]
-        inChannel = 4
+        inChannel = 32
+        outChannel = 32
         batch_size = 1
         voxel_features = torch.arange( indices_zyx.shape[0],
                           dtype=torch.float, device=indices_zyx.device).repeat(inChannel).reshape((indices_zyx.shape[0], inChannel))
@@ -454,7 +455,6 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        outChannel = 4
         weight = torch.ones((kernel_size, kernel_size, kernel_size,
                              outChannel, inChannel), dtype=torch.float, device=indices_zyx.device)
 
@@ -473,9 +473,9 @@ class TestClass:
 
         print("sphconv out_features = ", sph_out_features)
 
-        print("spconv_dense = ", spconv_dense[0,:,:,:,:])
+        print("spconv_dense = ", spconv_dense[0,:,0,0,:])
         print("spconv_dense shape = ", spconv_dense.shape)
-        print("sphconv_dense = ", sphconv_dense[0,:,:,:,:])
+        print("sphconv_dense = ", sphconv_dense[0,:,0,0,:])
         print("sphconv_dense shape = ", sphconv_dense.shape)
 
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
@@ -562,8 +562,8 @@ class TestClass:
         W = 6
         H = 20
         spatial_shape_DWH = [D, W, H]
-        inChannel = 4
-        outChannel = 8
+        inChannel = 64
+        outChannel = 64
         batch_size = 1
         voxel_features = torch.arange( indices_bzyx.shape[0],
                           dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))

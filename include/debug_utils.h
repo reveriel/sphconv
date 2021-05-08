@@ -8,8 +8,7 @@
 #include <iostream>
 #include <vector>
 
-#define TILE_N_MAX 128
-
+#define TILE_N_MAX 192
 #define DEBUG
 
 #ifdef DEBUG
