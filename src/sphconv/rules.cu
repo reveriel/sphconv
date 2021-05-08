@@ -286,8 +286,7 @@ __global__ void getOzIndicesAndRulesKernel(
         {
             IType oX = OutSpatial(k_H, x, sH, dH, padH);
             int zEnd = zPtr[b][x][y];
-            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y-1];
-
+            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
             IType nTile = getLinearTileIdx(outTileSize0, outTileSize1, oX, oY, TileGridW);
 
             if (x != 0)
@@ -296,7 +295,6 @@ __global__ void getOzIndicesAndRulesKernel(
                 baseOut += updateBase(ozPtr, oH, oW, b, oldOutX, oY, outTileSize0, outTileSize1, 0, 0);
                 oldOutX++;
             }
-
 
             if (oX < 0)
                 continue;
@@ -322,22 +320,22 @@ __global__ void getOzIndicesAndRulesKernel(
                 // local input index
                 int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
-                printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
-                       "localInIdx:%d, globaInIdx:%d, nTile:%d\n",
-                       inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
-                       localInIdx, globalInIdx, nTile);
+                // printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
+                //        "localInIdx:%d, globaInIdx:%d, nTile:%d\n",
+                //        inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
+                //        localInIdx, globalInIdx, nTile);
                 // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(ozPtr, outTileSize0, outTileSize1,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
-                       "localOutIdx:%d, globaOutIdx:%d, nTile:%d\n",
-                       outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
-                       localOutIdx, globalOutIdx, nTile);
+                // printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
+                //        "localOutIdx:%d, globaOutIdx:%d, nTile:%d\n",
+                //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
+                //        localOutIdx, globalOutIdx, nTile);
                 localRules[nTile][k][2][counter] = localInIdx;
                 localRules[nTile][k][3][counter] = localOutIdx;
 
                 assert(localInIdx < TILE_N_MAX);
-                assert(localOutIdx < TILE_N_MAX);
+                assert(localOutIdx < TILE_N_MAX); //
 
                 globalRules[nTile][0][localInIdx] = globalInIdx;
                 globalRules[nTile][1][localOutIdx] = globalOutIdx;
@@ -407,20 +405,26 @@ __global__ void getSubMRulesKernel(
     int baseOut = 0;
     for (int b = 0; b < B; b++)
     {
-        int oX_start = OutSpatial(k_H, /*x=*/0, sH, dH, padH);
-        for (int i = 0; i < oX_start; i++)
-            baseOut += updateBase(zPtr, oH, oW, b, i, oY, outTileSize0, outTileSize1, 0, 0);
+        int oldOutX = 0;
 
         for (int x = 0; x < H; x++)
         {
             IType oX = OutSpatial(k_H, x, sH, dH, padH); // TODO, iterative
-
             int zEnd = zPtr[b][x][y];
-            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+            int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
             IType nTile = getLinearTileIdx(outTileSize0, outTileSize1, oX, oY, TileGridW);
 
-            if (oX < 0 || oX >= oH)
-                goto tail;
+            if (x != 0)
+                baseIn += updateBaseIn(zPtr, H, W, b, x - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
+            while (oldOutX < oX) {
+                baseOut += updateBase(zPtr, oH, oW, b, oldOutX, oY, outTileSize0, outTileSize1, 0, 0);
+                oldOutX++;
+            }
+
+            if (oX < 0)
+                continue;
+            if (oX >= oH)
+                break; // next batch ?
 
             // diverge here
             for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++)
@@ -442,20 +446,20 @@ __global__ void getSubMRulesKernel(
                 localRules[nTile][k][0][counter] = globalInIdx;
                 localRules[nTile][k][1][counter] = globalOutIdx;
                 // local input index
-                int localInIdx = globalInIdx + getLocalShift(zPtr, inTileSize0, inTileSize1,
-                                                             H, W, baseIn, b, x, y, padH, padW);
+                int localInIdx = globalInIdx + getLocalInShift(zPtr, inTileSize0, inTileSize1,
+                                                             H, W, baseIn, b, x, y, padH, padW, oY, outTileSize1, sW);
 
-                printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
-                       "localInIdx:%d, globaInIdx:%d\n",
-                       inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
-                       localInIdx, globalInIdx);
+                // printf(" iTsize(%d,%d), HW(%d,%d), baseIn:%d, b:%d, x:%d, y:%d  \t"
+                //        "localInIdx:%d, globaInIdx:%d\n",
+                //        inTileSize0, inTileSize1, H, W, baseIn, b, x, y,
+                //        localInIdx, globalInIdx);
                 // local output index
                 int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileSize0, outTileSize1,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
-                       "localOutIdx:%d, globaOutIdx:%d\n",
-                       outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
-                       localOutIdx, globalOutIdx);
+                // printf(" oTsize(%d,%d), oHW(%d,%d), baseOut:%d, b:%d, oX:%d, oY:%d  \t"
+                //        "localOutIdx:%d, globaOutIdx:%d\n",
+                //        outTileSize0, outTileSize1, oH, oW, baseOut, b, oX, oY,
+                //        localOutIdx, globalOutIdx);
                 localRules[nTile][k][2][counter] = localInIdx;
                 localRules[nTile][k][3][counter] = localOutIdx;
 
@@ -467,11 +471,12 @@ __global__ void getSubMRulesKernel(
                 // printf("localOutIdx:%d, globaOutIdx:%d\n",  localOutIdx, globalOutIdx);
 
             }
-            // __syncthreads();
-tail:
-            baseIn += updateBase(zPtr, H, W, b, x, y, inTileSize0, inTileSize1, padH, padW);
-            baseOut += updateBase(zPtr, oH, oW, b, oX, oY, outTileSize0, outTileSize1, 0, 0);
         } // x
+        baseIn += updateBaseIn(zPtr, H, W, b, H - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
+        while (oldOutX < oH) {
+            baseOut += updateBase(zPtr, oH, oW, b, oldOutX, oY, outTileSize0, outTileSize1, 0, 0);
+            oldOutX++;
+        }
     } // b
 }
 

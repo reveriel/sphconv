@@ -51,10 +51,10 @@ __global__ void ruleConvKernel(
             input[v][ic] = feature[global_in_idx][ic];
         }
 
-        if (threadIdx.y == 0) {
-            printf("input[%d][0] = %f, feature[global_in:%d][0] = %f\n",
-                v, input[v][0],  global_in_idx, feature[global_in_idx][0]);
-        }
+        // if (threadIdx.y == 0) {
+        //     printf("input[%d][0] = %f, feature[global_in:%d][0] = %f\n",
+        //         v, input[v][0],  global_in_idx, feature[global_in_idx][0]);
+        // }
     }
 
     // for each kernelVolume * NNZ'
@@ -75,22 +75,22 @@ __global__ void ruleConvKernel(
         for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x) {
             int local_in_idx = localRules[tile][k][2][v];
             int local_out_idx = localRules[tile][k][3][v];
-            if (threadIdx.y == 0)
-                printf("lcal in/ out idx = %d / %d \n", local_in_idx, local_out_idx);
+            // if (threadIdx.y == 0)
+            //     printf("lcal in/ out idx = %d / %d \n", local_in_idx, local_out_idx);
             for (int oc = threadIdx.y; oc < oC; oc += blockDim.y) {
                 DType sum = DType(0);
 
-                if (threadIdx.y == 0)
-                    printf("input[%d][0] = %f, subKernel[0][0] = %f, k = %d\n",
-                           local_in_idx, input[local_in_idx][0], subKernel[0][0], k);
+                // if (threadIdx.y == 0)
+                //     printf("input[%d][0] = %f, subKernel[0][0] = %f, k = %d\n",
+                //            local_in_idx, input[local_in_idx][0], subKernel[0][0], k);
                 for (int ic = 0; ic < iC; ic++) {
                     sum += input[local_in_idx][ic] * subKernel[ic][oc];
                 }
 
                 output[local_out_idx][oc] += sum;
-                if (threadIdx.y == 0)
-                    printf("sum = %f, in  v(%d),  output[local_out_idx:%d][0] = %f\n", sum, v,
-                           local_out_idx, output[local_out_idx][0]);
+                // if (threadIdx.y == 0)
+                //     printf("sum = %f, in  v(%d),  output[local_out_idx:%d][0] = %f\n", sum, v,
+                //            local_out_idx, output[local_out_idx][0]);
             }
         }
         __syncthreads();
