@@ -47,7 +47,8 @@ def batch_real_test_inputs(
     # original channel is 4, we extend it if needed
     assert channel >= 4;
     if channel > 4:
-        feature.resize_((feature.shape[0], channel))
+        feature = feature.repeat((1, (channel + 3) //4))
+        feature = feature[:, :channel]
     return feature, indices
 
 
@@ -149,7 +150,7 @@ class TestClass:
         #     kernel_size=[3, 3, 3], stride=[3, 3, 3], padding=[1, 1, 1], subm=False)
 
         bench_against_spconv(
-            loop=10, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[10, 256, 200],
+            loop=10, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
 

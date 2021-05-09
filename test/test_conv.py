@@ -193,6 +193,18 @@ class TestClass:
             indices, batch_size=8, inChannel=32, outChannel=32, spatial_shape_DWH=[11, 8, 8],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=32, outChannel=64, spatial_shape_DWH=[11, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=64, outChannel=64, spatial_shape_DWH=[11, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=64, outChannel=64, spatial_shape_DWH=[11, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
         # assert_correct_cmp_with_spconv(
         #     indices, batch_size=8, inChannel=128, outChannel=128, spatial_shape_DWH=[10, 9, 8],
         #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
@@ -265,3 +277,11 @@ class TestClass:
         assert_correct_cmp_with_spconv(
             indices, batch_size=8, inChannel=64, outChannel=64, spatial_shape_DWH=[12, 13, 14],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=32, outChannel=64, spatial_shape_DWH=[12, 13, 14],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 0], subm=False)
+
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, inChannel=64, outChannel=64, spatial_shape_DWH=[12, 13, 14],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 0], subm=False)
