@@ -19,7 +19,7 @@ template <typename IType, typename DType,
           int OC_BLOCK>
 __global__ void ruleConvKernel(
     const GpuTensor<DType, 2> feature,
-    const GpuTensor<DType, 3> weight, // [kernelVolume, oC, iC]
+    const GpuTensor<DType, 3> weight, // [kernelVolume, iC, oC]
     const GpuTensor<IType, 4> localRules,  // [ NTile, kernelVolume, 2, NNZ']
     const GpuTensor<IType, 2> ruleSize,  // [NTile, kernelVolume]
     const GpuTensor<IType, 3> globalRules, // [NTile, 2, TILE_N_MAX]
@@ -58,7 +58,7 @@ __global__ void ruleConvKernel(
 
             // load kernel to shared memory
             for (int ic = threadIdx.x; ic < iC; ic += blockDim.x) {
-                subKernel[ic][oc % OC_BLOCK] = weight[k][oc][ic]; // TODO : swap kernel oC iC order
+                subKernel[ic][oc % OC_BLOCK] = weight[k][ic][oc]; // TODO : swap kernel oC iC order
             }
             __syncthreads();
 
@@ -96,7 +96,7 @@ template <typename IType, typename DType,
           int OC_BLOCK>
 __global__ void ruleConvKernelDynamic(
     const GpuTensor<DType, 2> feature,
-    const GpuTensor<DType, 3> weight, // [kernelVolume, oC, iC]
+    const GpuTensor<DType, 3> weight, // [kernelVolume, iC, oC]
     const GpuTensor<IType, 4> localRules,  // [ NTile, kernelVolume, 2, NNZ']
     const GpuTensor<IType, 2> ruleSize,  // [NTile, kernelVolume]
     const GpuTensor<IType, 3> globalRules, // [NTile, 2, TILE_N_MAX]
@@ -137,7 +137,7 @@ __global__ void ruleConvKernelDynamic(
 
             // load kernel to shared memory
             for (int ic = threadIdx.x; ic < iC; ic += blockDim.x) {
-                subKernel[ic][oc % OC_BLOCK] = weight[k][oc][ic]; // TODO : swap kernel oC iC order
+                subKernel[ic][oc % OC_BLOCK] = weight[k][ic][oc]; // TODO : swap kernel oC iC order
             }
             __syncthreads();
 
@@ -183,7 +183,7 @@ int near2power(int num) {
 
 torch::Tensor
 rule_conv(torch::Tensor feature,  //  [NNZ, C]
-          torch::Tensor weight,   // [kernelVolume, Co, Ci]
+          torch::Tensor weight,   // [kernelVolume, iC, oC]
           torch::Tensor localRules,    //  [NTile, kernelVolume, 2, NNZ ],
           torch::Tensor ruleSize, // [Ntile, kernelVolume]
           torch::Tensor globalRules, // [NTile, 2, TILE_N_MAX]
@@ -196,8 +196,8 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     // cudaDeviceGetSharedMemConfig()
 
     int kernelVolume = weight.size(0);
-    int oC = weight.size(1);
-    int iC = weight.size(2);
+    int iC = weight.size(1);
+    int oC = weight.size(2);
 
     int IC_BLOCK = near2power(iC);
     int OC_BLOCK = near2power(oC);
@@ -234,6 +234,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     case 8:
         switch (OC_BLOCK)
         {
+            // NOTE:  OC_BLOCK,   blockDim.y,  must match now
         case 8:
             ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
             break;

@@ -456,7 +456,7 @@ class TestClass:
 
         # convolution
         weight = torch.ones((kernel_size, kernel_size, kernel_size,
-                             outChannel, inChannel), dtype=torch.float, device=indices_zyx.device)
+                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
 
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
@@ -464,7 +464,7 @@ class TestClass:
         spconv_dense = spconv.SparseConvTensor(out_features, outids, spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
-            tensor.feature, weight.reshape((-1, outChannel, inChannel)),
+            tensor.feature, weight.reshape((-1, inChannel, outChannel)),
             rules, rule_size, global_rules, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
@@ -620,16 +620,16 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        weight = torch.randn((*kernel_size, outChannel, inChannel), dtype=torch.float, device=indices_bzyx.device)
+        weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device)
 
         out_features = spconv.ops.indice_conv(
-            voxel_features, weight.permute((0,1,2,4,3)), indice_pairs, indice_pair_num, outids.shape[0])
+            voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
         spconv_dense = spconv.SparseConvTensor(
             out_features, outids, out_spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
-            tensor.feature, weight.reshape((-1, outChannel, inChannel)),
+            tensor.feature, weight.reshape((-1, inChannel, outChannel)),
             rules, rule_size, global_rules, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))

@@ -7,7 +7,7 @@ namespace sphconv {
 
 torch::Tensor
 rule_conv(torch::Tensor feature,  //  [NNZ, C]
-          torch::Tensor weight,   // [kernelVolume, Co, Ci]
+          torch::Tensor weight,   // [kernelVolume, iC, oC]
           torch::Tensor localRules,    //  [NTile, kernelVolume, 2, NNZ ],
           torch::Tensor ruleSize, // [Ntile, kernelVolume]
           torch::Tensor globalRules, // [NTile, NMax]

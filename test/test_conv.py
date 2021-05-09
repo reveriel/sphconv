@@ -53,14 +53,14 @@ def assert_conv_eq(
 
     # convolution
     out_features = spconv.ops.indice_conv(
-        features, weight.permute(0, 1, 2, 4, 3).contiguous(), indice_pairs,
+        features, weight, indice_pairs,
         indice_pair_num, outids.shape[0], subm=subm)
 
     spconv_dense = spconv.SparseConvTensor(
         out_features, outids, out_spatial_shape_DWH, batch_size).dense()
 
     sph_out_features = rule_conv(
-        tensor.feature, weight.reshape(-1, outChannel, inChannel),
+        tensor.feature, weight.reshape(-1, inChannel, outChannel),
         local_rules, rule_size, global_rules, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
     assert sph_out_features.dim() == 2
@@ -98,7 +98,7 @@ def assert_correct_cmp_with_spconv(
     features = torch.randn(
         (indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
 
-    weight = torch.randn((*kernel_size, outChannel, inChannel),
+    weight = torch.randn((*kernel_size, inChannel, outChannel),
                          dtype=features.dtype, device=indices_zyx.device)
 
     one_example = {'voxel': features, 'coordinates': indices_zyx}

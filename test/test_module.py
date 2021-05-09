@@ -79,12 +79,11 @@ def assert_correct_cmp_with_spconv(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False).cuda()
 
     # same weight
-    weight = torch.randn((*kernel_size, out_channels, in_channels),
+    weight = torch.randn((*kernel_size, in_channels, out_channels),
                          dtype=torch.float, device=indices.device)
 
     sph_conv.weight = torch.nn.Parameter(weight.clone())
-    sp_conv.weight = torch.nn.Parameter(
-        weight.clone().permute(0, 1, 2, 4, 3).contiguous())
+    sp_conv.weight = torch.nn.Parameter(weight.clone())
 
     with torch.no_grad():
         spconv_dense = sp_conv(spconv_tensor).dense()
@@ -128,12 +127,11 @@ def assert_correct_cmp_with_spconv_real(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False).cuda()
 
     # same weight
-    weight = torch.randn((*kernel_size, out_channels, in_channels),
+    weight = torch.randn((*kernel_size, in_channels, out_channels),
                          dtype=torch.float, device=indices.device)
 
     sph_conv.weight = torch.nn.Parameter(weight.clone())
-    sp_conv.weight = torch.nn.Parameter(
-        weight.clone().permute(0, 1, 2, 4, 3).contiguous())
+    sp_conv.weight = torch.nn.Parameter(weight.clone())
 
     with torch.no_grad():
         spconv_dense = sp_conv(spconv_tensor).dense()

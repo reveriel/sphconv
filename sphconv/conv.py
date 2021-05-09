@@ -38,7 +38,7 @@ class Convolution(SphModule):
         self.name = name
 
         self.weight = nn.Parameter(
-            torch.empty((*kernel_size, out_channels, in_channels)))
+            torch.empty((*kernel_size, in_channels, out_channels)))
         if bias:
             self.bias = nn.Parameter(torch.Tensor(out_channels))
         else:
@@ -113,7 +113,7 @@ class Conv3d(Convolution):
     def forward(self, input: SparseConvTensor):
         start_time = time.time()
         batch_size, in_channels = input.B, input.C
-        out_channels = self.weight.shape[3]
+        out_channels = self.weight.shape[4]
 
         assert (self.in_channels == in_channels), "input channel does not match \
             Expect: {}, got {}".format(self.in_channels, in_channels)
@@ -146,7 +146,7 @@ class Conv3d(Convolution):
         # print("oT =", oT);
         out_feature = ConvFunction.apply(
             input.feature, self.weight.reshape(
-                (-1, out_channels, in_channels)),
+                (-1, in_channels, out_channels)),
             local_rules, rule_size, global_rules, batch_size,
             in_spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
