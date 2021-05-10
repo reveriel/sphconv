@@ -244,7 +244,7 @@ __global__ void getOzIndicesAndRulesKernel(
     GpuTensor<IType, 4> localRules,  // [NTile, KKK, 2, DMax]
     GpuTensor<IType, 2> ruleSize,    // number active index, [NTile, KKK]
     GpuTensor<IType, 3> globalRules, // [NTile, 2, MAX]
-    int B, int H, int W,  // TODO, cleanup unnaccesary
+    int B, int H, int W, int D,  // TODO, cleanup unnaccesary
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
@@ -319,12 +319,14 @@ __global__ void getOzIndicesAndRulesKernel(
                 if (localInIdx < TILE_N_MAX)
                     globalRules[nTile][0][localInIdx] = globalInIdx;
                 else
-                    printf("mem overflow, localInIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localInIdx, TILE_N_MAX, nTile, x, y ,k);
+                    printf("overflow, input Idx:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), inShape(%d,%d,%d), std\n",
+                           localInIdx, TILE_N_MAX, nTile, x, y, k, inTileSize0, inTileSize1, H, W, D);
 
                 if (localOutIdx < TILE_N_MAX)
                     globalRules[nTile][1][localOutIdx] = globalOutIdx;
                 else
-                    printf("mem overflow, localOutIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localOutIdx, TILE_N_MAX, nTile, x, y ,k);
+                    printf("overflow, output Idx:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), outShape(%d,%d,%d), std\n",
+                           localOutIdx, TILE_N_MAX, nTile, x, y, k, outTileSize0, outTileSize1, oH, oW, oD);
 
                 ozIndices[globalOutIdx] = oZ;
             }
@@ -350,7 +352,7 @@ __global__ void getSubMRulesKernel(
     GpuTensor<IType, 4> localRules,
     GpuTensor<IType, 2> ruleSize, // number active index, [NTile, KKK]
     GpuTensor<IType, 3> globalRules,
-    int B, int H, int W,
+    int B, int H, int W, int D,
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
@@ -434,12 +436,14 @@ __global__ void getSubMRulesKernel(
                 if (localInIdx < TILE_N_MAX)
                     globalRules[nTile][0][localInIdx] = globalInIdx;
                 else
-                    printf("mem overflow, localInIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localInIdx, TILE_N_MAX, nTile, x, y ,k);
+                    printf("overflow, input Idx:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), inShape(%d,%d,%d), subm\n",
+                           localInIdx, TILE_N_MAX, nTile, x, y, k, inTileSize0, inTileSize1, H, W, D);
 
                 if (localOutIdx < TILE_N_MAX)
                     globalRules[nTile][1][localOutIdx] = globalOutIdx;
                 else
-                    printf("mem overflow, localOutIdx:%d/%d, nTile:%d, x:%d, y:%d, k:%d\n", localOutIdx, TILE_N_MAX, nTile, x, y ,k);
+                    printf("overflow, output Idx:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), outShape(%d,%d,%d), subm\n",
+                           localOutIdx, TILE_N_MAX, nTile, x, y, k, outTileSize0, outTileSize1, oH, oW, oD);
             }
         } // x
         baseIn += updateBaseIn(zPtr, H, W, b, H - 1, y, inTileSize0, inTileSize1, padH, padW, oY, outTileSize1, sW);
@@ -533,7 +537,7 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         globalRules.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         batchSize,
-        spatialShape[0], spatialShape[1],
+        spatialShape[0], spatialShape[1], spatialShape[2],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
@@ -634,10 +638,10 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     int NTile = divUp(outSpatialShape[0], outTileSize0) * divUp(outSpatialShape[1], outTileSize1);
 
     torch::Tensor localRules = torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
-                                      /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
+                                           /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
     // TODO: rules is allocated larger, to be trimed lalter
-    torch::Tensor globalRules =
-        torch::full({NTile, 2, TILE_N_MAX}, /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
+    torch::Tensor globalRules = torch::full({NTile, 2, TILE_N_MAX},
+                                            /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -660,7 +664,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
         localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         globalRules.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        batchSize, spatialShape[0], spatialShape[1],
+        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
