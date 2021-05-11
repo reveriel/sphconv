@@ -67,24 +67,29 @@ __global__ void ruleConvKernel(
                 for (int ic = threadIdx.x; ic < IC_BLOCK; ic += blockDim.x)
                     for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
                         subKernel[ic][oc] = weight[k][ic +iC_begin][oc + oC_begin];
-                __syncthreads();
 
                 // matrix multiply
-                for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x)
+                // for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x)
+                for (int v = 0; v < kRuleSize; v++)
                 {
                     int local_in_idx = localRules[tile][k][0][v];
                     int local_out_idx = localRules[tile][k][1][v];
-                    for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y) {
 
-                        DType sum = DType(0);
-                        for (int ic = 0; ic < IC_BLOCK; ic++)
-                            sum += input[local_in_idx][ic] * subKernel[ic][oc];
+                    DType value;
+                    for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
+                    {
+                        int ic = threadIdx.x;
+                        // for (int ic = TIdx % 32; ic < IC_BLOCK; ic += blockDim.y)
+                        value = input[local_in_idx][ic] * subKernel[ic][oc];
 
-                        output[local_out_idx][oc] += sum;
+                        for (int i = 16; i >=1; i /= 2)
+                            value += __shfl_down_sync(0xffffffff, value, i);
+
+                        if (threadIdx.x == 0)
+                            output[local_out_idx][oc] += value;
                     }
                 }
             } // k
-
         } // ic block
 
         __syncthreads();
@@ -156,20 +161,29 @@ __global__ void ruleConvKernelDynamic(
                 for (int ic = threadIdx.x; ic < IC_BLOCK; ic += blockDim.x)
                     for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
                         subKernel[ic][oc] = weight[k][ic +iC_begin][oc + oC_begin];
-                __syncthreads();
+                // __syncthreads();
 
                 // matrix multiply
-                for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x)
+                // for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x)
+                for (int v = 0; v < kRuleSize; v++)
                 {
                     int local_in_idx = localRules[tile][k][0][v];
                     int local_out_idx = localRules[tile][k][1][v];
-                    for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y) {
 
-                        DType sum = DType(0);
-                        for (int ic = 0; ic < IC_BLOCK; ic++)
-                            sum += input[local_in_idx][ic] * subKernel[ic][oc];
+                    DType value;
+                    int TIdx = threadIdx.x + blockDim.x * threadIdx.y;
+                    for (int oc = TIdx / 32 ; oc < OC_BLOCK; oc += blockDim.x )
+                    {
+                        for (int ic = TIdx % 32; false; ic += blockDim.y)
+                        {
+                            value = input[local_in_idx][ic] * subKernel[ic][oc];
+                        }
 
-                        output[local_out_idx][oc] += sum;
+                        for (int i = 16; i >=1; i /= 2)
+                            value += __shfl_down_sync(0xffffffff, value, i);
+
+                        if (TIdx % 32 == 0)
+                            output[local_out_idx][oc] += value;
                     }
                 }
             } // k
@@ -257,10 +271,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         {
             // NOTE:  OC_BLOCK,   blockDim.y,  must match now
         case 8:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(64, 8, 1)>>>(PARAMS);
             break;
         case 16:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(64, 8, 1)>>>(PARAMS);
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);
@@ -270,10 +284,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 16:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(128, 8, 1)>>>(PARAMS);
             break;
         case 32:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(128, 8, 1)>>>(PARAMS);
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);
@@ -283,10 +297,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 32:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 8><<<gridSize, dim3(8, 32, 1)>>>(PARAMS);
             break;
         case 64:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(32, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 8><<<gridSize, dim3(8, 32, 1)>>>(PARAMS);
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);
@@ -296,7 +310,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 64:
-#define myKernel  ruleConvKernelDynamic<int32_t, float, TILE_N_MAX, 8, 8>
+#define myKernel  ruleConvKernelDynamic<int32_t, float, TILE_N_MAX, 32, 8>
             cudaFuncSetAttribute(myKernel, cudaFuncAttributePreferredSharedMemoryCarveout, carveout);
             cudaFuncSetAttribute(myKernel, cudaFuncAttributeMaxDynamicSharedMemorySize, maxbytes);
             myKernel<<<gridSize, dim3(32, 8, 1), maxbytes>>>(PARAMS);

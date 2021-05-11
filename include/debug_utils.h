@@ -8,8 +8,8 @@
 #include <iostream>
 #include <vector>
 
-#define TILE_N_MAX 512
-// #define DEBUG
+#define TILE_N_MAX 256
+#define DEBUG
 
 #ifdef DEBUG
 #define gpuErrchk(ans)                                                         \

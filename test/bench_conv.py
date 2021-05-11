@@ -70,19 +70,22 @@ def bench_against_spconv(
         channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
 
     # torch.set_printoptions(edgeitems=8000)
-    # print ("indices = ", indices)
-
+    print ("indices shape = ", indices.shape)
+    if (indices.shape[0] == 0) :
+        print("error")
     spconv_tensor = spconv.SparseConvTensor(
         feature, indices, spatial_shape_DWH, batch_size)
 
-    torch.cuda.synchronize()
-    start_time = time();
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+
+    start.record()
     for i in range(loop):
         sphconv_tensor = sphconv.SparseConvTensor(
             feature, spatial_shape_DWH, batch_size, indices=indices)
+    end.record()
     torch.cuda.synchronize()
-    end_time = time();
-    print("init sphconv time = {:0.6f}".format((end_time - start_time) / loop))
+    print("init sphconv time = {:0.6f}".format((start.elapsed_time(end)) / loop))
 
     sph_conv = sphconv.Conv3d(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False, subm=subm).cuda()
@@ -96,24 +99,19 @@ def bench_against_spconv(
                          dtype=torch.float, device=indices.device)
 
     sph_conv.weight = torch.nn.Parameter(weight.clone())
-    sp_conv.weight = torch.nn.Parameter(
-        weight.clone().permute(0, 1, 2, 4, 3).contiguous())
+    sp_conv.weight = torch.nn.Parameter(weight.clone())
 
-
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-
-    with torch.no_grad():
-        x = sp_conv(spconv_tensor)
-        start.record()
-        for i in range (loop):
-            x = sp_conv(spconv_tensor)
-            # x = sp_conv(x)
-            # x = sp_conv(x)
-            spconv_sparse = x
-        end.record()
-        torch.cuda.synchronize()
-        print("spconv conv() time = {:.6f}".format((start.elapsed_time(end)) / loop))
+    # with torch.no_grad():
+    #     x = sp_conv(spconv_tensor)
+    #     start.record()
+    #     for i in range (loop):
+    #         x = sp_conv(spconv_tensor)
+    #         # x = sp_conv(x)
+    #         # x = sp_conv(x)
+    #         spconv_sparse = x
+    #     end.record()
+    #     torch.cuda.synchronize()
+    #     print("spconv conv() time = {:.6f}".format((start.elapsed_time(end)) / loop))
 
         # torch.cuda.synchronize()
         # start_time = time()
@@ -164,12 +162,12 @@ class TestClass:
         #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
         bench_against_spconv(
-            loop=1, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[64, 512, 512],
-            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
+            loop=1, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 128, 40],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[0, 0, 0], subm=False)
 
 
 if __name__ == '__main__':
     t = TestClass()
     t.test_speed()
-    print("ha")
+    print("--------------------------------")
 
