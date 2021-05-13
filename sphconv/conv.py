@@ -143,6 +143,8 @@ class Conv3d(Convolution):
             input.rule_cache[self.indice_key] = (
                 oz_idx, oz_ptr, local_rules, rule_size, global_rules)
 
+        self.rule_size = rule_size
+
         # print("oT =", oT);
         out_feature = ConvFunction.apply(
             input.feature, self.weight.reshape(

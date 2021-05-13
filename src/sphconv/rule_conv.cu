@@ -27,81 +27,52 @@ __global__ void ruleConvKernel(
     int kernelVolume,
     int iC, int oC)
 {
-    __shared__ DType input[V_MAX][IC_BLOCK];
-    __shared__ DType output[V_MAX][OC_BLOCK];
-    __shared__ DType subKernel[IC_BLOCK][OC_BLOCK];
+    // __shared__ DType input[V_MAX][IC_BLOCK];
+    // __shared__ DType subKernel[IC_BLOCK][OC_BLOCK];
 
     // for each NTile
     int tile = blockIdx.x;
+    for (int k = 0; k < kernelVolume; k++)
+    {
+        int kRuleSize = ruleSize[tile][k];
+        if (kRuleSize == 0) continue;
 
-    for (int oC_begin = 0; oC_begin < oC; oC_begin += OC_BLOCK)  {
-
-        // set output to zeros
-        for (int v = threadIdx.x; v < globalRules.size(2); v += blockDim.x)
-        {
-            for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
-                output[v][oc] = DType(0);
-        }
+        for (int oC_begin = 0; oC_begin < oC; oC_begin += OC_BLOCK)  {
 
         for (int iC_begin = 0; iC_begin < iC; iC_begin += IC_BLOCK)
         {
-            // load tile data to shared memory
-            for (int v = threadIdx.x; v < globalRules.size(2); v += blockDim.x)
-            {
-                int global_in_idx = globalRules[tile][0][v];
-                if (global_in_idx == -1)
-                    continue;
-
-                for (int ic = threadIdx.y; ic < IC_BLOCK; ic += blockDim.y)
-                {
-                    input[v][ic] = feature[global_in_idx][ic + iC_begin];
-                }
-            }
-
-            // for each kernelVolume * NNZ'
-            for (int k = 0; k < kernelVolume; k++)
-            {
-                int kRuleSize = ruleSize[tile][k];
 
                 // load kernel to shared memory
-                for (int ic = threadIdx.x; ic < IC_BLOCK; ic += blockDim.x)
-                    for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
-                        subKernel[ic][oc] = weight[k][ic +iC_begin][oc + oC_begin];
+                // for (int ic = threadIdx.x; ic < IC_BLOCK; ic += blockDim.x)
+                //     for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
+                //         subKernel[ic][oc] = weight[k][ic + iC_begin][oc + oC_begin];
 
                 // matrix multiply
                 // for (int v = threadIdx.x; v < kRuleSize; v += blockDim.x)
                 for (int v = 0; v < kRuleSize; v++)
                 {
-                    int local_in_idx = localRules[tile][k][0][v];
-                    int local_out_idx = localRules[tile][k][1][v];
 
                     DType value;
                     for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
                     {
                         int ic = threadIdx.x;
-                        // for (int ic = TIdx % 32; ic < IC_BLOCK; ic += blockDim.y)
-                        value = input[local_in_idx][ic] * subKernel[ic][oc];
+                        // for (int ic = TIdx % 32; ic < IC_BLOCK; ic +=
+                        // blockDim.y)
+                        int global_in_idx = localRules[tile][k][0][v];
+                        int global_out_idx = localRules[tile][k][1][v];
+                        DType infeat = feature[global_in_idx][ic + iC_begin];
+                        value = infeat * weight[k][ic + iC_begin][oc + oC_begin];
 
-                        for (int i = 16; i >=1; i /= 2)
-                            value += __shfl_down_sync(0xffffffff, value, i);
+                        for (int offset = 16; offset > 0; offset /= 2)
+                            value += __shfl_down_sync(0xffffffff, value, offset);
 
                         if (threadIdx.x == 0)
-                            output[local_out_idx][oc] += value;
+                            atomicAdd(&outFeature[global_out_idx][oc + oC_begin], value);
+                            // outFeature[global_out_idx][oc + oC_begin] += value;
                     }
                 }
             } // k
         } // ic block
-
-        __syncthreads();
-        // fill back to global output
-        for (int v = threadIdx.x; v < globalRules.size(2); v += blockDim.x)
-        {
-            int global_out_idx = globalRules[tile][1][v];
-            if (global_out_idx == -1)
-                continue;
-            for (int oc = threadIdx.y; oc < OC_BLOCK; oc += blockDim.y)
-                outFeature[global_out_idx][oc + oC_begin] = output[v][oc];
-        }
     } // oc block
 }
 
@@ -284,10 +255,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 16:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(128, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 16, 16><<<gridSize, dim3(16, 16, 1)>>>(PARAMS);
             break;
         case 32:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 8, 8><<<gridSize, dim3(128, 8, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 16, 32><<<gridSize, dim3(16, 32, 1)>>>(PARAMS);
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);
@@ -297,10 +268,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 32:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 8><<<gridSize, dim3(8, 32, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 32><<<gridSize, dim3(32, 32, 1)>>>(PARAMS);
             break;
         case 64:
-            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 8><<<gridSize, dim3(8, 32, 1)>>>(PARAMS);
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 32><<<gridSize, dim3(32, 32, 1)>>>(PARAMS);
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);
@@ -310,11 +281,12 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
         switch (OC_BLOCK)
         {
         case 64:
-#define myKernel  ruleConvKernelDynamic<int32_t, float, TILE_N_MAX, 32, 8>
-            cudaFuncSetAttribute(myKernel, cudaFuncAttributePreferredSharedMemoryCarveout, carveout);
-            cudaFuncSetAttribute(myKernel, cudaFuncAttributeMaxDynamicSharedMemorySize, maxbytes);
-            myKernel<<<gridSize, dim3(32, 8, 1), maxbytes>>>(PARAMS);
-#undef myKernel
+            ruleConvKernel<int32_t, float, TILE_N_MAX, 32, 32><<<gridSize, dim3(32, 32, 1)>>>(PARAMS);
+// #define myKernel  ruleConvKernelDynamic<int32_t, float, TILE_N_MAX, 32, 8>
+//             cudaFuncSetAttribute(myKernel, cudaFuncAttributePreferredSharedMemoryCarveout, carveout);
+//             cudaFuncSetAttribute(myKernel, cudaFuncAttributeMaxDynamicSharedMemorySize, maxbytes);
+//             myKernel<<<gridSize, dim3(32, 8, 1), maxbytes>>>(PARAMS);
+// #undef myKernel
             break;
         default:
             printf("not support ic ocblock %d, %d\n", IC_BLOCK, OC_BLOCK);

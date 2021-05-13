@@ -413,7 +413,8 @@ class TestClass:
                           dtype=torch.float, device=indices_zyx.device).repeat(indices_zyx.shape[0], 1)
         voxel_features = torch.arange( indices_zyx.shape[0] * inChannel,
                           dtype=torch.float, device=indices_zyx.device).reshape((indices_zyx.shape[0], inChannel))
-
+        # voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / 5
         # voxel_features[0,:] = 1.0
 
@@ -473,9 +474,9 @@ class TestClass:
 
         print("sphconv out_features = ", sph_out_features)
 
-        print("spconv_dense = ", spconv_dense[0,:,0,0,:])
+        print("spconv_dense = ", spconv_dense[0,0,:,:,:])
         print("spconv_dense shape = ", spconv_dense.shape)
-        print("sphconv_dense = ", sphconv_dense[0,:,0,0,:])
+        print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
         print("sphconv_dense shape = ", sphconv_dense.shape)
 
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense))

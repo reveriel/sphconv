@@ -312,8 +312,8 @@ __global__ void getOzIndicesAndRulesKernel(
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileW, sW);
                 int localOutIdx = globalOutIdx + getLocalShift(ozPtr, outTileH, outTileW,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                localRules[nTile][k][0][counter] = localInIdx;
-                localRules[nTile][k][1][counter] = localOutIdx;
+                localRules[nTile][k][0][counter] = globalInIdx;
+                localRules[nTile][k][1][counter] = globalOutIdx;
 
                 // these assignment to globalRules executes many times, with the same value
                 if (localInIdx < TILE_N_MAX)
@@ -429,8 +429,8 @@ __global__ void getSubMRulesKernel(
                                                              H, W, baseIn, b, x, y, padH, padW, oY, outTileW, sW);
                 int localOutIdx = globalOutIdx + getLocalShift(zPtr, outTileH, outTileW,
                                                                oH, oW, baseOut, b, oX, oY, 0, 0);
-                localRules[nTile][k][0][counter] = localInIdx;
-                localRules[nTile][k][1][counter] = localOutIdx;
+                localRules[nTile][k][0][counter] = globalInIdx;
+                localRules[nTile][k][1][counter] = globalOutIdx;
 
                 // these assignment to globalRules executes many times, with the same value
                 if (localInIdx < TILE_N_MAX)
@@ -502,11 +502,10 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
 
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
 
-    int outTileH = 2; // TODO
-    int outTileW = 2;
-    if (spatialShape[0] < 16) {
-        outTileH = 1;
-        outTileW = 1;
+    int outTileH = 8; // TODO
+    int outTileW = 8;
+    if (outSpatialShape[0] <= 8) {
+        outTileH = 4;
     }
 
     int NTile = divUp(outSpatialShape[0], outTileH) * divUp(outSpatialShape[1], outTileW);
@@ -634,8 +633,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
     // std::cout << "grid(3) = " << grid << std::endl;
 
-    int outTileH = 2; // TODO
-    int outTileW = 2;
+    int outTileH = 8; // TODO
+    int outTileW = 8;
     int inTileH = getInTileSize(outTileH, stride[0], kernelSize[0]);
     int inTileW = getInTileSize(outTileW, stride[1], kernelSize[1]);
 
