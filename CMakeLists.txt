@@ -10,6 +10,7 @@ link_libraries(Threads::Threads)
 set(CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}/lib/python3.7/site-packages/torch/share/cmake/Torch/;${CMAKE_PREFIX_PATH}")
 message("Cmake prefix  =" ${CMAKE_PREFIX_PATH})
 
+# add_compile_definitions(CUTLASS_ARCH_WMMA_ENABLED)
 
 ### nvcc fatal : Unknown option 'Wall
 # This issue is also addressed in README.md. It occurs when torch version >= 1.4
@@ -57,6 +58,8 @@ include_directories(${TORCH_INCLUDE_DIRS})
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include_directories(${PYTHON_INCLUDE_DIRS})
+
+# add_subdirectory(third_party/cutlass)
 
 add_subdirectory(src/sphconv)
 add_subdirectory(src/utils)

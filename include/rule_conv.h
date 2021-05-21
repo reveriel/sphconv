@@ -5,6 +5,9 @@
 
 namespace sphconv {
 
+namespace device
+{
+
 torch::Tensor
 rule_conv(torch::Tensor feature,  //  [NNZ, C]
           torch::Tensor weight,   // [kernelVolume, iC, oC]
@@ -16,5 +19,8 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
           std::vector<int64_t> outSpatialShape,
           int outNNZ
 );
+
+}
+
 
 }

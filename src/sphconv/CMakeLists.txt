@@ -11,7 +11,8 @@ pybind11_add_module(sphconv_cuda
     # to_dense.cu
 )
 
-target_include_directories(sphconv_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include/)
+target_include_directories(sphconv_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include/
+    PRIVATE  ${PROJECT_SOURCE_DIR}/third_party/cutlass/include/ )
 find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
 message(STATUS "TORCH_PYTHON_LIBRARY: ${TORCH_PYTHON_LIBRARY}")
 target_link_libraries(sphconv_cuda PRIVATE ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})

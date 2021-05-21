@@ -33,6 +33,12 @@
     }                                                                          \
   }
 
+#define gpuUnimplementedErr                               \
+  {                                                       \
+    printf("function %s unimplimented. %s:%d\n", \
+            __FUNCTION__, __FILE__, __LINE__);            \
+  }
+
 inline void gpuAssert(cudaError_t code, const char *file, int line,
                       bool abort = true) {
   if (code != cudaSuccess) {

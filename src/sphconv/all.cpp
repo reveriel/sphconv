@@ -21,7 +21,7 @@ PYBIND11_MODULE(sphconv_cuda, m)
 {
   m.def("get_rules_subm", &sphconv::get_rules_subm, "");
   m.def("get_rules", &sphconv::get_rules, "");
-  m.def("rule_conv", &sphconv::rule_conv, "");
+  m.def("rule_conv", &sphconv::device::rule_conv, "");
   m.def("init_tensor", &sphconv::init_tensor, "");
   m.def("to_dense", &sphconv::to_dense, "");
   // m.def("indice_conv", &sphconv::indice_conv, "");
