@@ -413,7 +413,7 @@ class TestClass:
                           dtype=torch.float, device=indices_zyx.device).repeat(indices_zyx.shape[0], 1)
         voxel_features = torch.arange( indices_zyx.shape[0] * inChannel,
                           dtype=torch.float, device=indices_zyx.device).reshape((indices_zyx.shape[0], inChannel))
-        # voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / 5
         # voxel_features[0,:] = 1.0
@@ -456,12 +456,14 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        # weight = torch.zeros((kernel_size, kernel_size, kernel_size,
-        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        weight = torch.zeros((kernel_size, kernel_size, kernel_size,
+                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        weight[0,0,1,1,1] = 888.0
+        weight[0,0,0,1,1] = 888.0
         # weight[0,0,1,1,1] = 888.0
         # weight[0,0,0,1,1] = 888.0
-        weight = torch.randn((kernel_size, kernel_size, kernel_size,
-                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        # weight = torch.randn((kernel_size, kernel_size, kernel_size,
+        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
 
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
