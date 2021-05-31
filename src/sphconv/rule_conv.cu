@@ -11,30 +11,22 @@
 #include "cutlass/wmma_array.h"
 #include "cutlass/device_kernel.h"
 #include "cutlass/layout/matrix.h"
+#include "cutlass/layout/pitch_linear.h"
 #include "cutlass/aligned_buffer.h"
 #include "cutlass/matrix_shape.h"
+#include "cutlass/transform/pitch_linear_thread_map.h"
+
 #include "cutlass/arch/arch.h"
-#include "cutlass/arch/wmma.h"
 #include "cutlass/arch/mma.h"
 #include "cutlass/gemm/device/gemm.h"
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/threadblock/mma_pipelined.h"
 #include "cutlass/gemm/threadblock/default_mma_core.h"
-#include "cutlass/gemm/threadblock/default_mma_core_sm70.h"
-#include "cutlass/gemm/threadblock/default_mma_core_sm75.h"
-#include "cutlass/gemm/threadblock/default_mma_core_wmma.h"
 #include "cutlass/gemm/threadblock/default_mma_core_simt.h"
-#include "cutlass/gemm/warp/default_mma_tensor_op.h"
 #include "cutlass/gemm/warp/mma.h"
-#include "cutlass/gemm/warp/mma_tensor_op_policy.h"
-#include "cutlass/gemm/warp/mma_tensor_op_tile_iterator_wmma.h"
 #include "cutlass/gemm/warp/mma_simt.h"
 #include "cutlass/gemm/warp/mma_simt_policy.h"
-#include "cutlass/epilogue/threadblock/default_epilogue_tensor_op.h"
-#include "cutlass/epilogue/threadblock/default_epilogue_volta_tensor_op.h"
 #include "cutlass/epilogue/threadblock/default_epilogue_simt.h"
-#include "cutlass/epilogue/warp/tile_iterator_wmma_tensor_op.h"
-#include "cutlass/epilogue/thread/conversion_op.h"
 #include "cutlass/epilogue/thread/linear_combination.h"
 
 
@@ -50,6 +42,7 @@ using cutlass::MatrixShape;
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 
+const int VBLOCK = 16;
 
 namespace threadblock
 {
@@ -134,13 +127,21 @@ struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
       cutlass::arch::OpClassSimt, 2, Operator>;
 
   static int const kThreads = MmaCore::kThreads;
+  static int const kElementsPerAccess = 1;
   using Shape = typename MmaCore::Shape; // gemmshape
 
-  using IteratorThreadMapA =
-        sphconv::threadblock::InThreadMap<
-            cutlass::layout::PitchLinearShape<Shape::kM, Shape::kK>,
-            kThreads,
-            1>;
+//   using IteratorThreadMapA =
+//         sphconv::threadblock::InThreadMap<
+//             cutlass::layout::PitchLinearShape<Shape::kM, Shape::kK>,
+//             kThreads,
+//             1>;
+
+  using IteratorThreadMapA = cutlass::transform::PitchLinearStripminedThreadMap<
+    cutlass::layout::PitchLinearShape<Shape::kK, Shape::kM>,
+    kThreads,
+    kElementsPerAccess
+  >;
+
   // Define iterators over tiles from the A operand
   using IteratorA =
       sphconv::threadblock::InputTileIterator<
@@ -153,12 +154,17 @@ struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
 //       ElementB, LayoutB, 0, typename MmaCore::IteratorThreadMapB,
 //       kAlignmentB>;
 
+    // using IteratorThreadMapB =
+    //         sphconv::threadblock::InThreadMap<
+    //             cutlass::layout::PitchLinearShape<Shape::kM, Shape::kK>,
+    //             kThreads,
+    //             1>;
 
-    using IteratorThreadMapB =
-            sphconv::threadblock::InThreadMap<
-                cutlass::layout::PitchLinearShape<Shape::kM, Shape::kK>,
-                kThreads,
-                1>;
+  using IteratorThreadMapB = cutlass::transform::PitchLinearStripminedThreadMap<
+    cutlass::layout::PitchLinearShape<Shape::kN, Shape::kK>,
+    kThreads,
+    kElementsPerAccess
+  >;
 
     // we customized the threadMap, of defaultMmaCore
     using IteratorB =
@@ -338,7 +344,7 @@ struct Conv
     using ElementA = typename Mma::IteratorA::Element;
     using ElementB = typename Mma::IteratorB::Element;
     using ElementD = ElementB;
-    using Index = int;
+    // using Index = int;
     static int const kThreadCount = 32 * WarpCount::kCount;
 
     struct Params
@@ -349,23 +355,23 @@ struct Conv
         typename OutputOp::Params output_op;
         int kernel_volume_;
         int in_channel_;
-        const GpuTensor<Index, 2> &ruleSize_;
+        const GpuTensor<int32_t, 2> ruleSize_;
 
-        // CUTLASS_HOST_DEVICE
-        Params(torch::Tensor feature,
-               torch::Tensor weight,
-               torch::Tensor localRules,
-               torch::Tensor ruleSize,
-               torch::Tensor outFeature,
+        CUTLASS_HOST_DEVICE
+        Params(const GpuTensor<float, 2> &feature,
+               const GpuTensor<float, 3> &weight,
+               const GpuTensor<int32_t, 4> &localRules,
+               const GpuTensor<int32_t,2> &ruleSize,
+               const GpuTensor<float, 2> &outFeature,
                int kernel_volume,
-               typename OutputOp::Params output_op = typename OutputOp::Params())
+               typename OutputOp::Params output_op = typename OutputOp::Params(1,1))
             : params_A(feature, localRules, ruleSize),
                 params_B(weight),
                 params_D(outFeature, localRules, ruleSize),
                 output_op(output_op),
                 in_channel_(weight.size(1)),
                 kernel_volume_(kernel_volume),
-                ruleSize_(ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>()) {}
+                ruleSize_(ruleSize) {}
     };
 
     union SharedStorage
@@ -380,7 +386,7 @@ struct Conv
     CUTLASS_DEVICE
     void operator()(Params const &params, SharedStorage &shared_storage)
     {
-        const int VBLOCK = 32;
+        // const int VBLOCK = 32;
 
         int tile = blockIdx.x;
 
@@ -393,10 +399,13 @@ struct Conv
         // int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
         int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
 
-
         for (int k = 0; k < params.kernel_volume_; k++)
         {
+            // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);
             int kRuleSize = params.ruleSize_[tile][k];
+
+            // printf(" rulesize [tile: %d] [k: %d] = %d\n",  tile, k, kRuleSize );
+
             if (kRuleSize == 0)
                 continue;
 
@@ -424,11 +433,16 @@ struct Conv
 
                 OutputOp output_op(params.output_op);
 
-                typename Epilogue::OutputTileIterator iterator_D(params.params_D, tile, vbegin, thread_idx, k);
+                // printf("&params.params_D = %p\n", &params.params_D);
+                typename Epilogue::OutputTileIterator iterator_D(
+                    params.params_D, tile, vbegin, thread_idx, k);
+
+                typename Epilogue::OutputTileIterator iterator_C = iterator_D;
+
 
                 Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_id, lane_id);
 
-                epilogue(output_op, iterator_D, accumulators, iterator_D);
+                epilogue(output_op, iterator_D, accumulators, iterator_C);
 
             } // v block
         }     // k
@@ -479,7 +493,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     int IC_BLOCK = near2power(iC);
     int OC_BLOCK = near2power(oC);
 
-    const int VOX_BLOCK = 32;
+    // const int VOX_BLOCK = 32;
     // const int OC_ILP = 4;
 
     int NTile = ruleSize.size(0);
@@ -497,8 +511,9 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     using ElementAccumulator = ElementC;
     static int const kAlignmentA = 1;
     static int const kAlignmentB = 1;
-    using ThreadblockShape = cutlass::gemm::GemmShape<32, 32, 32>;
-    using WarpShape = cutlass::gemm::GemmShape<32, 32, 8>;
+    // v,  oC, iC
+    using ThreadblockShape = cutlass::gemm::GemmShape<VBLOCK, 32, 32>;
+    using WarpShape = cutlass::gemm::GemmShape<8, 32, 8>;
     using InstructionShape = cutlass::gemm::GemmShape<1, 1, 1>;
     using Operator = cutlass::arch::OpMultiplyAdd;
     static int const kStages = 2;
@@ -509,8 +524,10 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     //     ElementAccumulator,
     //     ElementAccumulator
     // >;
-    using EpilogueOutputOp = cutlass::epilogue::thread::Convert<
-        ElementC, 1, ElementAccumulator>;
+    // using EpilogueOutputOp = cutlass::epilogue::thread::Convert<
+    //     ElementC, 1, ElementAccumulator>;
+    using EpilogueOutputOp = cutlass::epilogue::thread::LinearCombination<
+        ElementC,  1, ElementAccumulator>;
 
     using Mma = typename sphconv::threadblock::DefaultMma<
         ElementA,
@@ -543,12 +560,14 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
 
     using ConvKernel = kernel::Conv<Mma, Epilogue>;
 
-
     dim3 gridSize(NTile);
     dim3 blockSize(ConvKernel::kThreadCount, 1, 1);
+    // dim3 blockSize(1, 1, 1);
 
     cudaError_t result;
     int smem_size = int(sizeof(typename ConvKernel::SharedStorage));
+    // printf("smem_size = %d\n", smem_size);
+
     if (smem_size >= (48 << 10)) {
       result = cudaFuncSetAttribute(cutlass::Kernel<ConvKernel>,
                                     cudaFuncAttributeMaxDynamicSharedMemorySize,
@@ -570,11 +589,11 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     }
 
     typename ConvKernel::Params params_(
-        feature,
-        weight,
-        localRules,
-        ruleSize,
-        outFeature,
+        feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+        localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+        ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+        outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         kernelVolume);
 
     cutlass::Kernel<ConvKernel><<<gridSize, blockSize, smem_size, nullptr>>>(params_);

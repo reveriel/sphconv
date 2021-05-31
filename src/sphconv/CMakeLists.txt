@@ -1,5 +1,9 @@
 
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -gencode=arch=compute_75,code=sm_75")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr -gencode=arch=compute_75,code=sm_75 -Xcompiler -rdynamic -lineinfo ")
+
+# https://docs.nvidia.com/cuda/cuda-memcheck/index.html#cuda-memcheck-tool-examples
+# add debug info
+
 
 pybind11_add_module(sphconv_cuda
     all.cpp
@@ -10,6 +14,8 @@ pybind11_add_module(sphconv_cuda
     # indice.cu
     # to_dense.cu
 )
+# target_compile_options(sphconv_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
+# target_compile_options(sphconv_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -rdynamic>)
 
 target_include_directories(sphconv_cuda PRIVATE ${PROJECT_SOURCE_DIR}/include/
     PRIVATE  ${PROJECT_SOURCE_DIR}/third_party/cutlass/include/ )

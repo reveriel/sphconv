@@ -58,7 +58,7 @@ class CMakeBuild(build_ext):
             ]
 
         cfg = 'Debug' if self.debug else 'Release'
-        assert cfg == "Release", "pytorch ops don't support debug build."
+        # assert cfg == "Release", "pytorch ops don't support debug build."
         build_args = ['--config', cfg]
         print(cfg)
 

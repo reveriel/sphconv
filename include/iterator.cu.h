@@ -1,11 +1,14 @@
 #pragma once
 
+#include <torch/extension.h>
+
 #include "cutlass/cutlass.h"
 #include "cutlass/array.h"
 #include "cutlass/tensor_ref.h"
 #include "cutlass/layout/pitch_linear.h"
 #include "cutlass/layout/matrix.h"
 #include "cutlass/arch/memory.h"
+#include "cutlass/epilogue/threadblock/predicated_tile_iterator_params.h"
 
 // https://github.com/NVIDIA/cutlass/blob/master/media/docs/tile_iterator_concept.md
 
@@ -45,6 +48,10 @@ struct InThreadMap {
     struct Detail {
         static_assert(!(Shape::kStrided % kWarpCount),
                       " shape on V dim must be divisible by warp count ");
+        static_assert(kThreads > kWarpSize,
+                      " threads must be bigger than warp size");
+        static_assert(kWarpCount > 0,
+                      " kWarpCount must be > 0 ");
     };
 
     /// Shape of access by each thread
@@ -66,6 +73,7 @@ struct InThreadMap {
         return TensorCoord(lane_id, warp_id);
     }
 };
+
 
 
 // concept: ReadableTileIterator | ForwardTileIterator | MaskedTileIterator
@@ -101,19 +109,54 @@ struct InputTileIterator {
   const static int kChannelSize = Shape::kContiguous;
 
   struct Params  {
-    const GpuTensor<Element, 2> &inFeature_;
-    const GpuTensor<Index, 4> &Rule_;
-    const GpuTensor<Index, 2> &ruleSize_;
+      const GpuTensor<Element, 2> inFeature_;
+      const GpuTensor<int32_t, 4> Rule_;
+      const GpuTensor<int32_t, 2> ruleSize_;
 
-    // CUTLASS_HOST_DEVICE
-    Params(torch::Tensor &inFeature,
-           torch::Tensor &localRules,
-           torch::Tensor &ruleSize)
-           : inFeature_ ( inFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>()),
-        Rule_ ( localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>()),
-        ruleSize_ ( ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>())
-    {
-    }
+    //   Index increment_row;     ///< increment quantity (in rows) to advance when moving between rows
+    //   Index increment_group;   ///< increment quantity (in rows) to advance when moving to the next group
+    //   Index increment_cluster; ///< increment quantity (in rowas) to advance when moving to the next cluster
+
+    //   Index advance_row;     ///< amount to add to move to the next 'row' position
+    //   Index advance_group;   ///< amount to add to move to the next 'group' position
+    //   Index advance_cluster; ///< amount to add to move to the next 'cluster' position
+    //   Index advance_tile;    ///< amount to add to move to the next 'tile'
+
+    //   CUTLASS_HOST_DEVICE
+    //   void initialize(OutputtTileThreadMapDesc thread_map) {
+    //       increment_row = thread_map.delta.row;
+
+    //       increment_group = thread_map.delta.group - thread_map.delta.row * (thread_map.iterations.row - 1);
+
+    //       increment_cluster = thread_map.delta.cluster - thread_map.delta.group * (thread_map.iterations.group - 1) - thread_map.delta.row * (thread_map.iterations.row - 1);
+
+    //       advance_row = thread_map.shape.row;
+
+    //       advance_group =
+    //           (thread_map.shape.group - 1) * thread_map.shape.row * thread_map.count.row;
+
+    //       advance_cluster =
+    //           thread_map.count.group *
+    //           thread_map.shape.group *
+    //           thread_map.count.row *
+    //           thread_map.shape.row;
+
+    //       advance_tile =
+    //           thread_map.shape.group *
+    //           thread_map.shape.row *
+    //           thread_map.shape.cluster *
+    //           thread_map.shape.tile;
+    //   }
+
+      CUTLASS_HOST_DEVICE
+      Params(const GpuTensor<Element, 2> &inFeature,
+             const GpuTensor<int32_t, 4> &Rule,
+             const GpuTensor<int32_t, 2> &ruleSize) : inFeature_(inFeature),
+                                                      Rule_(Rule),
+                                                      ruleSize_(ruleSize)
+      {
+        //   initialize(make_OutputTileThreadMapDesc<ThreadMap>());
+      }
   };
 
 
@@ -144,6 +187,14 @@ private:
     int kernel_offset_;
     int rule_size_;
 
+    /// Iteration along vectors implied by the thread map
+    int iteration_vector_;
+
+    /// Iteration in the contiguous dimension
+    int iteration_contiguous_;
+
+    /// Iteration in the strided dimension
+    int iteration_strided_;
 
 public:
     CUTLASS_DEVICE void clear_mask() {
@@ -212,8 +263,18 @@ public:
             CUTLASS_PRAGMA_UNROLL
             for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
 
+                // assume kAccessesPerVector = 1
+    //             int idx = c + s * ThreadMap::Iterations::kContiguous;
+
+    // iteration_contiguous_ = idx % ThreadMap::Iterations::kContiguous;
+    // iteration_strided_ = idx / ThreadMap::Iterations::kContiguous;
+    //     int channel = c;
+                int idx = c + s * ThreadMap::Iterations::kContiguous;
+
                 int channel = thread_start_c_ + c * ThreadMap::Delta::kContiguous;
                 int global_offset = mask_.global_offset[s];
+
+                // printf("input channel = %d\n", channel);
                 AccessType const *access_ptr =
                     reinterpret_cast<AccessType const *>(
                         &(params_.inFeature_[global_offset][channel]));
@@ -221,7 +282,8 @@ public:
                 bool is_valid = (global_offset >= 0) && (channel < kChannelSize);
 
                 cutlass::arch::global_load<AccessType, sizeof(AccessType)>(
-                    frag_ptr[s], access_ptr, is_valid);
+                    frag_ptr[idx], access_ptr, is_valid);
+
             }
         }
     }
@@ -261,21 +323,19 @@ struct KernelTileIterator
     using TensorCoord = cutlass::layout::PitchLinearCoord;
 
     struct Params {
-        const GpuTensor<Element, 3> &weight_;
+         const GpuTensor<Element, 3> weight_;
 
-        // CUTLASS_HOST_DEVICE
-        Params(torch::Tensor &weight)
-        : weight_(weight.packed_accessor32<float, 3, torch::RestrictPtrTraits>())
-        {
-        }
+        CUTLASS_HOST_DEVICE
+        Params( const GpuTensor<Element, 3> &weight)
+        : weight_(weight) { }
     };
 
 private:
 
     Params const &params_;
     /// A threas's starting v
-    Index thread_start_co_;
     Index thread_start_ci_;
+    Index thread_start_co_;
     Index kernel_offset_;
     bool mask_;
 
@@ -292,6 +352,7 @@ public:
     }
 
     CUTLASS_DEVICE KernelTileIterator &operator++() {
+        thread_start_co_ += Shape::kContiguous;
         return *this;
     }
 
@@ -313,18 +374,23 @@ public:
 
         CUTLASS_PRAGMA_UNROLL
         for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
+
             CUTLASS_PRAGMA_UNROLL
             for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
 
-                int ci = thread_start_co_ + c * ThreadMap::Delta::kContiguous;
-                int co = thread_start_ci_ + s * ThreadMap::Delta::kStrided;
+                int idx = c + s * ThreadMap::Iterations::kContiguous;
 
+                int ci = thread_start_ci_ + s * ThreadMap::Delta::kStrided;
+                int co = thread_start_co_ + c * ThreadMap::Delta::kContiguous;
+
+
+                // printf("kernel, ci, co = (%d,%d)\n", ci, co);
                 AccessType const *access_ptr =
                     reinterpret_cast<AccessType const *>(
                         &(params_.weight_[kernel_offset_][ci][co]));
 
                 cutlass::arch::global_load<AccessType, sizeof(AccessType)>(
-                    frag_ptr[s], access_ptr, mask_);
+                    frag_ptr[idx], access_ptr, mask_);
             }
         }
     }
@@ -387,32 +453,35 @@ public:
   /// Memory access size
   using AccessType = cutlass::AlignedArray<Element, ThreadMap::kElementsPerAccess>;
 
-  const static int kChannelSize = Shape::kColumn;
+  const static int kChannelSize = Shape::kColumn; // oC
 
   struct Params  {
-    const GpuTensor<Element, 2> &outFeature_;
-    const GpuTensor<Index, 4> &Rule_;
-    const GpuTensor<Index, 2> &ruleSize_;
+    GpuTensor<Element, 2> outFeature_;
+    const GpuTensor<int32_t, 4> Rule_;
+    const GpuTensor<int32_t, 2> ruleSize_;
 
-    // CUTLASS_HOST_DEVICE
-    Params(torch::Tensor &outFeature,
-           torch::Tensor &localRules,
-           torch::Tensor &ruleSize)
-        :
-        outFeature_(outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>()),
-        Rule_(localRules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>()),
-        ruleSize_(ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>())
+    CUTLASS_HOST_DEVICE
+    Params(const GpuTensor<Element, 2> &outFeature,
+           const GpuTensor<int32_t, 4> &Rule,
+           const GpuTensor<int32_t, 2> &ruleSize)
+        : outFeature_(outFeature),
+          Rule_(Rule),
+          ruleSize_(ruleSize)
     {
     }
   };
 
     struct Mask {
-        static int const kCount = ThreadMap::Iterations::kRow;
+        static int const kCount = ThreadMap::Iterations::kRow *
+            ThreadMap::Iterations::kGroup *
+            ThreadMap::Iterations::kCluster;
 
         int global_offset[kCount];
 
         CUTLASS_DEVICE
-        Mask() { }
+        Mask() {
+            // printf("kCount = %d\n", kCount);
+         }
 
         ///< Efficiently disables all accesses guarded by mask
         CUTLASS_HOST_DEVICE void clear() {
@@ -428,7 +497,7 @@ public:
 private:
 
     Mask mask_;
-    Params const &params_;
+    const Params const &params_;
 
     /// Byte-level pointer
 
@@ -440,35 +509,149 @@ private:
 
     Index thread_start_v_;
 
+    /// Internal state counter
+    int state_[3];
+
 
 public:
     CUTLASS_DEVICE
-    OutTileIterator(Params const &params, int tile_idx, int v_begin, int thread_idx, int kernel_offset)
-    : params_(params),
-     tile_idx_(tile_idx),
-     kernel_offset_(kernel_offset)
-     {
+    OutTileIterator(
+        Params const &params,
+        // TensorCoord extent,  // V x oC
+        int tile_idx,
+        int v_begin,
+        int thread_idx,
+        int kernel_offset)
+        : params_(params),
+          tile_idx_(tile_idx),
+          kernel_offset_(kernel_offset)
+    {
+
+// v x ic      ic x oc
+// v x oc
+// 32 x 32
+        // if (tile_idx == 0 && thread_idx == 0) {
+        //     printf("shape = Shape<%d,%d,%d,%d,%d>, iterations = Shape<%d,%d,%d,%d,%d>"
+        //     " delta = Shape<%d,%d,%d,%d,%d>\n",
+        //         Shape::kColumn, Shape::kRow, Shape::kGroup, Shape::kCluster, Shape::kTile,
+        //         ThreadMap::Iterations::kColumn, ThreadMap::Iterations::kRow, ThreadMap::Iterations::kGroup, ThreadMap::Iterations::kCluster, ThreadMap::Iterations::kTile,
+        //         ThreadMap::Delta::kColumn, ThreadMap::Delta::kRow, ThreadMap::Delta::kGroup, ThreadMap::Delta::kCluster, ThreadMap::Delta::kTile
+        //     );
+        // }
+
         TensorCoord thread_offset = ThreadMap::initial_offset(thread_idx);
+        // printf(" inital offset = %d, %d\n", thread_offset.row(), thread_offset.column());
         thread_start_v_ = v_begin + thread_offset.row();
         thread_start_c_ = thread_offset.column();
+        // printf("T%3d, startvc(%2d,%2d)\n", thread_idx, thread_start_v_, thread_start_c_);
+
+        // if (((int)&params_ % 4) != 0) {
+        //     printf("params_ (%p) not aligned\n", &params_);
+        //     printf("tielidx:%d, v_begin:%d, thread_id:x%d, koffset:%d\n", tile_idx, v_begin, thread_idx, kernel_offset);
+        // }
+
         rule_size_ = params.ruleSize_[tile_idx][kernel_offset];
 
         // Initialize mask
         CUTLASS_PRAGMA_UNROLL
-        for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
-            int v = thread_start_v_ + ThreadMap::Delta::kRow * row;
-            mask_.global_offset[v] = (v < rule_size_) ?  params_.Rule_[tile_idx][kernel_offset][1][v] : -1;
+        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+
+            CUTLASS_PRAGMA_UNROLL
+            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+
+                CUTLASS_PRAGMA_UNROLL
+                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+
+                    int frag_row_idx =
+                        (row + ThreadMap::Iterations::kRow * (group + ThreadMap::Iterations::kGroup * cluster));
+
+                    int row_offset = row * ThreadMap::Delta::kRow
+                        + group * ThreadMap::Delta::kGroup
+                        + cluster * ThreadMap::Delta::kCluster;
+                    // printf("row_offset = %2d, cluster,group,row:(%2d,%2d,%2d),\n", row_offset,
+                    //     cluster, group, row);
+
+                    bool row_guard = (row_offset + thread_start_v_) < rule_size_;
+
+                    // printf("row_offset:%d, rowoff+start_v=%d, frag_row_idx=%d, start_c=%d \n",
+                    //     row_offset, row_offset+thread_start_v_, frag_row_idx , thread_start_c_
+                    // );
+
+                    mask_.global_offset[frag_row_idx] =
+                        row_guard ?
+                            params_.Rule_[tile_idx][kernel_offset][1][row_offset + thread_start_v_]
+                            : -1;
+
+                    // if (thread_start_c_ == 0) {
+                    //     printf("frag_row:%d, row_offset:%d, start_v:%d\n", frag_row_idx, row_offset, thread_start_v_);
+                    // }
+
+                }
+            }
         }
 
+        // Initialize internal state counter
+        state_[0] = state_[1] = state_[2] = 0;
     }
 
     CUTLASS_DEVICE OutTileIterator &operator++() {
-        thread_start_v_ += Shape::kRow;
+        ++state_[0];
 
+        // row_idx_ += params_.advance_row;
+        thread_start_v_ += ThreadMap::Shape::kRow ;
+        if (state_[0] == ThreadMap::Count::kRow)
+        {
+
+            state_[0] = 0;
+            ++state_[1];
+
+            thread_start_v_ += (ThreadMap::Shape::kGroup - 1) *
+                                 ThreadMap::Shape::kRow * ThreadMap::Count::kRow;
+
+            if (state_[1] == ThreadMap::Count::kGroup)
+            {
+
+                state_[1] = 0;
+                ++state_[2];
+
+                thread_start_v_ += ThreadMap::Count::kGroup *
+                                     ThreadMap::Shape::kGroup * ThreadMap::Count::kRow * ThreadMap::Shape::kRow;
+
+                if (state_[2] == ThreadMap::Count::kCluster)
+                {
+                    state_[2] = 0;
+                }
+            }
+        }
+        // init mask
         CUTLASS_PRAGMA_UNROLL
-        for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
-            int v = thread_start_v_ + ThreadMap::Delta::kRow * row;
-            mask_.global_offset[v] = (v < rule_size_) ?  params_.Rule_[tile_idx_][kernel_offset_][1][v] : -1;
+        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+
+            CUTLASS_PRAGMA_UNROLL
+            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+
+                CUTLASS_PRAGMA_UNROLL
+                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+
+                    int frag_row_idx =
+                        (row + ThreadMap::Iterations::kRow * (group + ThreadMap::Iterations::kGroup * cluster));
+
+                    int row_offset = row * ThreadMap::Delta::kRow
+                        + group * ThreadMap::Delta::kGroup
+                        + cluster * ThreadMap::Delta::kCluster;
+
+                    bool row_guard = (row_offset + thread_start_v_) < rule_size_;
+
+                    mask_.global_offset[frag_row_idx] =
+                        row_guard ?
+                            params_.Rule_[tile_idx_][kernel_offset_][1][row_offset + thread_start_v_]
+                            : -1;
+
+                    // if (thread_start_c_ == 0) {
+                    //     printf("update, frag_row:%d, row_offset:%d, start_v:%d\n", frag_row_idx, row_offset, thread_start_v_);
+                    // }
+                }
+            }
         }
 
         return *this;
@@ -493,11 +676,77 @@ public:
 
     CUTLASS_DEVICE
     void load(Fragment &frag) {
-        gpuUnimplementedErr;
+
+    AccessType *frag_ptr = reinterpret_cast<AccessType *>(&frag);
+
+    CUTLASS_PRAGMA_UNROLL
+    for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
+
+      CUTLASS_PRAGMA_UNROLL
+      for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
+
+
+        CUTLASS_PRAGMA_UNROLL
+        for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
+
+          int frag_row_idx =
+            (row + ThreadMap::Iterations::kRow * (group + ThreadMap::Iterations::kGroup * cluster));
+
+          int row_offset = row * ThreadMap::Delta::kRow
+            + group * ThreadMap::Delta::kGroup
+            + cluster * ThreadMap::Delta::kCluster;
+
+         bool row_guard = (row_offset + thread_start_v_) < rule_size_;
+
+         int global_offset = mask_.global_offset[frag_row_idx];
+
+        //   AccessType *memory_pointer = reinterpret_cast<AccessType *>(byte_pointer + byte_offset);
+
+         CUTLASS_PRAGMA_UNROLL
+         for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column)
+         {
+
+             int channel = thread_start_c_ + column * ThreadMap::Delta::kColumn;
+
+             // bool guard = row_guard && mask_.predicates[column];
+
+             bool is_valid = (global_offset >= 0) && (channel < kChannelSize) && row_guard;
+
+         AccessType *memory_pointer =
+             const_cast<AccessType *>(
+                 reinterpret_cast<const AccessType *>(
+                     &(params_.outFeature_[global_offset][channel])));
+
+             cutlass::arch::global_load<
+                 AccessType,
+                 sizeof(AccessType)>(
+                 frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn +
+                          column],
+                 (void *)&memory_pointer[column * ThreadMap::Delta::kColumn /
+                                         kElementsPerAccess],
+                 is_valid);
+          }
+
+        //   if (row + 1 < ThreadMap::Iterations::kRow) {
+        //     byte_pointer += params_.increment_row;
+        //   }
+        }
+
+        // if (group + 1 < ThreadMap::Iterations::kGroup) {
+        //   byte_pointer += params_.increment_group;
+        // }
+      }
+
+    //   if (cluster + 1 < ThreadMap::Iterations::kCluster) {
+    //     byte_pointer += params_.increment_cluster;
+    //   }
     }
+    }
+
 
     CUTLASS_DEVICE
     void store(Fragment const &frag) {
+        // int row_idx = row_idx_;
         AccessType const *frag_ptr = reinterpret_cast<AccessType const *>(&frag);
 
         CUTLASS_PRAGMA_UNROLL
@@ -513,31 +762,40 @@ public:
                         (row + ThreadMap::Iterations::kRow * (group + ThreadMap::Iterations::kGroup * cluster));
 
                     int row_offset = row * ThreadMap::Delta::kRow
-                        + group + ThreadMap::Delta::kGroup
+                        + group * ThreadMap::Delta::kGroup
                         + cluster * ThreadMap::Delta::kCluster;
 
-                    int global_offset = mask_.global_offset[row_offset];
+                    bool row_guard = (row_offset + thread_start_v_) < rule_size_;
+
+                    int global_offset = mask_.global_offset[frag_row_idx];
+
 
                     CUTLASS_PRAGMA_UNROLL
-                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
+                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column)
+                    {
 
                         int channel = thread_start_c_ + column * ThreadMap::Delta::kColumn;
 
+                        // printf("output channel = %d\n", channel);
+                        // printf("mem ptr = %p\n", memory_pointer);
+                        bool is_valid = (global_offset >= 0) && (channel < kChannelSize) && row_guard;
+
+                        // printf("T%03d, writeto vc(%02d,%02d)\n",
+                        //        threadIdx.x, row_offset + thread_start_v_, channel);
                         AccessType *memory_pointer =
                             const_cast<AccessType *>(
                                 reinterpret_cast<const AccessType *>(
                                     &(params_.outFeature_[global_offset][channel])));
 
-                        bool is_valid = (mask_.global_offset[row_offset] >= 0) && (channel < kChannelSize);
 
                         cutlass::arch::global_store<AccessType, sizeof(AccessType)>(
                             frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column],
                             (void *)&memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess],
                             is_valid);
-
                     }
+                    // if (row + 1 < ThreadMap::Iterations::kRow) {
+                    // }
                 }
-
             }
         }
     }

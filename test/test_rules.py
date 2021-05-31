@@ -400,11 +400,11 @@ class TestClass:
             [0, 0, 1, 0],
             [0, 1, 1, 1],
         ], dtype=torch.int).cuda()
-        D = 2
-        W = 2
-        H = 2
+        D = 4
+        W = 4
+        H = 4
         spatial_shape_DWH = [D, W, H]
-        inChannel = 32
+        inChannel = 16
         outChannel = 32
         batch_size = 1
         voxel_features = torch.arange( indices_zyx.shape[0],
@@ -456,7 +456,11 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        weight = torch.ones((kernel_size, kernel_size, kernel_size,
+        # weight = torch.zeros((kernel_size, kernel_size, kernel_size,
+        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        # weight[0,0,1,1,1] = 888.0
+        # weight[0,0,0,1,1] = 888.0
+        weight = torch.randn((kernel_size, kernel_size, kernel_size,
                              inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
 
         out_features = spconv.ops.indice_conv(
@@ -472,14 +476,16 @@ class TestClass:
         sphconv_dense = sphconv.SparseConvTensor(
             sph_out_features, spatial_shape_DWH, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
 
+        print("spconv out_features = ", out_features)
         print("sphconv out_features = ", sph_out_features)
 
         print("spconv_dense = ", spconv_dense[0,0,:,:,:])
         print("spconv_dense shape = ", spconv_dense.shape)
         print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
         print("sphconv_dense shape = ", sphconv_dense.shape)
+        print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
 
-        assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
+        assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.1))
 
 
     def test_rule_conv(self):
