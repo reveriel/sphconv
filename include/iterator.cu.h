@@ -22,59 +22,6 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 namespace threadblock {
 
 
-template<
-        typename Shape_,  // pitchlinear
-        int Threads,
-        int ElementsPerAccess = 1>
-struct InThreadMap {
-
-    // TODO: split Rule to input and output rule
-    /// 2d coordinate, RuLe[tile][k][0][v];
-    //  the (v, ic) coordinate
-    using TensorCoord = cutlass::layout::PitchLinearCoord;
-    /// Tile shape, V x iC
-    using Shape = Shape_;
-
-    /// Number of threads total
-    static int const kThreads = Threads;
-
-    static int const kElementsPerAccess = ElementsPerAccess;
-
-    static int const kWarpSize = 32;
-
-    static int const kVStride = kThreads / kWarpSize;
-    static int const kWarpCount = kThreads / kWarpSize;
-
-    struct Detail {
-        static_assert(!(Shape::kStrided % kWarpCount),
-                      " shape on V dim must be divisible by warp count ");
-        static_assert(kThreads > kWarpSize,
-                      " threads must be bigger than warp size");
-        static_assert(kWarpCount > 0,
-                      " kWarpCount must be > 0 ");
-    };
-
-    /// Shape of access by each thread
-    using ThreadAccessShape = cutlass::layout::PitchLinearShape<kElementsPerAccess, 1>;
-
-    /// Number of iterations by each thread
-    ///< Iterations along each dimension (concept: PitchLinearShape)
-    using Iterations = cutlass::layout::PitchLinearShape<Shape::kContiguous / kWarpSize, Shape::kStrided / kWarpCount>;
-
-    ///< Delta betweeen accesses (units of elements, concept: PitchLinearShape)
-    using Delta = cutlass::layout::PitchLinearShape<kWarpSize, kWarpCount> ;
-
-    /// Maps thread ID to a coordinate offset within the tensor's logical
-    /// coordinate space,  (v, ic)
-    CUTLASS_HOST_DEVICE
-    static TensorCoord initial_offset(int thread_id) {
-        int warp_id = (thread_id / kWarpSize);
-        int lane_id = (thread_id % kWarpSize);
-        return TensorCoord(lane_id, warp_id);
-    }
-};
-
-
 
 // concept: ReadableTileIterator | ForwardTileIterator | MaskedTileIterator
 
@@ -188,13 +135,13 @@ private:
     int rule_size_;
 
     /// Iteration along vectors implied by the thread map
-    int iteration_vector_;
+    // int iteration_vector_;
 
     /// Iteration in the contiguous dimension
-    int iteration_contiguous_;
+    // int iteration_contiguous_;
 
     /// Iteration in the strided dimension
-    int iteration_strided_;
+    // int iteration_strided_;
 
 public:
     CUTLASS_DEVICE void clear_mask() {
@@ -706,11 +653,11 @@ public:
          for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column)
          {
 
-             int channel = thread_start_c_ + column * ThreadMap::Delta::kColumn;
+             int channel = thread_start_c_;// + column * ThreadMap::Delta::kColumn;
 
              // bool guard = row_guard && mask_.predicates[column];
 
-             bool is_valid = (global_offset >= 0) && (channel < kChannelSize) && row_guard;
+             bool is_valid = (global_offset >= 0) && (channel + column * ThreadMap::Delta::kColumn < kChannelSize) && row_guard;
 
          AccessType *memory_pointer =
              const_cast<AccessType *>(
@@ -774,11 +721,11 @@ public:
                     for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column)
                     {
 
-                        int channel = thread_start_c_ + column * ThreadMap::Delta::kColumn;
+                        int channel = thread_start_c_;// + column * ThreadMap::Delta::kColumn;
 
                         // printf("output channel = %d\n", channel);
                         // printf("mem ptr = %p\n", memory_pointer);
-                        bool is_valid = (global_offset >= 0) && (channel < kChannelSize) && row_guard;
+                        bool is_valid = (global_offset >= 0) && (channel + column * ThreadMap::Delta::kColumn < kChannelSize) && row_guard;
 
                         // printf("T%03d, writeto vc(%02d,%02d)\n",
                         //        threadIdx.x, row_offset + thread_start_v_, channel);

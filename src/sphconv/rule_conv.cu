@@ -512,7 +512,7 @@ rule_conv(torch::Tensor feature,  //  [NNZ, C]
     static int const kAlignmentA = 1;
     static int const kAlignmentB = 1;
     // v,  oC, iC
-    using ThreadblockShape = cutlass::gemm::GemmShape<VBLOCK, 32, 32>;
+    using ThreadblockShape = cutlass::gemm::GemmShape<VBLOCK, 32, 16>;
     using WarpShape = cutlass::gemm::GemmShape<8, 32, 8>;
     using InstructionShape = cutlass::gemm::GemmShape<1, 1, 1>;
     using Operator = cutlass::arch::OpMultiplyAdd;
