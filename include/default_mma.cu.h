@@ -1,21 +1,9 @@
 
-#include "iterator.cu.h"
 
-#include "cutlass/aligned_buffer.h"
-#include "cutlass/cutlass.h"
-#include "cutlass/device_kernel.h"
-#include "cutlass/layout/matrix.h"
-#include "cutlass/layout/pitch_linear.h"
-#include "cutlass/matrix_shape.h"
-#include "cutlass/transform/pitch_linear_thread_map.h"
-#include "cutlass/wmma_array.h"
-
-#include "cutlass/arch/arch.h"
-#include "cutlass/gemm/device/gemm.h"
-#include "cutlass/gemm/gemm.h"
 #include "cutlass/gemm/threadblock/default_mma_core_simt.h"
 #include "cutlass/gemm/threadblock/mma_pipelined.h"
 
+#include "iterator.cu.h"
 #include "debug_utils.h"
 #include "timer.h"
 

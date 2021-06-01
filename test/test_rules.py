@@ -171,6 +171,31 @@ class TestClass:
         ## stride used always be 1, since its submanifold
         #####
 
+        # TODO : fix this
+        # assert_correct_cmp_with_spconv(
+        #     indices, batch_size=1, spatial_shape_DWH=[2, 2, 2],
+        #     kernel_size=[1, 1, 1], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        # TODO : fix this
+        # assert_correct_cmp_with_spconv(
+        #     indices, batch_size=1, spatial_shape_DWH=[2, 2, 2],
+        #     kernel_size=[1, 2, 1], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        # TODO : fix this
+        # assert_correct_cmp_with_spconv(
+        #     indices, batch_size=1, spatial_shape_DWH=[2, 2, 2],
+        #     kernel_size=[2, 2, 1], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        # TODO : fix this
+        # assert_correct_cmp_with_spconv(
+        #     indices, batch_size=1, spatial_shape_DWH=[4, 4, 2],
+        #     kernel_size=[2, 2, 1], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        # TODO : fix this
+        # assert_correct_cmp_with_spconv(
+        #     indices, batch_size=1, spatial_shape_DWH=[4, 4, 2],
+        #     kernel_size=[1, 1, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
         assert_correct_cmp_with_spconv(
             indices, batch_size=1, spatial_shape_DWH=[2, 2, 2],
             kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
@@ -398,7 +423,7 @@ class TestClass:
             [0, 0, 0, 0],
             [0, 0, 0, 1],
             [0, 0, 1, 0],
-            [0, 1, 1, 1],
+            [0, 0, 1, 1],
         ], dtype=torch.int).cuda()
         D = 4
         W = 4
@@ -413,15 +438,19 @@ class TestClass:
                           dtype=torch.float, device=indices_zyx.device).repeat(indices_zyx.shape[0], 1)
         voxel_features = torch.arange( indices_zyx.shape[0] * inChannel,
                           dtype=torch.float, device=indices_zyx.device).reshape((indices_zyx.shape[0], inChannel))
-        voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
-        # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        # voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / 5
-        # voxel_features[0,:] = 1.0
+        # voxel_features[0,0] = 1.
+        # voxel_features[0,1] = 2.
+        # voxel_features[1,0] = 2.
+        # voxel_features[1,:] = 2.0
+        # voxel_features[2,:] = 3.0
 
         tensor = sphconv.SparseConvTensor(
             voxel_features, spatial_shape_DWH, batch_size, indices=indices_zyx)
 
-        kernel_size = 3
+        kernel_size = 2
         stride = 1
         padding = 1
         # padding must be 1, I think it's spconv's bug
@@ -456,14 +485,12 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        weight = torch.zeros((kernel_size, kernel_size, kernel_size,
-                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
-        weight[0,0,1,1,1] = 888.0
-        weight[0,0,0,1,1] = 888.0
+        # weight = torch.zeros((kernel_size, kernel_size, kernel_size,
+        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
         # weight[0,0,1,1,1] = 888.0
         # weight[0,0,0,1,1] = 888.0
-        # weight = torch.randn((kernel_size, kernel_size, kernel_size,
-        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        weight = torch.randn((kernel_size, kernel_size, kernel_size,
+                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
 
         out_features = spconv.ops.indice_conv(
             voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])

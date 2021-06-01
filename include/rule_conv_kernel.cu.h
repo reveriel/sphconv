@@ -44,12 +44,20 @@ struct Conv {
         const GpuTensor<int32_t, 2> ruleSize_;
 
         CUTLASS_HOST_DEVICE
-        Params(const GpuTensor<float, 2>& feature, const GpuTensor<float, 3>& weight,
-               const GpuTensor<int32_t, 4>& localRules, const GpuTensor<int32_t, 2>& ruleSize,
-               const GpuTensor<float, 2>& outFeature, int kernel_volume,
+        Params(const GpuTensor<float, 2>& feature,
+               const GpuTensor<float, 3>& weight,
+               const GpuTensor<int32_t, 4>& localRules,
+               const GpuTensor<int32_t, 2>& ruleSize,
+               const GpuTensor<float, 2>& outFeature,
+               int kernel_volume,
                typename OutputOp::Params output_op = typename OutputOp::Params(1, 1)) // acumulate on result, beta = 1
-            : params_A(feature, localRules, ruleSize), params_B(weight), params_D(outFeature, localRules, ruleSize),
-              output_op(output_op), in_channel_(weight.size(1)), kernel_volume_(kernel_volume), ruleSize_(ruleSize)
+            : params_A(feature, localRules, ruleSize),
+              params_B(weight),
+              params_D(outFeature, localRules, ruleSize),
+              output_op(output_op),
+              in_channel_(weight.size(1)),
+              kernel_volume_(kernel_volume),
+              ruleSize_(ruleSize)
         {
         }
     };
@@ -77,8 +85,11 @@ struct Conv {
         // Compute threadblock-scoped matrix multiply-add
         // int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
         int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
+        // int gemm_k_iterations = 1;
+        printf(" gemm k iterations = %d\n", gemm_k_iterations);
 
         for (int k = 0; k < params.kernel_volume_; k++) {
+
             // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);
             int kRuleSize = params.ruleSize_[tile][k];
 
@@ -91,31 +102,62 @@ struct Conv {
 
                 int thread_idx = threadIdx.x;
                 // Construct iterators
-                typename Mma::IteratorA iterator_A(params.params_A, thread_idx, tile, vbegin, k);
+                typename Mma::IteratorA iterator_A(
+                    params.params_A,
+                    thread_idx,
+                    tile,
+                    vbegin,
+                    k);
 
-                typename Mma::IteratorB iterator_B(params.params_B, thread_idx, k);
+                typename Mma::IteratorB iterator_B(
+                    params.params_B,
+                    thread_idx,
+                    k);
 
                 // Broadcast the warp_id computed by lane 0 to ensure dependent code
                 // is compiled as warp-uniform.
                 int warp_id = __shfl_sync(0xffffffff, threadIdx.x / 32, 0);
                 int lane_id = threadIdx.x % 32;
 
+                //
+                // Main loop
+                //
+
+                // Construct thread-scoped matrix multiply
                 Mma mma(shared_storage.main_loop, thread_idx, warp_id, lane_id);
 
                 typename Mma::FragmentC accumulators;
+
                 accumulators.clear();
 
-                // threadblock-scoped
                 mma(gemm_k_iterations, accumulators, iterator_A, iterator_B, accumulators);
+
+                //
+                // Epilogue
+                //
 
                 OutputOp output_op(params.output_op);
 
                 // printf("&params.params_D = %p\n", &params.params_D);
-                typename Epilogue::OutputTileIterator iterator_D(params.params_D, tile, vbegin, thread_idx, k);
+                typename Epilogue::OutputTileIterator iterator_D(
+                    params.params_D,
+                    tile,
+                    vbegin,
+                    thread_idx,
+                    k);
 
-                typename Epilogue::OutputTileIterator iterator_C = iterator_D;
+                typename Epilogue::OutputTileIterator iterator_C(
+                    params.params_D,
+                    tile,
+                    vbegin,
+                    thread_idx,
+                    k);
 
-                Epilogue epilogue(shared_storage.epilogue, thread_idx, warp_id, lane_id);
+                Epilogue epilogue(
+                    shared_storage.epilogue,
+                    thread_idx,
+                    warp_id,
+                    lane_id);
 
                 epilogue(output_op, iterator_D, accumulators, iterator_C);
 
