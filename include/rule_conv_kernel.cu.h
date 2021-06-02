@@ -1,3 +1,5 @@
+#pragma once
+
 #include <torch/extension.h>
 
 #include "cutlass/aligned_buffer.h"
@@ -39,11 +41,19 @@ struct Conv {
         typename Mma::IteratorB::Params params_B;
         typename Epilogue::OutputTileIterator::Params params_D;
         typename OutputOp::Params output_op;
+
         int kernel_volume_;
         int in_channel_;
-        const GpuTensor<int32_t, 2> ruleSize_;
+        GpuTensor<int32_t, 2> ruleSize_;
 
-        CUTLASS_HOST_DEVICE
+        Params()
+            : kernel_volume_(0),
+              in_channel_(0),
+              ruleSize_(0, zeros, zeros)
+        {
+        }
+
+        // CUTLASS_HOST_DEVICE
         Params(const GpuTensor<float, 2>& feature,
                const GpuTensor<float, 3>& weight,
                const GpuTensor<int32_t, 4>& localRules,
@@ -86,7 +96,7 @@ struct Conv {
         // int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
         int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
         // int gemm_k_iterations = 1;
-        printf(" gemm k iterations = %d\n", gemm_k_iterations);
+        // printf(" gemm k iterations = %d\n", gemm_k_iterations);
 
         for (int k = 0; k < params.kernel_volume_; k++) {
 

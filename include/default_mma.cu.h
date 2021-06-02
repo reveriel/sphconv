@@ -1,4 +1,4 @@
-
+#pragma once
 
 #include "cutlass/gemm/threadblock/default_mma_core_simt.h"
 #include "cutlass/gemm/threadblock/mma_pipelined.h"

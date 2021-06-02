@@ -9,6 +9,9 @@
 #include <vector>
 
 #define TILE_N_MAX 1536
+
+static const int zeros[] = {0, 0, 0, 0, 0};
+
 #define DEBUG
 
 #ifdef DEBUG

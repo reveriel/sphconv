@@ -423,13 +423,13 @@ class TestClass:
             [0, 0, 0, 0],
             [0, 0, 0, 1],
             [0, 0, 1, 0],
-            [0, 0, 1, 1],
+            [0, 1, 1, 1],
         ], dtype=torch.int).cuda()
         D = 4
         W = 4
         H = 4
         spatial_shape_DWH = [D, W, H]
-        inChannel = 16
+        inChannel = 32
         outChannel = 32
         batch_size = 1
         voxel_features = torch.arange( indices_zyx.shape[0],
@@ -598,8 +598,8 @@ class TestClass:
         W = 6
         H = 20
         spatial_shape_DWH = [D, W, H]
-        inChannel = 64
-        outChannel = 64
+        inChannel = 32
+        outChannel = 32
         batch_size = 1
         voxel_features = torch.arange( indices_bzyx.shape[0],
                           dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
