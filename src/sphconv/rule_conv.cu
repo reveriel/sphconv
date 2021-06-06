@@ -1,6 +1,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
+#include "cutlass/gemm/gemm.h"
 
 #include "default_conv.cu.h"
 #include "rule_conv_kernel.cu.h"
@@ -13,6 +14,7 @@ namespace sphconv
 
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
+using cutlass::gemm::GemmShape;
 
 const int VBLOCK = 16;
 
@@ -38,31 +40,7 @@ namespace device
 
 using cutlass::Status;
 
-// struct ConvBase {
-
-
-//     virtual Status initialize(Arguments const& args){};
-
-//     virtual Status run(cudaStream_t stream=nullptr){};
-
-//     virtual ~ConvBase() = default;
-// };
-
-template <
-    int VBLOCK,
-    // output channel size
-    int Co_BLOCK,
-    // input channel size
-    int Ci_BLOCK = 8>
-struct Conv  {
-
-    using ConvKernel = typename kernel::DefaultConv<VBLOCK, Co_BLOCK, Ci_BLOCK>::ConvKernel;
-
-    static size_t get_workspace_size()
-    {
-        // TODO: use cudaMemsetAsync(workspace, 0, bytes, stream)
-        return 0;
-    }
+struct ConvBase {
 
     struct Arguments {
         torch::Tensor feature;    //  [NNZ, iC]
@@ -88,6 +66,30 @@ struct Conv  {
         }
     };
 
+    virtual Status initialize(Arguments const& args){ return Status::kSuccess; };
+
+    virtual Status run(cudaStream_t stream=nullptr){ return Status::kSuccess; };
+
+    virtual ~ConvBase() = default;
+};
+
+template <
+    /// GemmShape, V, oC, iC
+    typename ThreadBlockShape_,
+    /// GemmShape, V, oC, iC
+    typename WarpShape_>
+struct Conv : public ConvBase {
+
+    using ConvKernel = typename kernel::DefaultConv<ThreadBlockShape_,
+                                                    WarpShape_>::ConvKernel;
+
+    static size_t get_workspace_size()
+    {
+        // TODO: use cudaMemsetAsync(workspace, 0, bytes, stream)
+        // might be useful when used in multiple streams
+        return 0;
+    }
+
 private:
     typename ConvKernel::Params params_;
     int NTile_;
@@ -95,10 +97,11 @@ private:
 public:
     /// Constructs the Conv
     Conv() {
-        printf("how do you do ?\n");
+        printf(" kWarpGemmIterations = %d \n", ConvKernel::Mma::kWarpGemmIterations);
+
     }
 
-    Status initialize(Arguments const& args)
+    Status initialize(Arguments const& args) override
     {
         NTile_ = args.ruleSize.size(0);
         int kernelVolume = args.weight.size(0);
@@ -114,7 +117,7 @@ public:
         return Status::kSuccess;
     }
 
-    Status run(cudaStream_t stream = nullptr)
+    Status run(cudaStream_t stream = nullptr) override
     {
         dim3 grid(NTile_);
         dim3 block(ConvKernel::kThreadCount, 1, 1);
@@ -122,7 +125,7 @@ public:
         cudaError_t result;
 
         int smem_size = int(sizeof(typename ConvKernel::SharedStorage));
-        printf("smem_size = %d\n", smem_size);
+        // printf("smem_size = %d\n", smem_size);
 
         if (smem_size >= (48 << 10)) {
             printf("info: use 48KB more SMEM\n");
@@ -168,8 +171,6 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
           std::vector<int64_t> outSpatialShape,
           int outNNZ)
 {
-    printf(" conv begin\n");
-
     int iC = weight.size(1);
     int oC = weight.size(2);
 
@@ -183,49 +184,39 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
         torch::zeros({outNNZ, oC},
                      torch::dtype(feature.dtype()).device(feature.device()));
 
+    std::shared_ptr<ConvBase> conv;
 
-    using ConvKernel = Conv<32, 32>;
-    // auto conv = Conv<16, 32>();
+    switch (OC_BLOCK) {
+    case 8:
+        // if oc = 8
+        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
+        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 8, 8>>>();
+        break;
+    case 16:
+        // if oc = 16
+        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
+        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 32, 8>>>();
+        break;
+    case 32:
+        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 32, 8>>>();
+        break;
+    case 64:
+        conv = std::make_shared<Conv<GemmShape<16, 64, 8>, GemmShape<16, 32, 8>>>();
+        break;
+    default:
+        printf("unsupported oC = %d\n", oC);
+    }
 
-    printf(" conv constrcut\n");
-    ConvKernel conv;
-
-    // std::unique_ptr<ConvBase> conv;
-
-    // switch (OC_BLOCK) {
-    // case 8:
-    //     // if oc = 8
-    //     // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-    //     conv.reset(new Conv<16, 32>());
-    //     break;
-    // case 16:
-    //     // if oc = 16
-    //     // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-    //     conv.reset(new Conv<16, 32>());
-    //     break;
-    // case 32:
-    //     conv.reset(new Conv<16, 32>());
-    //     break;
-    // case 64:
-    //     conv.reset(new Conv<16, 64>());
-    //     break;
-    // default:
-    //     printf("unsupported oC = %d\n", oC);
-    // }
-
-    printf(" args init\n ");
-    typename ConvKernel::Arguments args(
+    ConvBase::Arguments args(
         feature,
         weight,
         localRules,
         ruleSize,
         outFeature);
 
-    printf(" conv init\n");
-    conv.initialize(args);
+    conv->initialize(args);
 
-    printf(" conv run\n");
-    conv.run();
+    conv->run();
 
     return outFeature;
 }

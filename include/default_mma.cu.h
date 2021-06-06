@@ -2,6 +2,8 @@
 
 #include "cutlass/gemm/threadblock/default_mma_core_simt.h"
 #include "cutlass/gemm/threadblock/mma_pipelined.h"
+#include "cutlass/gemm/threadblock/mma_singlestage.h"
+
 
 #include "iterator.cu.h"
 #include "debug_utils.h"
@@ -90,7 +92,7 @@ struct DefaultMma<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
 
     static int const kThreads = MmaCore::kThreads;
     static int const kElementsPerAccess = 1;
-    using Shape = typename MmaCore::Shape; // gemmshape
+    using Shape = ThreadblockShape; // gemmshape, ThreadblockShape
 
     using IteratorThreadMapA = cutlass::transform::PitchLinearStripminedThreadMap<
         cutlass::layout::PitchLinearShape<Shape::kK, Shape::kM>,

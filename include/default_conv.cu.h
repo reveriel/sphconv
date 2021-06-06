@@ -10,12 +10,10 @@ namespace kernel
 {
 
 template <
-    int VBLOCK,
-    // output channel size
-    int Co_BLOCK,
-    // input channel size
-    int Ci_BLOCK = 8
-    >
+    /// GemmShape, V, oC, iC
+    typename ThreadBlockShape_,
+    /// GemmShape, V, oC, iC
+    typename WarpShape_>
 struct DefaultConv {
 
     using ElementA = float;
@@ -25,8 +23,9 @@ struct DefaultConv {
     static int const kAlignmentA = 1;
     static int const kAlignmentB = 1;
     // v,  oC, iC
-    using ThreadblockShape = cutlass::gemm::GemmShape<VBLOCK, Co_BLOCK, Ci_BLOCK>;
-    using WarpShape = cutlass::gemm::GemmShape<16, 32, 8>;
+    using ThreadblockShape = ThreadBlockShape_;// cutlass::gemm::GemmShape<VBLOCK, Co_BLOCK, Ci_BLOCK>;
+    using WarpShape = WarpShape_;// cutlass::gemm::GemmShape<16, Co_, 8>;
+
     using InstructionShape = cutlass::gemm::GemmShape<1, 1, 1>;
     using Operator = cutlass::arch::OpMultiplyAdd;
     static int const kStages = 2;

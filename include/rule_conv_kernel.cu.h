@@ -78,13 +78,11 @@ struct Conv {
     };
 
     CUTLASS_HOST_DEVICE
-    Conv() {}
+    Conv() { }
 
     CUTLASS_DEVICE
     void operator()(Params const& params, SharedStorage& shared_storage)
     {
-        // const int VBLOCK = 32;
-
         int tile = blockIdx.x;
 
         // Problem size is a function of threadblock index in the K dimension

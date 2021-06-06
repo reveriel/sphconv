@@ -425,12 +425,12 @@ class TestClass:
             [0, 0, 1, 0],
             [0, 1, 1, 1],
         ], dtype=torch.int).cuda()
-        D = 4
-        W = 4
-        H = 4
+        D = 3
+        W = 3
+        H = 3
         spatial_shape_DWH = [D, W, H]
-        inChannel = 32
-        outChannel = 32
+        inChannel = 16
+        outChannel = 16
         batch_size = 1
         voxel_features = torch.arange( indices_zyx.shape[0],
                           dtype=torch.float, device=indices_zyx.device).repeat(inChannel).reshape((indices_zyx.shape[0], inChannel))
@@ -438,19 +438,19 @@ class TestClass:
                           dtype=torch.float, device=indices_zyx.device).repeat(indices_zyx.shape[0], 1)
         voxel_features = torch.arange( indices_zyx.shape[0] * inChannel,
                           dtype=torch.float, device=indices_zyx.device).reshape((indices_zyx.shape[0], inChannel))
-        # voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
-        voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
-        # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / 5
+        voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / l
         # voxel_features[0,0] = 1.
-        # voxel_features[0,1] = 2.
+        # voxel_features[0,15] = 2.
         # voxel_features[1,0] = 2.
-        # voxel_features[1,:] = 2.0
-        # voxel_features[2,:] = 3.0
+        # voxel_features[1,:] = 3.0
+        # voxel_features[2,:] = 1.0
 
         tensor = sphconv.SparseConvTensor(
             voxel_features, spatial_shape_DWH, batch_size, indices=indices_zyx)
 
-        kernel_size = 2
+        kernel_size = 3
         stride = 1
         padding = 1
         # padding must be 1, I think it's spconv's bug
@@ -485,10 +485,10 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        # weight = torch.zeros((kernel_size, kernel_size, kernel_size,
-        #                      inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
-        # weight[0,0,1,1,1] = 888.0
-        # weight[0,0,0,1,1] = 888.0
+        weight = torch.zeros((kernel_size, kernel_size, kernel_size,
+                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+        weight[0,0,0,1,1] = 888.0
+        weight[0,0,1,1,1] = 8.0
         weight = torch.randn((kernel_size, kernel_size, kernel_size,
                              inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
 
@@ -513,6 +513,7 @@ class TestClass:
         print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
         print("sphconv_dense shape = ", sphconv_dense.shape)
         print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+        print("sum  = ", (spconv_dense.sum() - sphconv_dense.sum()).sum())
 
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.1))
 
@@ -598,8 +599,8 @@ class TestClass:
         W = 6
         H = 20
         spatial_shape_DWH = [D, W, H]
-        inChannel = 32
-        outChannel = 32
+        inChannel = 64
+        outChannel = 64
         batch_size = 1
         voxel_features = torch.arange( indices_bzyx.shape[0],
                           dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))

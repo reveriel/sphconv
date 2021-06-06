@@ -141,7 +141,7 @@ class TestClass:
         #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
         assert_correct_cmp_with_spconv(
-            indices_zyx, batch_size=8, inChannel=16, outChannel=16, spatial_shape_DWH=[3, 3, 3],
+            indices_zyx, batch_size=1, inChannel=16, outChannel=16, spatial_shape_DWH=[3, 3, 3],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
         # assert_correct_cmp_with_spconv(
