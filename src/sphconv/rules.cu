@@ -68,8 +68,8 @@ __global__ void prepareSubMGridKernel(
     GpuTensor<IType, 4> grid,
     int B, int H, int W)
 {
-    IType x = threadIdx.x + blockDim.x * blockIdx.x;
-    IType y = threadIdx.y + blockDim.y * blockIdx.y;
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
     if (x >= H || y >= W)
         return;
 
@@ -82,7 +82,7 @@ __global__ void prepareSubMGridKernel(
         // diverge here, but we assume it's quick
         for (int pos = zStart; pos < zEnd; pos++)
         {
-            IType z = zIndices[pos];
+            int z = zIndices[pos];
             grid[b][x][y][z] = pos;
         }
     }
@@ -113,27 +113,27 @@ __global__ void prepareGridKernel(
     int padH, int padW, int padD,
     int dH, int dW, int dD)
 {
-    IType oH = grid.size(1);
-    IType oW = grid.size(2);
-    IType oD = grid.size(3);
+    int oH = grid.size(1);
+    int oW = grid.size(2);
+    int oD = grid.size(3);
 
-    IType x = threadIdx.x + blockDim.x * blockIdx.x;
-    IType y = threadIdx.y + blockDim.y * blockIdx.y;
-    IType k = threadIdx.z + blockDim.z * blockIdx.z;
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    int k = threadIdx.z;
 
     if (x >= H || y >= W)
         return;
 
     // (KH, KW, KD)
     // k =  kx * KH  ky kz
-    IType k_H = k / (KW * KD);
-    IType k_W = (k / KD) % KW;
-    IType k_D = k % KD;
+    int k_H = k / (KW * KD);
+    int k_W = (k / KD) % KW;
+    int k_D = k % KD;
 
-    IType oX = OutSpatial(k_H, x, sH, dH, padH);
+    int oX = OutSpatial(k_H, x, sH, dH, padH);
     if (oX < 0 || oX >= oH)
         return;
-    IType oY = OutSpatial(k_W, y, sW, dW, padW);
+    int oY = OutSpatial(k_W, y, sW, dW, padW);
     if (oY < 0 || oY >= oW)
         return;
 
@@ -146,12 +146,12 @@ __global__ void prepareGridKernel(
         // diverge here, but we assume it's quick
         for (int pos = zStart; pos < zEnd; pos++)
         {
-            IType z = zIndices[pos];
-            IType oZ = OutSpatial(k_D, z, sD, dD, padD);
+            int z = zIndices[pos];
+            int oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
                 continue;
 
-            grid[b][oX][oY][oZ] = IType(1);
+            grid[b][oX][oY][oZ] = 1;
         }
     }
 }
@@ -207,13 +207,13 @@ __global__ void getOzIndicesAndRulesKernel(
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
 
         for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++) {
-            IType z = zIndices[globalInIdx];
-            IType oZ = OutSpatial(k_D, z, sD, dD, padD);
+            int z = zIndices[globalInIdx];
+            int oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
                 continue;
 
-            IType globalOutIdx = grid[b][oX][oY][oZ] - 1;
-            IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
+            int globalOutIdx = grid[b][oX][oY][oZ] - 1;
+            int counter = atomicAdd(&ruleSize[nTile][k], 1);
 
             if (counter < TILE_N_MAX) {
                 rules[nTile][k][0][counter] = globalInIdx;
@@ -247,21 +247,16 @@ __global__ void getSubMRulesKernel(
     int inTileH, int inTileW,
     int outTileH, int outTileW)
 {
-    // extern __shared__ int *shared;
-    // IType *inTileGrid = &shared[0];
-    // IType *outTileGrid = &shared[inTileGridSize];
-
     int oH = grid.size(1);
     int oW = grid.size(2);
     int oD = grid.size(3);
 
     int x = threadIdx.x + blockDim.x * blockIdx.x;
     int y = threadIdx.y + blockDim.y * blockIdx.y;
-    int k = threadIdx.z + blockDim.z * blockIdx.z;
-
     if (x >= H || y >= W)
         return;
 
+    int k = threadIdx.z;
     int k_H = k / (KW * KD);
     int k_W = (k / KD) % KW;
     int k_D = k % KD;
@@ -282,19 +277,18 @@ __global__ void getSubMRulesKernel(
         int zEnd = zPtr[b][x][y];
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
 
-
         // diverge here
         for (int globalInIdx = zStart; globalInIdx < zEnd; globalInIdx++) {
-            IType z = zIndices[globalInIdx];
-            IType oZ = OutSpatial(k_D, z, sD, dD, padD);
+            int z = zIndices[globalInIdx];
+            int oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
                 continue;
 
-            IType globalOutIdx = grid[b][oX][oY][oZ];
+            int globalOutIdx = grid[b][oX][oY][oZ];
             if (globalOutIdx < 0)
                 continue;
 
-            IType counter = atomicAdd(&ruleSize[nTile][k], IType(1));
+            int counter = atomicAdd(&ruleSize[nTile][k], 1);
 
             if (counter < TILE_N_MAX) {
                 rules[nTile][k][0][counter] = globalInIdx;
@@ -333,23 +327,18 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
                std::vector<int64_t> padding,
                std::vector<int64_t> dilation)
 {
-    int H_BLOCK = 4;
-    int W_BLOCK = 8;
-
-    dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
-    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, 1);
 
     torch::Tensor grid = torch::full({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
                                      /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
+    dim3 gridSize(divUp(spatialShape[0], 16), divUp(spatialShape[1], 32));
+    dim3 blockSize(16, 32, 1);
     prepareSubMGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         batchSize,
         spatialShape[0], spatialShape[1]);
-
-    // printTensor<int>(grid, "grid", 0, 0, outSpatialShape[0], 0, outSpatialShape[1]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -376,13 +365,8 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
     int inTileH = getInTileSize(outTileH, stride[0], kernelSize[0]);
     int inTileW = getInTileSize(outTileW, stride[1], kernelSize[1]);
 
-    W_BLOCK = 8;
-    gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
-    blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
-    // int inTileGridSize = batchSize * inTileH * inTileW * spatialShape[2];
-    // int outTileGridSize = batchSize * outTileH * outTileW * outSpatialShape[2];
-    // auto sharedMemorySize =  sizeof(int32_t) * (inTileGridSize +
-    // outTileGridSize);
+    gridSize = dim3(divUp(spatialShape[0], 4), divUp(spatialShape[1], 8), 1);
+    blockSize = dim3(4, 8, kernelVolume);
     getSubMRulesKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
@@ -400,17 +384,6 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-
-    // loadingRule, global indices for each tile
-    // shape [NTile, NMax]
-    // Note Rule have indiex of '-1'
-    // uniq loadingRule  =  tensor([[-1,  0,  1,  2,  3],
-    //     [-1, -1, -1, -1, -1],
-    //     [-1, -1, -1, -1, -1],
-    //     [-1, -1, -1, -1, -1]],
-    // torch::Tensor loadingRule =
-    //     std::get<0>(
-    //         torch::unique_dim(rules.index({Slice(), Slice(), 0, Slice()}).reshape({NTile, -1}), /*dim=*/1));
 
     return {zIndices, zPtr, rules, ruleSize};
 }
@@ -439,19 +412,12 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
           std::vector<int64_t> padding,
           std::vector<int64_t> dilation)
 {
-    int H_BLOCK = 2; // TODO
-    int W_BLOCK = 16;
-
-    int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
-    dim3 gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
-    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
-
-    // printf(" befaore preapre geridf kernel a\n");
-    // printf("launch config : (%d,%d,%d),(%d,%d,%d)\n", gridSize.x, gridSize.y, gridSize.z, blockSize.x, blockSize.y, blockSize.z);
-
     torch::Tensor grid = torch::zeros({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
                                       torch::dtype(torch::kInt32).device(zIndices.device()));
+    int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
 
+    dim3 gridSize(divUp(spatialShape[0], 2), divUp(spatialShape[1], 16), 1);
+    dim3 blockSize(2, 16, kernelVolume);
     prepareGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
@@ -461,12 +427,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
         dilation[0], dilation[1], dilation[2]);
-
-    // printTensor<int>(grid, "grid", 0, 0, outSpatialShape[0], 0, outSpatialShape[1]);
-
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-    // std::cout << "grid(1) = " << grid << std::endl;
 
     grid = torch::cumsum(grid, 3, torch::kInt32); // [B, oH, oW, oD]
 
@@ -475,9 +437,6 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     torch::Tensor ozPtr = torch::cumsum(grid.index({Slice(), Slice(), Slice(), -1}).reshape({-1}), 0, torch::kInt32)
                               .reshape({batchSize, outSpatialShape[0], outSpatialShape[1]});
     // [B, oH, oW]
-    // PRINT_SHAPE(ozPtr);
-    // PRINT_SHAPE(grid);
-    // std::cout << "ozPtr = " << ozPtr << std::endl;
     torch::Tensor exclusiveScan = ozPtr.roll(1);
     exclusiveScan.index_put_({0, 0, 0}, 0);
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
@@ -502,10 +461,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     torch::Tensor ozIndices = torch::empty({outNNZ}, torch::dtype(torch::kInt32).device(zIndices.device()));
     // PRINT_SHAPE(ozIndices);
 
-    W_BLOCK = 16; // TODO
-    gridSize = dim3(divUp(spatialShape[0], H_BLOCK), divUp(spatialShape[1], W_BLOCK), 1);
-    blockSize = dim3(H_BLOCK, W_BLOCK, kernelVolume);
-
+    gridSize = dim3(divUp(spatialShape[0], 2), divUp(spatialShape[1], 16), 1);
+    blockSize = dim3(2, 16, kernelVolume);
     getOzIndicesAndRulesKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         ozIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -524,9 +481,6 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
-
-    // outZPtr
-    // outIndices ?
 
     return {ozIndices, ozPtr, rules, ruleSize};
 }

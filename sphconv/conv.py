@@ -119,6 +119,7 @@ class Conv3d(Convolution):
             Expect: {}, got {}".format(self.in_channels, in_channels)
 
         in_spatial_shape_DWH = [input.D, input.W, input.H]
+        print("input spatial shape = ", in_spatial_shape_DWH)
 
         out_spatial_shape_DWH = in_spatial_shape_DWH
         if not self.subm:

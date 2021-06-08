@@ -113,13 +113,13 @@ def bench_against_spconv(
         torch.cuda.synchronize()
         print("spconv conv() time = {:.6f}".format((start.elapsed_time(end)) / loop))
 
-        # torch.cuda.synchronize()
-        # start_time = time()
+        # spconv_dense = spconv_sparse.dense()
+        # start.record()
         # for i in range (loop):
         #     spconv_dense = spconv_sparse.dense()
+        # end.record()
         # torch.cuda.synchronize()
-        # end_time = time()
-        # print("spconv dense() time = {:.6f}".format((end_time - start_time) / loop))
+        # print("spconv dense() time = {:.6f}".format((start.elapsed_time(end)) / loop))
 
     with torch.no_grad():
         x = sph_conv(sphconv_tensor)
@@ -133,13 +133,13 @@ def bench_against_spconv(
         torch.cuda.synchronize()
         print("sphconv conv() time = {:.6f}".format((start.elapsed_time(end)) / loop))
 
-        # torch.cuda.synchronize()
-        # start_time = time()
+        # sphconv_dense = sphconv_sparse.dense()
+        # start.record()
         # for i in range (loop):
         #     sphconv_dense = sphconv_sparse.dense()
+        # end.record()
         # torch.cuda.synchronize()
-        # end_time = time()
-        # print("sphconv dense() time = {:.6f}".format((end_time - start_time) / loop))
+        # print("sphconv dense() time = {:.6f}".format((start.elapsed_time(end)) / loop))
 
 
 class TestClass:
@@ -161,9 +161,9 @@ class TestClass:
             loop=10, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
             kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
 
-        # bench_against_spconv(
-        #     loop=10, batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[32, 256, 256],
-        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        bench_against_spconv(
+            loop=10, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 256, 256],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
 
 if __name__ == '__main__':
