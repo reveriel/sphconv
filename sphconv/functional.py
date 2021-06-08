@@ -47,14 +47,13 @@ class ConvFunction(torch.autograd.Function):
                 weight: torch.Tensor,  # [KKK, oC, iC]
                 local_rules: torch.Tensor,
                 rule_size: torch.Tensor,
-                global_rules: torch.Tensor,
                 batch_size: int,
                 spatial_shape_HWD: List[int],
                 out_spatial_shape_HWD: List[int],
                 outNNZ: int):
 
         feature_out = rule_conv(
-            feature, weight, local_rules, rule_size, global_rules,
+            feature, weight, local_rules, rule_size,
             batch_size, spatial_shape_HWD,
             out_spatial_shape_HWD, outNNZ)
 
@@ -62,7 +61,6 @@ class ConvFunction(torch.autograd.Function):
         ctx.weight = weight
         ctx.rules = local_rules
         ctx.rule_size = rule_size
-        ctx.loading_rule = global_rules
         ctx.batch_size = batch_size
         ctx.spatial_shape_HWD = spatial_shape_HWD
         ctx.out_spatial_shape_HWD = out_spatial_shape_HWD

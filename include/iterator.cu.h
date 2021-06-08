@@ -293,15 +293,15 @@ public:
         : params_(params),
           kernel_offset_(kernel_offset)
     {
-        if (thread_idx == 0) {
-            printf("kernel tile iterator shape = Shape<%02d,%02d>,"
-            " iterations = Shape<%02d,%02d>"
-            " delta = Shape<%02d,%02d>\n",
-                Shape::kContiguous, Shape::kStrided,
-                ThreadMap::Iterations::kContiguous, ThreadMap::Iterations::kStrided,
-                ThreadMap::Delta::kContiguous, ThreadMap::Delta::kStrided
-            );
-        }
+        // if (thread_idx == 0) {
+        //     printf("kernel tile iterator shape = Shape<%02d,%02d>,"
+        //     " iterations = Shape<%02d,%02d>"
+        //     " delta = Shape<%02d,%02d>\n",
+        //         Shape::kContiguous, Shape::kStrided,
+        //         ThreadMap::Iterations::kContiguous, ThreadMap::Iterations::kStrided,
+        //         ThreadMap::Delta::kContiguous, ThreadMap::Delta::kStrided
+        //     );
+        // }
 
         TensorCoord thread_offset = ThreadMap::initial_offset(thread_idx);
         thread_start_ci_ = thread_offset.strided();
@@ -625,8 +625,8 @@ public:
 
     CUTLASS_DEVICE OutTileIterator& operator++()
     {
-        if (threadIdx.x == 1)
-            printf(" operator ++ \n");
+        // if (threadIdx.x == 0)
+        //     printf(" operator ++ \n");
         int old_offset = offset_;
         int old_thread_start_v = thread_start_v_;
 
@@ -662,11 +662,11 @@ public:
             }
         }
 
-        printf("- T%03d   old vc(%02d, %02d), new vc(%02d, %02d),  startv (%02d  ->  %02d)\n",
-                threadIdx.x,
-               old_offset / Shape::kColumn, old_offset % Shape::kColumn,
-               offset_ / Shape::kColumn, offset_ % Shape::kColumn,
-               old_thread_start_v, thread_start_v_);
+        // printf("- T%03d   old vc(%02d, %02d), new vc(%02d, %02d),  startv (%02d  ->  %02d)\n",
+        //         threadIdx.x,
+        //        old_offset / Shape::kColumn, old_offset % Shape::kColumn,
+        //        offset_ / Shape::kColumn, offset_ % Shape::kColumn,
+        //        old_thread_start_v, thread_start_v_);
 
         // init mask
         CUTLASS_PRAGMA_UNROLL
@@ -839,9 +839,9 @@ public:
                     int v = offset / Shape::kColumn;
                     int c = offset % Shape::kColumn;
 
-                    printf("T%03d, out write vc(%02d, %02d), row_offset:%02d, thread_start_v:%02d\n",
-                        threadIdx.x, v, c, row_offset, thread_start_v_
-                    );
+                    // printf("T%03d, out write vc(%02d, %02d), row_offset:%02d, thread_start_v:%02d\n",
+                    //     threadIdx.x, v, c, row_offset, thread_start_v_
+                    // );
 
                     CUTLASS_PRAGMA_UNROLL
                     for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {

@@ -97,8 +97,7 @@ private:
 public:
     /// Constructs the Conv
     Conv() {
-        printf(" kWarpGemmIterations = %d \n", ConvKernel::Mma::kWarpGemmIterations);
-
+        // printf(" kWarpGemmIterations = %d \n", ConvKernel::Mma::kWarpGemmIterations);
     }
 
     Status initialize(Arguments const& args) override
@@ -165,7 +164,6 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
           torch::Tensor weight,      // [kernelVolume, iC, oC]
           torch::Tensor localRules,  //  [NTile, kernelVolume, 2, NNZ ],
           torch::Tensor ruleSize,    // [Ntile, kernelVolume]
-          torch::Tensor globalRules, // [NTile, 2, TILE_N_MAX]
           int batchSize,
           std::vector<int64_t> spatialShape, // H, W, D
           std::vector<int64_t> outSpatialShape,
@@ -190,7 +188,7 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
     case 8:
         // if oc = 8
         // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 8, 8>>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>>>();
         break;
     case 16:
         // if oc = 16

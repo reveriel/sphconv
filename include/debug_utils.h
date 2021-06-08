@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-#define TILE_N_MAX 1536
+#define TILE_N_MAX 2560
 
 static const int zeros[] = {0, 0, 0, 0, 0};
 

@@ -35,7 +35,7 @@ def assert_conv_eq(
     print("out shape = ", out_spatial_shape_DWH)
 
     get_rule_func = get_rules_subm if subm else get_rules
-    oz_idx, oz_ptr, local_rules, rule_size, global_rules = get_rule_func(
+    oz_idx, oz_ptr, rules, rule_size = get_rule_func(
         tensor.z_idx, tensor.z_ptr,
         batch_size, spatial_shape_DWH, out_spatial_shape_DWH,
         kernel_size, stride, padding, dilation)
@@ -61,7 +61,7 @@ def assert_conv_eq(
 
     sph_out_features = rule_conv(
         tensor.feature, weight.reshape(-1, inChannel, outChannel),
-        local_rules, rule_size, global_rules, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+        rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
     assert sph_out_features.dim() == 2
     assert sph_out_features.shape[0] == oz_idx.shape[0]

@@ -38,7 +38,7 @@ def assert_correct_cmp_with_torch(
             spatial_shape_DWH, kernel_size, stride, padding, dilation)
     print("out shape(DWH) = ", out_spatial_shape)
 
-    oz_idx, oz_ptr, rules, rule_size, _ = test_func(
+    oz_idx, oz_ptr, rules, rule_size = test_func(
         tensor.z_idx,
         tensor.z_ptr,
         batch_size,
@@ -99,7 +99,7 @@ def assert_correct_cmp_with_spconv(
     print("z_idx = ", tensor.z_idx)
     print("z_ptr = ", tensor.z_ptr)
 
-    oz_idx, oz_ptr, local_rules, rule_size, global_rules = test_func(
+    oz_idx, oz_ptr, local_rules, rule_size = test_func(
         tensor.z_idx,
         tensor.z_ptr,
         batch_size,
@@ -420,14 +420,28 @@ class TestClass:
 
     def test_rule_submconv(self):
         indices_zyx = torch.tensor([
-            [0, 0, 0, 0],
+            # [0, 0, 0, 0],
+            # [0, 0, 0, 1],
+            # [0, 0, 1, 0],
+            # [0, 1, 1, 1],
+
+            [0, 1, 0, 7],
+            [0, 1, 1, 6],
+            [0, 2, 1, 6],
+            [0, 3, 3, 6],
+            [0, 3, 3, 3],
             [0, 0, 0, 1],
-            [0, 0, 1, 0],
-            [0, 1, 1, 1],
+            [0, 1, 3, 3],
+            [0, 1, 3, 4],
+            [0, 1, 3, 5],
+            [0, 2, 3, 5],
+            [0, 3, 3, 5],
+            [0, 4, 3, 5],
+            [0, 7, 3, 5],
         ], dtype=torch.int).cuda()
-        D = 3
-        W = 3
-        H = 3
+        D = 9
+        W = 8
+        H = 8
         spatial_shape_DWH = [D, W, H]
         inChannel = 16
         outChannel = 16
@@ -461,7 +475,7 @@ class TestClass:
         assert tensor.z_idx.dtype == torch.int32
         assert tensor.z_ptr.dtype == torch.int32
 
-        oz_idx, oz_ptr, rules, rule_size, global_rules = get_rules_subm(
+        oz_idx, oz_ptr, rules, rule_size  = get_rules_subm(
             tensor.z_idx, tensor.z_ptr,
             batch_size, spatial_shape_DWH, spatial_shape_DWH,
             [kernel_size, kernel_size, kernel_size],
@@ -475,7 +489,6 @@ class TestClass:
         print("z_ptr = ", tensor.z_ptr)
         print("rules = ", rules[:,:,:,:4])
         print("ruleSize = ", rule_size)
-        print("global_rules = ", global_rules)
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
             indices_zyx, batch_size, spatial_shape_DWH, kernel_size, stride, padding, dilation,
@@ -499,7 +512,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, global_rules, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
@@ -631,7 +644,7 @@ class TestClass:
                 spatial_shape_DWH, kernel_size, stride, padding, dilation)
         print("out shape = ", out_spatial_shape_DWH)
 
-        oz_idx, oz_ptr, rules, rule_size, global_rules = get_rules(
+        oz_idx, oz_ptr, rules, rule_size  = get_rules(
             tensor.z_idx, tensor.z_ptr,
             batch_size, spatial_shape_DWH, out_spatial_shape_DWH,
             kernel_size,
@@ -646,7 +659,6 @@ class TestClass:
         print("oz_ptr = ", oz_ptr)
         print("rules = ", rules[:,:,:,:4])
         print("ruleSize = ", rule_size)
-        print("global_rules = ", global_rules)
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
             indices_bzyx, batch_size, spatial_shape_DWH, kernel_size,
@@ -667,7 +679,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, global_rules, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
