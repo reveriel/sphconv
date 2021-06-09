@@ -325,7 +325,8 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
                std::vector<int64_t> kernelSize,
                std::vector<int64_t> stride,
                std::vector<int64_t> padding,
-               std::vector<int64_t> dilation)
+               std::vector<int64_t> dilation,
+               std::vector<int64_t> tileSize)
 {
 
     torch::Tensor grid = torch::full({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
@@ -345,13 +346,8 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
 
     int64_t kernelVolume = std::accumulate(kernelSize.begin(), kernelSize.end(), 1, std::multiplies<int64_t>());
 
-    int outTileH = 6; // TODO
-    int outTileW = 6;
-    if (outSpatialShape[0] <= 8) {
-        outTileH = 4;
-    }
-
-    int NTile = divUp(outSpatialShape[0], outTileH) * divUp(outSpatialShape[1], outTileW);
+    // number of tiles
+    int NTile = divUp(outSpatialShape[0], tileSize[0]) * divUp(outSpatialShape[1], tileSize[1]);
 
     // allocate rules and indice Num
     torch::Tensor rules =
@@ -362,8 +358,8 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
     torch::Tensor ruleSize =
         torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
 
-    int inTileH = getInTileSize(outTileH, stride[0], kernelSize[0]);
-    int inTileW = getInTileSize(outTileW, stride[1], kernelSize[1]);
+    int inTileH = getInTileSize(tileSize[0], stride[0], kernelSize[0]);
+    int inTileW = getInTileSize(tileSize[1], stride[1], kernelSize[1]);
 
     gridSize = dim3(divUp(spatialShape[0], 4), divUp(spatialShape[1], 8), 1);
     blockSize = dim3(4, 8, kernelVolume);
@@ -380,7 +376,7 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
         padding[0], padding[1], padding[2],
         dilation[0], dilation[1], dilation[2],
         inTileH, inTileW,
-        outTileH, outTileW);
+        tileSize[0], tileSize[1]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -410,7 +406,8 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
           std::vector<int64_t> kernelSize,
           std::vector<int64_t> stride,
           std::vector<int64_t> padding,
-          std::vector<int64_t> dilation)
+          std::vector<int64_t> dilation,
+          std::vector<int64_t> tileSize)
 {
     torch::Tensor grid = torch::zeros({batchSize, outSpatialShape[0], outSpatialShape[1], outSpatialShape[2]},
                                       torch::dtype(torch::kInt32).device(zIndices.device()));
@@ -442,12 +439,10 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
     // std::cout << "grid(3) = " << grid << std::endl;
 
-    int outTileH = 8; // TODO
-    int outTileW = 8;
-    int inTileH = getInTileSize(outTileH, stride[0], kernelSize[0]);
-    int inTileW = getInTileSize(outTileW, stride[1], kernelSize[1]);
+    int inTileH = getInTileSize(tileSize[0], stride[0], kernelSize[0]);
+    int inTileW = getInTileSize(tileSize[1], stride[1], kernelSize[1]);
 
-    int NTile = divUp(outSpatialShape[0], outTileH) * divUp(outSpatialShape[1], outTileW);
+    int NTile = divUp(outSpatialShape[0], tileSize[0]) * divUp(outSpatialShape[1], tileSize[1]);
 
     // TODO: rules is allocated larger, to be trimed lalter
     torch::Tensor rules = torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
@@ -477,7 +472,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
         padding[0], padding[1], padding[2],
         dilation[0], dilation[1], dilation[2],
         inTileH, inTileW,
-        outTileH, outTileW);
+        tileSize[0], tileSize[1]);
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());

@@ -44,7 +44,7 @@ def assert_correct_cmp_with_torch(
         batch_size,
         spatial_shape_DWH, # [DWH]
         out_spatial_shape,
-        kernel_size, stride, padding, dilation)
+        kernel_size, stride, padding, dilation, [2, 2])
 
     # assert torch.sum(indice_pair_num) == torch.sum(rule_size)
 
@@ -105,7 +105,7 @@ def assert_correct_cmp_with_spconv(
         batch_size,
         spatial_shape_DWH,
         out_spatial_shape_DWH,
-        kernel_size, stride, padding, dilation)
+        kernel_size, stride, padding, dilation, [2, 2])
 
     outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
         indices_zyx, batch_size, spatial_shape_DWH, kernel_size,
@@ -481,7 +481,8 @@ class TestClass:
             [kernel_size, kernel_size, kernel_size],
             [stride, stride, stride],
             [padding, padding, padding],
-            [dilation, dilation, dilation]
+            [dilation, dilation, dilation],
+            [2, 2]
         )
 
         torch.set_printoptions(edgeitems=100)
@@ -650,7 +651,8 @@ class TestClass:
             kernel_size,
             stride,
             padding,
-            dilation
+            dilation,
+            [2, 2]
         )
 
         torch.set_printoptions(edgeitems=100)

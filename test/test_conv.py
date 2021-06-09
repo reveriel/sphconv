@@ -38,7 +38,7 @@ def assert_conv_eq(
     oz_idx, oz_ptr, rules, rule_size = get_rule_func(
         tensor.z_idx, tensor.z_ptr,
         batch_size, spatial_shape_DWH, out_spatial_shape_DWH,
-        kernel_size, stride, padding, dilation)
+        kernel_size, stride, padding, dilation, [2, 2])
 
     # print("rules = ", rules)
     # print("rule_size = ", rule_size)

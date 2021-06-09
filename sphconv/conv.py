@@ -139,7 +139,8 @@ class Conv3d(Convolution):
             oz_idx, oz_ptr, rules, rule_size = get_rule_func(
                 input.z_idx, input.z_ptr,
                 batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
-                self.kernel_size, self.stride, self.padding, self.dilation)
+                self.kernel_size, self.stride, self.padding, self.dilation,
+                [4, 4])
 
             input.rule_cache[self.indice_key] = (
                 oz_idx, oz_ptr, rules, rule_size)
