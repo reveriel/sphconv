@@ -14,13 +14,25 @@ from sphconv.tensor import SparseConvTensor
 from sphconv.utils import (_calculate_fan_in_and_fan_out, _triple,
                            kaiming_uniform_, out_spatial)
 
+save_rule_size_count = 0
+
+def tile_size_stringfy(tile_size: List[int]) -> str:
+    return "t{}_{}".format(tile_size[0], tile_size[1])
+
+def save_rule_size(rule_size: torch.Tensor, tile_size: List[int]):
+    global save_rule_size_count
+    DIR = "log/"
+    filename:str =  "{}_{}.pt".format(tile_size_stringfy(tile_size), save_rule_size_count)
+    save_rule_size_count += 1
+    torch.save(rule_size, DIR + filename)
 
 class Convolution(SphModule):
     """Base class for all convolutions."""
 
     def __init__(self,
                  in_channels: int, out_channels: int, kernel_size: List[int],
-                 stride: List[int], padding: List[int], dilation: List[int], groups: int,
+                 stride: List[int], padding: List[int], dilation: List[int],
+                 groups: int, tile_size: List[int],
                  bias: bool, subm: bool, name: str,
                  indice_key: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
@@ -33,6 +45,7 @@ class Convolution(SphModule):
         self.padding = padding
         self.dilation = dilation
         self.groups = groups
+        self.tile_size = tile_size
         self.subm = subm
         self.indice_key = indice_key
         self.name = name
@@ -77,7 +90,10 @@ class Conv3d(Convolution):
 
     def __init__(self, in_channels, out_channels, kernel_size,
                  stride=1, padding=1, dilation=1, groups=1,
-                 bias=False, subm=False, indice_key=None, name=None, **kwargs):
+                 bias=False, subm=False,
+                 tile_size=[2, 2],
+                 indice_key=None,
+                 name=None, **kwargs):
         """
         Args:
         ----
@@ -108,10 +124,10 @@ class Conv3d(Convolution):
 
         super(Conv3d, self).__init__(
             in_channels, out_channels, kernel_size, stride, padding, dilation,
-            groups, bias, subm, name, indice_key=indice_key, **kwargs)
+            groups, tile_size, bias, subm, name, indice_key=indice_key, **kwargs)
 
     def forward(self, input: SparseConvTensor):
-        start_time = time.time()
+        # start_time = time.time()
         batch_size, in_channels = input.B, input.C
         out_channels = self.weight.shape[4]
 
@@ -119,35 +135,41 @@ class Conv3d(Convolution):
             Expect: {}, got {}".format(self.in_channels, in_channels)
 
         in_spatial_shape_DWH = [input.D, input.W, input.H]
-        print("input spatial shape = ", in_spatial_shape_DWH)
 
         out_spatial_shape_DWH = in_spatial_shape_DWH
         if not self.subm:
             out_spatial_shape_DWH = out_spatial(
                 in_spatial_shape_DWH, self.kernel_size, self.stride, self.padding, self.dilation)
 
+        # print("out spatial shape = ", out_spatial_shape_DWH)
+
         # print("out shape = ", out_spatial_shape_DWH)
 
-        datas = input.find_rule(self.indice_key)
-        # print("========== found in dicts ===========")
 
-        if self.indice_key is not None and datas is not None:
-            oz_idx, oz_ptr, rules, rule_size = datas
+        get_rule_func = get_rules_subm if self.subm else get_rules
 
-        else:  # not found, compute it
-            get_rule_func = get_rules_subm if self.subm else get_rules
+        if self.indice_key is not None:
+            datas = input.find_rule(self.indice_key)
+            if datas is not None:
+                oz_idx, oz_ptr, rules, rule_size = datas
+            else:
+                oz_idx, oz_ptr, rules, rule_size = get_rule_func(
+                    input.z_idx, input.z_ptr,
+                    batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
+                    self.kernel_size, self.stride, self.padding, self.dilation,
+                    self.tile_size)
+
+                input.rule_cache[self.indice_key] = (oz_idx, oz_ptr, rules, rule_size)
+        else:
             oz_idx, oz_ptr, rules, rule_size = get_rule_func(
                 input.z_idx, input.z_ptr,
                 batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
                 self.kernel_size, self.stride, self.padding, self.dilation,
-                [4, 4])
+                self.tile_size)
 
-            input.rule_cache[self.indice_key] = (
-                oz_idx, oz_ptr, rules, rule_size)
 
         self.rule_size = rule_size
 
-        # print("oT =", oT);
         out_feature = ConvFunction.apply(
             input.feature, self.weight.reshape(
                 (-1, in_channels, out_channels)),
@@ -157,8 +179,10 @@ class Conv3d(Convolution):
         # torch.cuda.synchronize()
         # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000
         # ))
-        return SparseConvTensor(out_feature, out_spatial_shape_DWH,
+        out_tensor = SparseConvTensor(out_feature, out_spatial_shape_DWH,
                                 batch_size, z_ptr=oz_ptr, z_idx=oz_idx)
+        out_tensor.rule_cache = input.rule_cache
+        return out_tensor
 
 
 # for compatible with spconv

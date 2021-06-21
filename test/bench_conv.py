@@ -154,15 +154,15 @@ class TestClass:
         #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
         # bench_against_spconv(
-        #     loop=10, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
+        #     loop=10, batch_size=1, in     _channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
         #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
         bench_against_spconv(
-            loop=10, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
+            loop=100, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
             kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
 
         bench_against_spconv(
-            loop=10, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 256, 256],
+            loop=100, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 256, 256],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
 

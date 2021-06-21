@@ -77,11 +77,13 @@ template <
     /// GemmShape, V, oC, iC
     typename ThreadBlockShape_,
     /// GemmShape, V, oC, iC
-    typename WarpShape_>
+    typename WarpShape_,
+    int VBLOCK>
 struct Conv : public ConvBase {
 
     using ConvKernel = typename kernel::DefaultConv<ThreadBlockShape_,
-                                                    WarpShape_>::ConvKernel;
+                                                    WarpShape_,
+                                                    VBLOCK>::ConvKernel;
 
     static size_t get_workspace_size()
     {
@@ -188,18 +190,18 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
     case 8:
         // if oc = 8
         // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 16:
         // if oc = 16
         // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 32, 8>>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 32:
-        conv = std::make_shared<Conv<GemmShape<16, 32, 8>, GemmShape<16, 32, 8>>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 64:
-        conv = std::make_shared<Conv<GemmShape<16, 64, 8>, GemmShape<16, 32, 8>>>();
+        conv = std::make_shared<Conv<GemmShape<8, 64, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     default:
         printf("unsupported oC = %d\n", oC);

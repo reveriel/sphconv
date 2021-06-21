@@ -128,10 +128,6 @@ def assert_correct_cmp_with_spconv(
         assert (indice_pair_num.view(-1).sort()[0] == rule_size.sum(dim=0).view(-1).sort()[0]).all()
         # NTile = rules.shape[0]
         # loadingRule = rules[:,:,0,:].reshape([NTile,-1])
-        # print("loadingRule.shape  = ", loadingRule.shape)
-        # print("uniq loadingRule  = ", loadingRule.unique(dim=1))
-        # print("uniq loadingRule. shape  = ", loadingRule.unique(dim=1).shape)
-
     assert (outids[:,3].sort()[0] == oz_idx.sort()[0]).all()
 
 
@@ -532,7 +528,7 @@ class TestClass:
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.1))
 
 
-    def test_rule_conv(self):
+    def test_rule_conv_1(self):
         indices_bzyx = torch.tensor([
         [ 0,  0,  2, 12],
         [ 0,  0,  2,  2],
@@ -696,3 +692,124 @@ class TestClass:
 
         print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.1))
+
+
+    def test_rule_conv_2(self):
+        indices_bzyx = torch.tensor( [
+        [0, 0, 0, 1],
+        [0, 0, 2, 2],
+        [0, 0, 2, 0],
+        [0, 0, 2, 1],
+        [0, 0, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 1, 2],
+        [0, 0, 1, 1],
+        [0, 1, 1, 1],
+        ],
+        dtype=torch.int).cuda()
+        D = 3
+        W = 3
+        H = 3
+        spatial_shape_DWH = [D, W, H]
+        inChannel = 32
+        outChannel = 32
+        batch_size = 1
+        voxel_features = torch.arange( indices_bzyx.shape[0],
+                          dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
+        voxel_features = torch.arange( inChannel,
+                          dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
+        voxel_features = torch.arange( indices_bzyx.shape[0] * inChannel,
+                          dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], inChannel))
+        voxel_features = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # voxel_features = torch.randn((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        voxel_features[3,:] = 1.0
+
+        tensor = sphconv.SparseConvTensor(
+            voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+
+        kernel_size = [3, 3, 3]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        # padding must be 1, I think it's spconv's bug
+        dilation = [1, 1, 1]
+        subm = True
+
+        assert tensor.z_idx.dim() == 1
+        assert tensor.z_ptr.dim() == 3
+        assert tensor.z_idx.dtype == torch.int32
+        assert tensor.z_ptr.dtype == torch.int32
+
+        out_spatial_shape_DWH = out_spatial(
+                spatial_shape_DWH, kernel_size, stride, padding, dilation)
+        print("out shape = ", out_spatial_shape_DWH)
+
+        test_func = get_rules_subm if subm else get_rules
+
+        oz_idx, oz_ptr, rules, rule_size  = test_func(
+            tensor.z_idx, tensor.z_ptr,
+            batch_size, spatial_shape_DWH, out_spatial_shape_DWH,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            [2, 3]
+        )
+
+        torch.set_printoptions(edgeitems=100)
+        print("tensor.feature = ", tensor.feature)
+        print("z_ptr = ", tensor.z_ptr)
+        print("oz_ptr = ", oz_ptr)
+        print("rules = ", rules[:,:,:,:16])
+        print("ruleSize = ", rule_size)
+
+        outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
+            indices_bzyx, batch_size, spatial_shape_DWH, kernel_size,
+            stride, padding, dilation, out_padding=0, subm=subm,
+            transpose=False, use_hash=False)
+
+        print("indice_pairs = ", indice_pairs)
+        print("indice_pair_num = ", indice_pair_num)
+
+        assert torch.sum(indice_pair_num) == torch.sum(rule_size)
+
+        if (rule_size.shape[0] == 1) :
+            assert (indice_pair_num.view(-1).sort()[0] == rule_size.view(-1).sort()[0]).all()
+        else : # tiled version
+            assert (indice_pair_num.view(-1).sort()[0] == rule_size.sum(dim=0).view(-1).sort()[0]).all()
+            # NTile = rules.shape[0]
+            # loadingRule = rules[:,:,0,:].reshape([NTile,-1])
+        assert (outids[:,3].sort()[0] == oz_idx.sort()[0]).all()
+
+        # convolution
+        weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device)
+
+        out_features = spconv.ops.indice_conv(
+            voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
+
+        spconv_dense = spconv.SparseConvTensor(
+            out_features, outids, out_spatial_shape_DWH, batch_size).dense()
+        # print("spconv out_features = ", out_features)
+        sph_out_features = rule_conv(
+            tensor.feature, weight.reshape((-1, inChannel, outChannel)),
+            rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+
+        print("early distance =", sph_out_features.sum() - out_features.sum())
+
+        # print("sph_out_features 's type is ", type(sph_out_features))
+        sphconv_dense = sphconv.SparseConvTensor(
+            sph_out_features, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
+
+        print("sphconv out_features = ", sph_out_features)
+
+        print("spconv_dense = ", spconv_dense[0,0,:,:,:])
+        print("spconv_dense shape = ", spconv_dense.shape)
+        print("sphconv_dense = ", sphconv_dense[0,0,:,:,:])
+        print("sphconv_dense shape = ", sphconv_dense.shape)
+
+        print(" sph out(021)=", sphconv_dense[0,0,0,2,1])
+        print(" sp out(021)=", spconv_dense[0,0,0,2,1])
+
+        print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
+        print("distance2 = ", (spconv_dense.sum() - sphconv_dense.sum()))
+        assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.01))

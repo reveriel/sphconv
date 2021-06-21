@@ -21,7 +21,8 @@ namespace kernel
 {
 
 template <typename Mma_,      // threadblock level MMA
-          typename Epilogue_> // threadblock level epilogue
+          typename Epilogue_, // threadblock level epilogue
+          int VBLOCK> //
 struct Conv {
 
     using Mma = Mma_;
@@ -34,7 +35,6 @@ struct Conv {
 
     // using Index = int;
     static int const kThreadCount = 32 * WarpCount::kCount;
-    static int const VBLOCK = 16;
 
     struct Params {
         typename Mma::IteratorA::Params params_A;

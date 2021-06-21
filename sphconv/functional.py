@@ -44,8 +44,8 @@ class ConvFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx,
                 feature: torch.Tensor,
-                weight: torch.Tensor,  # [KKK, oC, iC]
-                local_rules: torch.Tensor,
+                weight: torch.Tensor,  # [KKK, iC, oC]
+                rules: torch.Tensor,
                 rule_size: torch.Tensor,
                 batch_size: int,
                 spatial_shape_HWD: List[int],
@@ -53,13 +53,13 @@ class ConvFunction(torch.autograd.Function):
                 outNNZ: int):
 
         feature_out = rule_conv(
-            feature, weight, local_rules, rule_size,
+            feature, weight, rules, rule_size,
             batch_size, spatial_shape_HWD,
             out_spatial_shape_HWD, outNNZ)
 
         ctx.feature = feature
         ctx.weight = weight
-        ctx.rules = local_rules
+        ctx.rules = rules
         ctx.rule_size = rule_size
         ctx.batch_size = batch_size
         ctx.spatial_shape_HWD = spatial_shape_HWD

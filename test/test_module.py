@@ -61,6 +61,8 @@ def assert_correct_cmp_with_spconv(
 ):
     if subm:
         assert dilation == stride == dilation == [1, 1, 1]
+    # TODO
+    batch_size = 1
 
     feature, indices = batch_artifical_inputs(
         indices_zyx, channel=in_channels, batch_size=batch_size)
@@ -112,6 +114,7 @@ def assert_correct_cmp_with_spconv_real(
 
     feature, indices = batch_real_test_inputs(
         channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+    print("indices = ", indices)
 
     sphconv_tensor = sphconv.SparseConvTensor(
         feature, spatial_shape_DWH, batch_size, indices=indices)
@@ -191,38 +194,85 @@ class TestClass:
 
     def test_conv3D_3(self):
 
-        # assert_correct_cmp_with_spconv_real(
-        #     batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
-        #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
-        # assert_correct_cmp_with_spconv_real(
-        #     batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
-        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
         assert_correct_cmp_with_spconv_real(
-            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 8],
-            kernel_size=[2, 2, 2], stride=[2, 1, 1], padding=[0, 1, 1], subm=False)
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=16, spatial_shape_DWH=[5, 5, 5],
+            kernel_size=[3, 3, 3], stride=[2, 1, 1], padding=[0, 1, 1], subm=False)
         assert_correct_cmp_with_spconv_real(
             batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[4, 8, 8],
             kernel_size=[3, 3, 3], stride=[1, 1, 2], padding=[1, 1, 0], subm=False)
-        # assert_correct_cmp_with_spconv_real(
-        #     batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[6, 6, 20],
-        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
-        # assert_correct_cmp_with_spconv_real(
-        #     batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
-        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
-
-        # assert_correct_cmp_with_spconv_real(
-        #     batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
-        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[6, 6, 20],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=16, spatial_shape_DWH=[77, 40, 20],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[0, 0, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[0, 1, 0], subm=False)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[0, 1, 0], subm=False)
 
     def test_conv3D_4(self):
         assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=16, spatial_shape_DWH=[5, 5, 5],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[4, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[6, 6, 20],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=16, spatial_shape_DWH=[77, 40, 20],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=32, out_channels=64, spatial_shape_DWH=[6, 6, 7],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
             batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
-            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+    def test_conv3D_5(self):
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 1, 1], stride=[3, 1, 1], padding=[0, 1, 0], subm=False)
 
         assert_correct_cmp_with_spconv_real(
             batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
-            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 0], subm=False)
+            kernel_size=[3, 3, 3], stride=[2, 1, 1], padding=[0, 0, 0], subm=False)
 
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 1, 1], stride=[3, 1, 1], padding=[1, 1, 1], subm=False)
+
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
+            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
 
     def test_rule_cache(self):
         assert True
