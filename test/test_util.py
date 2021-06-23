@@ -126,7 +126,7 @@ class TestClass:
 
     def test_batch2(self):
         batch_size = 4
-        spatial_shape_DWH = [64, 511, 512]
+        spatial_shape_DWH = [20, 255, 256]
         vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_DWH[::-1])
 
         example_list = []

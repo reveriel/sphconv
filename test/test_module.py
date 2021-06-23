@@ -73,7 +73,8 @@ def assert_correct_cmp_with_spconv(
     spconv_tensor = spconv.SparseConvTensor(
         feature, indices, spatial_shape_DWH, batch_size)
 
-    sph_conv = sphconv.Conv3d(
+    Sphconv_Conv3d = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
+    sph_conv = Sphconv_Conv3d(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False, subm=subm).cuda()
 
     Spconv_Conv3d = spconv.SubMConv3d if subm else spconv.SparseConv3d
@@ -91,9 +92,9 @@ def assert_correct_cmp_with_spconv(
         spconv_dense = sp_conv(spconv_tensor).dense()
         sphconv_dense = sph_conv(sphconv_tensor).dense()
 
-    print("sphconv = ", sphconv_dense)
-    print("spconv = ", spconv_dense)
-
+    # print("sphconv = ", sphconv_dense)
+    # print("spconv = ", spconv_dense)
+    print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
     assert torch.isclose(spconv_dense, sphconv_dense, rtol=0.01).all()
 
 
@@ -114,7 +115,7 @@ def assert_correct_cmp_with_spconv_real(
 
     feature, indices = batch_real_test_inputs(
         channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
-    print("indices = ", indices)
+    # print("indices = ", indices)
 
     sphconv_tensor = sphconv.SparseConvTensor(
         feature, spatial_shape_DWH, batch_size, indices=indices)
@@ -122,7 +123,8 @@ def assert_correct_cmp_with_spconv_real(
     spconv_tensor = spconv.SparseConvTensor(
         feature, indices, spatial_shape_DWH, batch_size)
 
-    sph_conv = sphconv.Conv3d(
+    Sphconv_Conv3d = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
+    sph_conv = Sphconv_Conv3d(
         in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False, subm=subm).cuda()
 
     Spconv_Conv3d = spconv.SubMConv3d if subm else spconv.SparseConv3d
@@ -140,9 +142,9 @@ def assert_correct_cmp_with_spconv_real(
         spconv_dense = sp_conv(spconv_tensor).dense()
         sphconv_dense = sph_conv(sphconv_tensor).dense()
 
-    print("sphconv = ", sphconv_dense)
-    print("spconv = ", spconv_dense)
-
+    # print("sphconv = ", sphconv_dense)
+    # print("spconv = ", spconv_dense)
+    print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
     assert torch.isclose(spconv_dense, sphconv_dense, rtol=0.01).all()
 
 
@@ -273,6 +275,23 @@ class TestClass:
         assert_correct_cmp_with_spconv_real(
             batch_size=3, in_channels=64, out_channels=64, spatial_shape_DWH=[12, 12, 12],
             kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+
+    def test_conv3D_6(self):
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[2, 2, 2],
+            kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[0, 0, 0], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=32, spatial_shape_DWH=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[0, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=1, in_channels=16, out_channels=16, spatial_shape_DWH=[5, 5, 5],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 0, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[4, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv_real(
+            batch_size=3, in_channels=16, out_channels=32, spatial_shape_DWH=[6, 6, 20],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[0, 0, 0], subm=True)
 
     def test_rule_cache(self):
         assert True

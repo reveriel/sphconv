@@ -88,8 +88,8 @@ class Convolution(SphModule):
 class Conv3d(Convolution):
     """ a 3D convolution Module on Range Images """
 
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=1, dilation=1, groups=1,
+    def __init__(self, in_channels, out_channels, kernel_size=3,
+                 stride=1, padding=0, dilation=1, groups=1,
                  bias=False, subm=False,
                  tile_size=[2, 2],
                  indice_key=None,
@@ -143,9 +143,6 @@ class Conv3d(Convolution):
 
         # print("out spatial shape = ", out_spatial_shape_DWH)
 
-        # print("out shape = ", out_spatial_shape_DWH)
-
-
         get_rule_func = get_rules_subm if self.subm else get_rules
 
         if self.indice_key is not None:
@@ -190,8 +187,8 @@ SparseConv3d = Conv3d
 
 
 class SubMConv3d(Conv3d):
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=1, dilation=1, groups=1,
+    def __init__(self, in_channels, out_channels, kernel_size=3,
+                 stride=1, padding=0, dilation=1, groups=1,
                  bias=False, subm=False, indice_key=None,
                  **kwargs):
         super(SubMConv3d, self).__init__(in_channels,
@@ -199,3 +196,4 @@ class SubMConv3d(Conv3d):
                                          stride=stride, padding=padding, dilation=dilation, groups=groups,
                                          bias=bias, indice_key=indice_key,
                                          **kwargs)
+        self.padding = tuple([k//2 for k in self.kernel_size])
