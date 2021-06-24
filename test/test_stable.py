@@ -151,15 +151,15 @@ class TestClass:
 
 
         # convolution
-        # weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
-        weight = torch.randint( 1, 660, (*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
+        weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
+        # weight = torch.randint( 1, 660, (*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
         weight[1, :,:] = 8.0
         weight[-1, :,:] = 100.
         weight[1,2,0, :5,:] = 1/64
 
         out_features_gpu = spconv.ops.indice_conv(
-            voxel_features.cpu(), weight.cpu(), indice_pairs.cpu(),
-            indice_pair_num.cpu(), outids.shape[0])
+            voxel_features, weight, indice_pairs,
+            indice_pair_num, outids.shape[0])
 
         out_features_cpu = spconv.ops.indice_conv(
             voxel_features.cpu(), weight.cpu(), indice_pairs.cpu(),
@@ -190,7 +190,7 @@ class TestClass:
         sphconv_dense = sphconv_dense.cpu()
 
         print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
-        print("cpu gpu dist = ", (spconv_dense_cpu - spconv_dense_gpu).abs().sum())
+        print("cpu gpu dist = ", (spconv_dense_cpu - spconv_dense_gpu.cpu()).abs().sum())
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense, rtol=0.01))
 
 
