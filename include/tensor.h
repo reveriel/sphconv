@@ -21,4 +21,8 @@ namespace sphconv
         int D,
         torch::Tensor out);
 
+    torch::Tensor to_dense_backward(
+        const torch::Tensor d_featureOut,
+        const torch::Tensor zIndices,
+        const torch::Tensor zPtr);
 }

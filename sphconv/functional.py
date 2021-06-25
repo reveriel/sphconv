@@ -1,8 +1,9 @@
+from sphconv.utils import out_spatial
 from typing import List
 
 import torch
 
-from sphconv.sphconv_cuda import rule_conv
+from sphconv.sphconv_cuda import rule_conv, to_dense, to_dense_backward
 
 
 class ConvFunction(torch.autograd.Function):
@@ -51,33 +52,18 @@ class ConvFunction(torch.autograd.Function):
                 spatial_shape_HWD: List[int],
                 out_spatial_shape_HWD: List[int],
                 outNNZ: int):
-
-        feature_out = rule_conv(
-            feature, weight, rules, rule_size,
-            batch_size, spatial_shape_HWD,
-            out_spatial_shape_HWD, outNNZ)
-
-        ctx.feature = feature
-        ctx.weight = weight
-        ctx.rules = rules
-        ctx.rule_size = rule_size
+        ctx.save_for_backward( feature, weight, rules, rule_size)
         ctx.batch_size = batch_size
         ctx.spatial_shape_HWD = spatial_shape_HWD
         ctx.out_spatial_shape_HWD = out_spatial_shape_HWD
         ctx.outNNZ = outNNZ
-
-        ctx.feature_out = feature_out
-
-        # variables = [feature, weight, in_rules, out_rules, num_in]
-        # ctx.save_for_backward(*variables)
-
-        return feature_out
+        return rule_conv(feature, weight, rules, rule_size,
+                         batch_size, spatial_shape_HWD,
+                         out_spatial_shape_HWD, outNNZ)
 
     @staticmethod
     def backward(ctx, d_featureOut):
-
-        # bias
-        # feature, weight, in_rules, out_rules, num_in = ctx.saved_tensors
+        feature, weight, rules, rule_size = ctx.saved_tensors
 
         # d_bias
         d_feature, d_weight = \
@@ -103,19 +89,32 @@ class ConvFunction(torch.autograd.Function):
 
 class ToDenseFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, feature, depth, thick, D):
-        ctx.T = feature.size(2)
-        ctx.save_for_backward(depth, thick)
-        dense = None
+    def forward(ctx,
+                feature: torch.Tensor,
+                z_idx: torch.Tensor,
+                z_ptr: torch.Tensor,
+                shape: List[int]  # B C D H W
+                ):
+        ctx.shape = shape
+        ctx.save_for_backward(z_idx, z_ptr)
         # sphconv_cuda.to_dense(feature, depth, thick, D)
-        return dense
+        B, C, D, H, W = shape
+        ctx.D = D
+        res = torch.zeros((B, D, W, H, C), device=feature.device, dtype=feature.dtype)
+        to_dense(feature, z_idx, z_ptr, D, res)
+        # from B D W H C
+        # to B C D W H
+        return res.permute((0, 4, 1, 2, 3)).contiguous()
 
     @staticmethod
-    def backward(ctx, d_featureOut):
+    def backward(ctx,
+            d_featureOut # B C D W H
+         ):
         # print("d_featureOut = ", d_featureOut)
-        depth, thick = ctx.saved_tensors
-        # print("func depth = ", depth)
-        # print("func thick = ", thick)
-        d_feature = None
-        #  sphconv_cuda.to_dense_backward(d_featureOut, depth, thick, ctx.T)
+        z_idx, z_ptr = ctx.saved_tensors
+        # BCDWH to BDWHC
+        d_feature = to_dense_backward(
+            d_featureOut.permute((0, 2, 3, 4, 1)).contiguous(),
+            z_idx, z_ptr)
         return d_feature, None, None, None
+

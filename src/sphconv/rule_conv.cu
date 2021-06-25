@@ -16,8 +16,6 @@ template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 using cutlass::gemm::GemmShape;
 
-const int VBLOCK = 16;
-
 int near2power(int num)
 {
     if (num <= 8)

@@ -518,7 +518,7 @@ public:
 
 private:
     Mask mask_;
-    const Params const& params_;
+    const Params &params_;
 
     /// Byte-level pointer
 

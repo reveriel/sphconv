@@ -2,8 +2,8 @@ from typing import List, Optional
 
 import torch
 
-from sphconv.sphconv_cuda import init_tensor, to_dense
-
+from sphconv.sphconv_cuda import init_tensor
+from sphconv.functional import ToDenseFunction
 
 class SparseTensorBase:
     """ a simple plain old python object"""
@@ -125,9 +125,10 @@ class SparseConvTensor(SparseTensorBase):
         """
         return dense tensor of shape ,B C D W H
         """
-        res = torch.zeros(
-            (self.B, self.D, self.W, self.H, self.C), device=device if device else self.device)
+        # res = torch.zeros(
+        #     (self.B, self.D, self.W, self.H, self.C), device=device if device else self.device)
 
-        to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res) # B D W H C
+        # to_dense(self.feature, self.z_idx, self.z_ptr, self.D, res) # B D W H C
 
-        return res.permute((0, 4, 1, 2, 3))
+        # return res.permute((0, 4, 1, 2, 3))
+        return ToDenseFunction.apply(self.feature, self.z_idx, self.z_ptr, self.shape)
