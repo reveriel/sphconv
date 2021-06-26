@@ -2,7 +2,6 @@ from typing import List, Optional
 
 import torch
 
-from sphconv.sphconv_cuda import init_tensor
 from sphconv.functional import InitTensorFunction, ToDenseFunction
 
 class SparseTensorBase:
@@ -54,6 +53,7 @@ class SparseConvTensor(SparseTensorBase):
         """
 
         self.rule_cache = {}
+        self.requires_grad = False
 
         if z_idx is not None and z_ptr is not None:
             super().__init__(
@@ -78,9 +78,6 @@ class SparseConvTensor(SparseTensorBase):
                 raw_feature.device, raw_feature.dtype,
                 indices.dtype, None, None, None)
 
-            # the number of non zero elements
-            NNZ = raw_feature.shape[0]
-
             # all nonzeros are in the 'val'
             # size: NNZ * C
             # the 'val' stores all nonzeros
@@ -99,9 +96,7 @@ class SparseConvTensor(SparseTensorBase):
             #
             # size: B * H * W
             # shape: B, H, W
-            self. z_ptr = None
-
-            # size   B H W D, for counting in get_rules() and init_csf()
+            self.z_ptr = None
 
             self.feature, self.z_idx, self.z_ptr = InitTensorFunction.apply(
                 raw_feature, indices, self.B, [self.D, self.W, self.H])

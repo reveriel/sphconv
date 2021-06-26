@@ -26,13 +26,10 @@ PYBIND11_MODULE(sphconv_cuda, m)
   m.def("rule_conv_backward", &sphconv::device::rule_conv_backward, "");
 
   m.def("init_tensor", &sphconv::init_tensor, "");
+  m.def("init_tensor_backward", &sphconv::init_tensor_backward, "");
+
   m.def("to_dense", &sphconv::to_dense, "");
   m.def("to_dense_backward", &sphconv::to_dense_backward, "");
-
-  // m.def("indice_conv", &sphconv::indice_conv, "");
-  // m.def("indice_conv_gemm", &sphconv::indice_conv_gemm, "");
-  // m.def("conv_backward", &sphconv::indice_conv_backward, "");
-  // m.def("conv_backward_gemm", &sphconv::indice_conv_backward_gemm, "");
 
 #ifdef VERSION_INFO
   m.attr("__version__") = MACRO_STRINGIFY(VERSION_INFO);

@@ -23,11 +23,37 @@ class TestClass:
             (indices_bzyx.shape[0], 4), dtype=torch.float, device=indices_bzyx.device)
         tensor = sphconv.SparseConvTensor(features, [2, 2, 2], 1, indices=indices_bzyx)
         tensor.feature.requires_grad = True
-        y = tensor.dense().sum() * 2
+        tensor_dense = tensor.dense()
+        tensor_dense[0,:,0,0,0] *= 2
+        tensor_dense[0,:,0,0,1] *= 3
+        y = tensor_dense.sum()
         y.backward()
         print("tensor.feature.grad = ", tensor.feature.grad)
-        assert((tensor.feature.grad == 2).all())
+        assert((tensor.feature.grad[0,:] == 2).all())
+        assert((tensor.feature.grad[1,:] == 3).all())
 
+    def test_init_tensor(self):
+        torch.autograd.set_detect_anomaly(True)
+        indices_bzyx = torch.tensor([
+            [0, 0, 0, 1],
+            [0, 0, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 1, 1],
+        ], dtype=torch.int).cuda()
+        features = torch.randn(
+            (indices_bzyx.shape[0], 4), dtype=torch.float, device=indices_bzyx.device,
+            requires_grad=True)
+        tensor = sphconv.SparseConvTensor(features, [2, 2, 2], 1, indices=indices_bzyx)
+        # tensor.requires_grad = True
+        # tensor.feature.requires_grad = True
+        tensor_dense = tensor.dense()
+        tensor_dense[0,:,0,0,0] *= 2
+        tensor_dense[0,:,0,0,1] *= 3
+        y = tensor_dense.sum()
+        y.backward()
+        print("features.grad = ", features.grad)
+        assert((features.grad[1,:] == 2).all())
+        assert((features.grad[0,:] == 3).all())
 
     def test_conv(self):
         indices_bzyx = torch.tensor([

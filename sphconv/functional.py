@@ -1,12 +1,12 @@
 from sphconv.utils import out_spatial
 from typing import List
-from torch.autograd.function import _ContextMethodMixin
+from torch.autograd.function import NestedIOFunction
 
 import torch
 
 from sphconv.sphconv_cuda import (rule_conv, rule_conv_backward,
                                   to_dense, to_dense_backward,
-                                  init_tensor)
+                                  init_tensor, init_tensor_backward)
 
 
 class ConvFunction(torch.autograd.Function):
@@ -46,10 +46,10 @@ class ConvFunction(torch.autograd.Function):
         """
 
     @staticmethod
-    def forward(ctx,
+    def forward(ctx: NestedIOFunction,
                 feature: torch.Tensor,
                 weight: torch.Tensor,  # [KKK, iC, oC]
-                rules: torch.Tensor, # [NTile, kernelVolume, 2, NNZ]
+                rules: torch.Tensor,  # [NTile, kernelVolume, 2, NNZ]
                 rule_size: torch.Tensor,
                 batch_size: int,
                 spatial_shape_HWD: List[int],
@@ -64,8 +64,9 @@ class ConvFunction(torch.autograd.Function):
                          out_spatial_shape_HWD, outNNZ)
 
     @staticmethod
-    def backward(ctx, d_featureOut: torch.Tensor):  # [NNC, oC]
-        print("d_featureOut.shape = ", d_featureOut.shape)
+    def backward(ctx: NestedIOFunction,
+                 d_featureOut: torch.Tensor):  # [NNC, oC]
+        # print("d_featureOut.shape = ", d_featureOut.shape)
         feature, weight, rules, rule_size = ctx.saved_tensors
 
         # d_bias
@@ -86,12 +87,11 @@ class ConvFunction(torch.autograd.Function):
 
 class ToDenseFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: _ContextMethodMixin,
+    def forward(ctx: NestedIOFunction,
                 feature: torch.Tensor,
                 z_idx: torch.Tensor,
                 z_ptr: torch.Tensor,
-                shape: List[int]  # B C D H W
-                ):
+                shape: List[int]):        # B C D H W
         ctx.save_for_backward(z_idx, z_ptr)
         # sphconv_cuda.to_dense(feature, depth, thick, D)
         B, C, D, H, W = shape
@@ -102,9 +102,8 @@ class ToDenseFunction(torch.autograd.Function):
         return res.permute((0, 4, 1, 2, 3)).contiguous()
 
     @staticmethod
-    def backward(ctx,
-            d_featureOut # B C D W H
-         ):
+    def backward(ctx: NestedIOFunction,
+                 d_featureOut):            # B C D W H
         # print("d_featureOut = ", d_featureOut)
         z_idx, z_ptr = ctx.saved_tensors
         # BCDWH to BDWHC
@@ -116,23 +115,25 @@ class ToDenseFunction(torch.autograd.Function):
 
 class InitTensorFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: _ContextMethodMixin,
-                raw_feature: torch.Tensor,
-                indices_bzyx: torch.Tensor,
+    def forward(ctx: NestedIOFunction,
+                raw_feature: torch.Tensor,  # [NNZ, C]
+                indices_bzyx: torch.Tensor, # [NNZ, 4]
                 batchsize: int,
                 spatial_shape_HWD: List[int]):
-
-        feature_out, zidx, zptr = init_tensor(
+        feature_out, zidx, zptr, fiber_size = init_tensor(
             raw_feature, indices_bzyx, batchsize, spatial_shape_HWD)
-        ctx.save_for_backward(zidx, zptr)
+        ctx.save_for_backward(zptr, fiber_size, indices_bzyx)
         ctx.mark_non_differentiable(zidx, zptr)
         return feature_out, zidx, zptr
 
     @staticmethod
-    def backward(ctx: _ContextMethodMixin,
+    def backward(ctx: NestedIOFunction,
                  d_featureOut: torch.Tensor,  # B C D W H
                  d_zidx: torch.Tensor,
-                 d_zptr: torch.Tensor
-         ):
+                 d_zptr: torch.Tensor):
+        # import pdb; pdb.set_trace()
+        zptr, fiber_size, indices_bzyx = ctx.saved_tensors
 
-         return None, None, None, None
+        d_feature = init_tensor_backward(
+            d_featureOut, zptr, fiber_size, indices_bzyx)
+        return d_feature, None, None, None
