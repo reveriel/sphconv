@@ -79,55 +79,55 @@ class TestClass:
         # voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
 
         torch.manual_seed(0)
-        voxel_features = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) * 100
-        # voxel_features[0,:] = 8.0
-        # voxel_features[3,:] = 16.0
+        voxel_features = torch.ones((
+            indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
 
         subm = True
         kernel_size = [3, 3, 3]
-        stride = [2, 2, 2]
+        stride = [1, 1, 1]
         padding = [1, 1, 1]
-        # padding must be 1, I think it's spconv's bug
         dilation = [1, 1, 1]
 
+        spconv_feature = voxel_features.clone()
+        sphconv_feature = voxel_features.clone()
+        spconv_feature.requires_grad = True
         spconv_tensor = spconv.SparseConvTensor(
-            voxel_features, indices_bzyx, spatial_shape_DWH, batch_size)
+            spconv_feature, indices_bzyx, spatial_shape_DWH, batch_size)
 
         Spconv_Conv3d = spconv.SubMConv3d if subm else spconv.SparseConv3d
         sp_conv = Spconv_Conv3d(
             in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False).cuda()
 
-
+        sphconv_feature.requires_grad = True
         sphconv_tensor = sphconv.SparseConvTensor(
-            voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+            sphconv_feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         Sphconv_Conv3d = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
         sph_conv = Sphconv_Conv3d(
             in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False, subm=subm).cuda()
 
         # convolution
-        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device) / 2
+        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
         # weight = torch.randint( 1, 660, (*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
         # weight[1, :,:] = 8.0
         # weight[-1, :,:] = 100.
         # weight[1,2,0, :5,:] = 1/64
 
-
-        spconv_tensor.features.requires_grad = True
-        sphconv_tensor.feature.requires_grad = True
         sph_conv.weight = torch.nn.Parameter(weight.clone())
         sp_conv.weight = torch.nn.Parameter(weight.clone())
 
-        spconv_sum = sp_conv(spconv_tensor).dense().sum()
-        spconv_sum.backward()
+        spconv_y = sp_conv(spconv_tensor).dense().sum()
+        spconv_y.backward()
 
+        print("spconv_y = ", spconv_y)
         # print("spconv: d weight = ", sp_conv.weight.grad)
-        print("spconv: d feature = ", spconv_tensor.features.grad[:,0])
+        print("spconv: d feature = ", spconv_feature.grad[:, 0])
 
-        sphconv_sum = sph_conv(sphconv_tensor).dense().sum()
-        sphconv_sum.backward()
+        sphconv_y = sph_conv(sphconv_tensor).dense().sum()
+        sphconv_y.backward()
+        print("sphconv_y = ", sphconv_y)
         # print("sphconv: d weight = ", sph_conv.weight.grad)
-        print("sphconv: d feature = ", sphconv_tensor.feature.grad[:,0])
+        print("sphconv: d feature = ", sphconv_feature.grad[:, 0])
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
 
