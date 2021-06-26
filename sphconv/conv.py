@@ -164,14 +164,12 @@ class Conv3d(Convolution):
                 self.kernel_size, self.stride, self.padding, self.dilation,
                 self.tile_size)
 
-
         self.rule_size = rule_size
 
         out_feature = ConvFunction.apply(
-            input.feature, self.weight.reshape(
+            input.feature, self.weight.view(
                 (-1, in_channels, out_channels)),
-            rules, rule_size, batch_size,
-            in_spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, oz_idx.shape[0])
 
         # torch.cuda.synchronize()
         # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000

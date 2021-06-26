@@ -172,7 +172,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, oz_idx.shape[0])
 
         sph_out_features_1 = sph_out_features
         # for i in range(20):

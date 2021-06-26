@@ -509,7 +509,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
@@ -677,7 +677,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
@@ -792,7 +792,7 @@ class TestClass:
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
-            rules, rule_size, batch_size, spatial_shape_DWH, out_spatial_shape_DWH, oz_idx.shape[0])
+            rules, rule_size, oz_idx.shape[0])
 
         print("early distance =", sph_out_features.sum() - out_features.sum())
 

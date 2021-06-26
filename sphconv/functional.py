@@ -51,17 +51,9 @@ class ConvFunction(torch.autograd.Function):
                 weight: torch.Tensor,  # [KKK, iC, oC]
                 rules: torch.Tensor,  # [NTile, kernelVolume, 2, NNZ]
                 rule_size: torch.Tensor,
-                batch_size: int,
-                spatial_shape_HWD: List[int],
-                out_spatial_shape_HWD: List[int],
                 outNNZ: int):
         ctx.save_for_backward(feature, weight, rules, rule_size)
-        ctx.batch_size = batch_size
-        ctx.spatial_shape_HWD = spatial_shape_HWD
-        ctx.out_spatial_shape_HWD = out_spatial_shape_HWD
-        return rule_conv(feature, weight, rules, rule_size,
-                         batch_size, spatial_shape_HWD,
-                         out_spatial_shape_HWD, outNNZ)
+        return rule_conv(feature, weight, rules, rule_size, outNNZ)
 
     @staticmethod
     def backward(ctx: NestedIOFunction,
@@ -77,8 +69,7 @@ class ConvFunction(torch.autograd.Function):
         d_feature, d_weight = rule_conv_backward(
             d_featureOut, feature,  # bias,
             weight.permute(0, 2, 1).contiguous(),
-            rule_reverse, rule_size,
-            ctx.batch_size, ctx.spatial_shape_HWD, ctx.out_spatial_shape_HWD)
+            rule_reverse, rule_size)
 
         # TODO: no bias now
         # should match the input of forward

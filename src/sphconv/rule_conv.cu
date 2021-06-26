@@ -161,13 +161,10 @@ public:
 };
 
 torch::Tensor
-rule_conv(torch::Tensor feature,  //  [NNZ, C]
+rule_conv(torch::Tensor feature,  // [NNZ, C]
           torch::Tensor weight,   // [kernelVolume, iC, oC]
-          torch::Tensor rules,    //  [NTile, kernelVolume, 2, NNZ ],
+          torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
           torch::Tensor ruleSize, // [Ntile, kernelVolume]
-          int batchSize,
-          std::vector<int64_t> spatialShape, // H, W, D
-          std::vector<int64_t> outSpatialShape,
           int outNNZ)
 {
     int iC = weight.size(1);
@@ -224,11 +221,8 @@ std::vector<torch::Tensor>
 rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
                    torch::Tensor feature,      // [NNZ, iC]
                    torch::Tensor weight,       // [kernelVolume, iC, oC]
-                   torch::Tensor rules,        // [NTile, kernelVolume, 2, NNZ ],
-                   torch::Tensor ruleSize,     // [Ntile, kernelVolume]
-                   int batchSize,
-                   std::vector<int64_t> spatialShape, // H, W, D
-                   std::vector<int64_t> outSpatialShape)
+                   torch::Tensor rules,        // [NTile, kernelVolume, 2, nnz_max],
+                   torch::Tensor ruleSize)     // [Ntile, kernelVolume]
 {
     int kernelVolume = weight.size(0);
     int iC = weight.size(1);
@@ -244,7 +238,7 @@ rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
     // d_feature = d_featureOut * weight
     // TODO: weight [ic oc] to  [oc ic]
     torch::Tensor d_feature = rule_conv(d_featureOut, weight,
-                                        rules, ruleSize, batchSize, outSpatialShape, spatialShape, NNZ);
+                                        rules, ruleSize, NNZ);
 
     torch::Tensor d_weight = torch::zeros({kernelVolume, iC, oC},
                                           torch::dtype(feature.dtype()).device(feature.device()));
