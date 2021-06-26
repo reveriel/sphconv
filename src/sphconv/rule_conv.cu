@@ -1,13 +1,14 @@
+#include "cutlass/gemm/gemm.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
-#include "cutlass/gemm/gemm.h"
 
 #include "default_conv.cu.h"
 #include "rule_conv_kernel.cu.h"
 
 #include "debug_utils.h"
 #include "timer.h"
+#include <vector>
 
 namespace sphconv
 {
@@ -43,7 +44,7 @@ struct ConvBase {
     struct Arguments {
         torch::Tensor feature;    //  [NNZ, iC]
         torch::Tensor weight;     // [kernelVolume, iC, oC]
-        torch::Tensor localRules; //  [NTile, kernelVolume, 2, NNZ ],
+        torch::Tensor rules;      //  [NTile, kernelVolume, 2, NNZ ],
         torch::Tensor ruleSize;   // [Ntile, kernelVolume]
         torch::Tensor outFeature; // [outNNZ, oC]
 
@@ -52,21 +53,21 @@ struct ConvBase {
         Arguments(
             const torch::Tensor& feature_,
             const torch::Tensor& weight_,
-            const torch::Tensor& localRules_,
+            const torch::Tensor& rules_,
             const torch::Tensor& ruleSize_,
             const torch::Tensor& outFeature_)
             : feature(feature_),
               weight(weight_),
-              localRules(localRules_),
+              rules(rules_),
               ruleSize(ruleSize_),
               outFeature(outFeature_)
         {
         }
     };
 
-    virtual Status initialize(Arguments const& args){ return Status::kSuccess; };
+    virtual Status initialize(Arguments const& args) { return Status::kSuccess; };
 
-    virtual Status run(cudaStream_t stream=nullptr){ return Status::kSuccess; };
+    virtual Status run(cudaStream_t stream = nullptr) { return Status::kSuccess; };
 
     virtual ~ConvBase() = default;
 };
@@ -96,7 +97,8 @@ private:
 
 public:
     /// Constructs the Conv
-    Conv() {
+    Conv()
+    {
         // printf(" kWarpGemmIterations = %d \n", ConvKernel::Mma::kWarpGemmIterations);
     }
 
@@ -108,7 +110,7 @@ public:
         params_ = typename ConvKernel::Params(
             args.feature.template packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
             args.weight.template packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
-            args.localRules.template packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+            args.rules.template packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
             args.ruleSize.template packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
             args.outFeature.template packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
             kernelVolume);
@@ -146,7 +148,6 @@ public:
             }
         }
 
-
         cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
 
         gpuErrchk(cudaPeekAtLastError());
@@ -155,15 +156,15 @@ public:
         // result = cudaGetLastError();
 
         // return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
-        return Status::kSuccess ;
+        return Status::kSuccess;
     }
 };
 
 torch::Tensor
-rule_conv(torch::Tensor feature,     //  [NNZ, C]
-          torch::Tensor weight,      // [kernelVolume, iC, oC]
-          torch::Tensor localRules,  //  [NTile, kernelVolume, 2, NNZ ],
-          torch::Tensor ruleSize,    // [Ntile, kernelVolume]
+rule_conv(torch::Tensor feature,  //  [NNZ, C]
+          torch::Tensor weight,   // [kernelVolume, iC, oC]
+          torch::Tensor rules,    //  [NTile, kernelVolume, 2, NNZ ],
+          torch::Tensor ruleSize, // [Ntile, kernelVolume]
           int batchSize,
           std::vector<int64_t> spatialShape, // H, W, D
           std::vector<int64_t> outSpatialShape,
@@ -208,7 +209,7 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
     ConvBase::Arguments args(
         feature,
         weight,
-        localRules,
+        rules,
         ruleSize,
         outFeature);
 
@@ -217,6 +218,38 @@ rule_conv(torch::Tensor feature,     //  [NNZ, C]
     conv->run();
 
     return outFeature;
+}
+
+std::vector<torch::Tensor>
+rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
+                   torch::Tensor feature,      // [NNZ, iC]
+                   torch::Tensor weight,       // [kernelVolume, iC, oC]
+                   torch::Tensor rules,        // [NTile, kernelVolume, 2, NNZ ],
+                   torch::Tensor ruleSize,     // [Ntile, kernelVolume]
+                   int batchSize,
+                   std::vector<int64_t> spatialShape, // H, W, D
+                   std::vector<int64_t> outSpatialShape)
+{
+    int kernelVolume = weight.size(0);
+    int iC = weight.size(1);
+    int oC = weight.size(2);
+
+    int IC_BLOCK = near2power(iC);
+    int OC_BLOCK = near2power(oC);
+
+    int NNZ = feature.size(0);
+    int NTile = ruleSize.size(0);
+
+    // allocate d_feature
+    // d_feature = d_featureOut * weight
+    // TODO: weight [ic oc] to  [oc ic]
+    torch::Tensor d_feature = rule_conv(d_featureOut, weight,
+                                        rules, ruleSize, batchSize, outSpatialShape, spatialShape, NNZ);
+
+    torch::Tensor d_weight = torch::zeros({kernelVolume, iC, oC},
+                                          torch::dtype(feature.dtype()).device(feature.device()));
+
+    return {d_feature, d_weight};
 }
 
 } // namespace device

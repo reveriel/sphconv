@@ -1,9 +1,12 @@
 from sphconv.utils import out_spatial
 from typing import List
+from torch.autograd.function import _ContextMethodMixin
 
 import torch
 
-from sphconv.sphconv_cuda import rule_conv, to_dense, to_dense_backward
+from sphconv.sphconv_cuda import (rule_conv, rule_conv_backward,
+                                  to_dense, to_dense_backward,
+                                  init_tensor)
 
 
 class ConvFunction(torch.autograd.Function):
@@ -46,60 +49,52 @@ class ConvFunction(torch.autograd.Function):
     def forward(ctx,
                 feature: torch.Tensor,
                 weight: torch.Tensor,  # [KKK, iC, oC]
-                rules: torch.Tensor,
+                rules: torch.Tensor, # [NTile, kernelVolume, 2, NNZ]
                 rule_size: torch.Tensor,
                 batch_size: int,
                 spatial_shape_HWD: List[int],
                 out_spatial_shape_HWD: List[int],
                 outNNZ: int):
-        ctx.save_for_backward( feature, weight, rules, rule_size)
+        ctx.save_for_backward(feature, weight, rules, rule_size)
         ctx.batch_size = batch_size
         ctx.spatial_shape_HWD = spatial_shape_HWD
         ctx.out_spatial_shape_HWD = out_spatial_shape_HWD
-        ctx.outNNZ = outNNZ
         return rule_conv(feature, weight, rules, rule_size,
                          batch_size, spatial_shape_HWD,
                          out_spatial_shape_HWD, outNNZ)
 
     @staticmethod
-    def backward(ctx, d_featureOut):
+    def backward(ctx, d_featureOut: torch.Tensor):  # [NNC, oC]
+        print("d_featureOut.shape = ", d_featureOut.shape)
         feature, weight, rules, rule_size = ctx.saved_tensors
 
         # d_bias
-        d_feature, d_weight = \
-            None, None
-            # sphconv_cuda.conv_backward_gemm(
-            # feature,
-            # d_featureOut,
-            # # bias,
-            # weight,
-            # in_rules,
-            # out_rules,
-            # num_in,
-            # *ctx.stride,
-            # *ctx.padding,
-            # *ctx.dilation,
-            # ctx.groups,
-            # ctx.subm)
+        # TODO: split rules
+        rule_reverse = torch.cat((rules[:,:,1:2,:], rules[:,:,0:1,:]), dim=2).contiguous()
+        # print("rule_reverse shape = ", rule_reverse.shape)
+        # .contiguous()
+        d_feature, d_weight = rule_conv_backward(
+            d_featureOut, feature,  # bias,
+            weight.permute(0, 2, 1).contiguous(),
+            rule_reverse, rule_size,
+            ctx.batch_size, ctx.spatial_shape_HWD, ctx.out_spatial_shape_HWD)
 
-        # no bias now
+        # TODO: no bias now
         # should match the input of forward
         return d_feature, d_weight, None, None, None, None, None, None
 
 
 class ToDenseFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx,
+    def forward(ctx: _ContextMethodMixin,
                 feature: torch.Tensor,
                 z_idx: torch.Tensor,
                 z_ptr: torch.Tensor,
                 shape: List[int]  # B C D H W
                 ):
-        ctx.shape = shape
         ctx.save_for_backward(z_idx, z_ptr)
         # sphconv_cuda.to_dense(feature, depth, thick, D)
         B, C, D, H, W = shape
-        ctx.D = D
         res = torch.zeros((B, D, W, H, C), device=feature.device, dtype=feature.dtype)
         to_dense(feature, z_idx, z_ptr, D, res)
         # from B D W H C
@@ -118,3 +113,26 @@ class ToDenseFunction(torch.autograd.Function):
             z_idx, z_ptr)
         return d_feature, None, None, None
 
+
+class InitTensorFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx: _ContextMethodMixin,
+                raw_feature: torch.Tensor,
+                indices_bzyx: torch.Tensor,
+                batchsize: int,
+                spatial_shape_HWD: List[int]):
+
+        feature_out, zidx, zptr = init_tensor(
+            raw_feature, indices_bzyx, batchsize, spatial_shape_HWD)
+        ctx.save_for_backward(zidx, zptr)
+        ctx.mark_non_differentiable(zidx, zptr)
+        return feature_out, zidx, zptr
+
+    @staticmethod
+    def backward(ctx: _ContextMethodMixin,
+                 d_featureOut: torch.Tensor,  # B C D W H
+                 d_zidx: torch.Tensor,
+                 d_zptr: torch.Tensor
+         ):
+
+         return None, None, None, None

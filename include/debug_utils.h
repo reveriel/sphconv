@@ -12,7 +12,7 @@
 
 static const int zeros[] = {0, 0, 0, 0, 0};
 
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #define gpuErrchk(ans)                                                         \

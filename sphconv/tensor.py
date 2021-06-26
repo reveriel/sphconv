@@ -3,7 +3,7 @@ from typing import List, Optional
 import torch
 
 from sphconv.sphconv_cuda import init_tensor
-from sphconv.functional import ToDenseFunction
+from sphconv.functional import InitTensorFunction, ToDenseFunction
 
 class SparseTensorBase:
     """ a simple plain old python object"""
@@ -33,7 +33,7 @@ class SparseTensorBase:
 
 class SparseConvTensor(SparseTensorBase):
     def __init__(self,
-                 feature: torch.Tensor,                   # [NNZ, C]
+                 raw_feature: torch.Tensor,                   # [NNZ, C]
                  spatial_shape_DWH: List[int],            # [D, W, H] or, zyx
                  batch_size: int,                         # B
                  indices: Optional[torch.Tensor] = None,  # [NNZ, 4], bzyx
@@ -58,9 +58,9 @@ class SparseConvTensor(SparseTensorBase):
         if z_idx is not None and z_ptr is not None:
             super().__init__(
                 batch_size, spatial_shape_DWH[0], spatial_shape_DWH[1], spatial_shape_DWH[2],
-                feature.shape[-1],
-                feature.device, feature.dtype,
-                z_idx.dtype, feature, z_idx, z_ptr)
+                raw_feature.shape[-1],
+                raw_feature.device, raw_feature.dtype,
+                z_idx.dtype, raw_feature, z_idx, z_ptr)
             return
 
         elif indices is not None:
@@ -68,31 +68,29 @@ class SparseConvTensor(SparseTensorBase):
             assert indices.dtype == torch.int32
             assert indices.dim() == 2
             assert indices.shape[1] == 4
-            assert feature.dim() == 2
-            assert feature.shape[0] == indices.shape[0]
-            assert feature.device == indices.device
+            assert raw_feature.dim() == 2
+            assert raw_feature.shape[0] == indices.shape[0]
+            assert raw_feature.device == indices.device
 
             super().__init__(
                 batch_size, spatial_shape_DWH[0], spatial_shape_DWH[1], spatial_shape_DWH[2],
-                feature.shape[-1],
-                feature.device, feature.dtype,
+                raw_feature.shape[-1],
+                raw_feature.device, raw_feature.dtype,
                 indices.dtype, None, None, None)
 
             # the number of non zero elements
-            NNZ = feature.shape[0]
+            NNZ = raw_feature.shape[0]
 
             # all nonzeros are in the 'val'
             # size: NNZ * C
             # the 'val' stores all nonzeros
             # its a pointer points to an array of
-            self.feature = torch.empty(
-                (NNZ, self.C), device=self.device, dtype=self.dtype)
+            self.feature = None
 
             # the 'z_idx' stores the z indexes of the elements in 'val'
             # if val[k] = A[b,x,y,z,c], then z_idx[k]  = z
             # size: NNZ
-            self.z_idx = torch.zeros(
-                (NNZ), device=self.device, dtype=self.itype)
+            self.z_idx = None
 
             # the 'z_ptr' stores the locations in 'val' that start a 'C' vector.
             # if val[k] = A[b,x,y,z,c], then  z_ptr[b,x,y] <= k < z_ptr[b,x,y + 1]
@@ -101,14 +99,12 @@ class SparseConvTensor(SparseTensorBase):
             #
             # size: B * H * W
             # shape: B, H, W
-            self.z_ptr = None
-            #  torch.new_emp
-            #     (B * H * W), device=self.device, dtype=self.ptrtype)
+            self. z_ptr = None
 
             # size   B H W D, for counting in get_rules() and init_csf()
 
-            self.z_ptr = init_tensor(
-                feature, indices, self.B, [self.D, self.W, self.H], self.feature, self.z_idx)
+            self.feature, self.z_idx, self.z_ptr = InitTensorFunction.apply(
+                raw_feature, indices, self.B, [self.D, self.W, self.H])
 
     @property
     def shape(self):

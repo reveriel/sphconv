@@ -29,89 +29,19 @@ class TestClass:
         assert((tensor.feature.grad == 2).all())
 
 
-    def test_result_stable(self):
+    def test_conv(self):
         indices_bzyx = torch.tensor([
-        [ 0,  0,  2, 12],
-        [ 0,  0,  2,  2],
-        [ 0,  0,  2, 17],
-        [ 0,  0,  2,  3],
-        [ 0,  0,  4,  2],
-        [ 0,  0,  2,  4],
-        [ 0,  0,  2, 16],
-        [ 0,  0,  5,  2],
-        [ 0,  0,  1, 13],
-        [ 0,  1,  2, 13],
-        [ 0,  0,  2,  0],
-        [ 0,  1,  2, 17],
-        [ 0,  0,  3,  5],
-        [ 0,  1,  0,  5],
-        [ 0,  1,  2, 12],
-        [ 0,  1,  3,  7],
-        [ 0,  1,  3, 14],
-        [ 0,  1,  3, 13],
-        [ 0,  1,  3,  2],
-        [ 0,  1,  3,  3],
-        [ 0,  1,  3,  5],
-        [ 0,  1,  3,  4],
-        [ 0,  1,  4,  3],
-        [ 0,  1,  5,  3],
-        [ 0,  1,  5,  2],
-        [ 0,  1,  5,  4],
-        [ 0,  1,  0,  3],
-        [ 0,  1,  0,  2],
-        [ 0,  1,  1,  2],
-        [ 0,  1,  2,  2],
-        [ 0,  1,  2,  3],
-        [ 0,  1,  2, 10],
-        [ 0,  1,  4,  2],
-        [ 0,  1,  5,  7],
-        [ 0,  1,  5,  5],
-        [ 0,  1,  1,  4],
-        [ 0,  1,  5,  6],
-        [ 0,  1,  5,  8],
-        [ 0,  2,  5,  7],
-        [ 0,  1,  1,  3],
-        [ 0,  2,  2,  6],
-        [ 0,  2,  3,  3],
-        [ 0,  2,  3,  2],
-        [ 0,  2,  4,  3],
-        [ 0,  2,  5,  3],
-        [ 0,  2,  5,  8],
-        [ 0,  2,  5,  4],
-        [ 0,  2,  5,  5],
-        [ 0,  2,  0,  2],
-        [ 0,  2,  1,  2],
-        [ 0,  2,  1,  3],
-        [ 0,  2,  1,  4],
-        [ 0,  2,  2,  3],
-        [ 0,  2,  2,  2],
-        [ 0,  2,  1,  1],
-        [ 0,  2,  3,  4],
-        [ 0,  2,  2,  0],
-        [ 0,  2,  0,  5],
-        [ 0,  2,  2,  4],
-        [ 0,  3,  5,  6],
-        [ 0,  3,  3,  2],
-        [ 0,  3,  4,  4],
-        [ 0,  3,  4,  7],
-        [ 0,  3,  5,  3],
-        [ 0,  3,  5,  4],
-        [ 0,  3,  0,  3],
-        [ 0,  3,  0,  2],
-        [ 0,  3,  1,  2],
-        [ 0,  3,  1,  3],
-        [ 0,  3,  2,  2],
-        [ 0,  3,  4,  1],
-        [ 0,  3,  5,  2],
-        [ 0,  3,  1,  1],
-        [ 0,  3,  3,  1],
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 1, 1, 1],
         ], dtype=torch.int).cuda()
-        D = 6
-        W = 6
-        H = 20
+        D = 3
+        W = 3
+        H = 3
         spatial_shape_DWH = [D, W, H]
-        in_channels = 64
-        out_channels = 64
+        in_channels = 32
+        out_channels = 32
         batch_size = 1
         # voxel_features = torch.arange( indices_bzyx.shape[0],
         #                   dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
@@ -124,8 +54,8 @@ class TestClass:
 
         torch.manual_seed(0)
         voxel_features = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) * 100
-        voxel_features[0,:] = 8.0
-        voxel_features[3,:] = 16.0
+        # voxel_features[0,:] = 8.0
+        # voxel_features[3,:] = 16.0
 
         subm = True
         kernel_size = [3, 3, 3]
@@ -142,7 +72,7 @@ class TestClass:
             in_channels, out_channels, kernel_size, stride=stride, padding=padding, dilation=dilation, bias=False).cuda()
 
 
-        sph_tensor = sphconv.SparseConvTensor(
+        sphconv_tensor = sphconv.SparseConvTensor(
             voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         Sphconv_Conv3d = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
@@ -152,21 +82,28 @@ class TestClass:
         # convolution
         weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device) / 2
         # weight = torch.randint( 1, 660, (*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device) / 2
-        weight[1, :,:] = 8.0
-        weight[-1, :,:] = 100.
-        weight[1,2,0, :5,:] = 1/64
+        # weight[1, :,:] = 8.0
+        # weight[-1, :,:] = 100.
+        # weight[1,2,0, :5,:] = 1/64
 
 
         spconv_tensor.features.requires_grad = True
+        sphconv_tensor.feature.requires_grad = True
         sph_conv.weight = torch.nn.Parameter(weight.clone())
         sp_conv.weight = torch.nn.Parameter(weight.clone())
 
-
-        spconv_sum = spconv_dense = sp_conv(spconv_tensor).dense().sum()
+        spconv_sum = sp_conv(spconv_tensor).dense().sum()
         spconv_sum.backward()
 
-        print("spconv: d weight = ", sp_conv.weight.grad)
-        print("spconv: d feature = ", spconv_tensor.features.grad)
+        # print("spconv: d weight = ", sp_conv.weight.grad)
+        print("spconv: d feature = ", spconv_tensor.features.grad[:,0])
+
+        sphconv_sum = sph_conv(sphconv_tensor).dense().sum()
+        sphconv_sum.backward()
+        # print("sphconv: d weight = ", sph_conv.weight.grad)
+        print("sphconv: d feature = ", sphconv_tensor.feature.grad[:,0])
+        # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
+        # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
 
 
 

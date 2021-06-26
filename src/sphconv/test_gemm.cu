@@ -9,7 +9,6 @@
 #include <cuda_runtime.h>
 #include <torch/extension.h>
 
-
 inline char const* to_string(cutlass::Status status)
 {
 
@@ -96,7 +95,7 @@ public:
 
         status = gemm_op();
 
-        std::cout << to_string(status) << std::endl;
+        // std::cout << to_string(status) << std::endl;
         // EXPECT_TRUE(status == cutlass::Status::kSuccess) << to_string(status);
         return status == cutlass::Status::kSuccess;
     }
@@ -152,22 +151,32 @@ int main()
     const int K = 64;
 
     torch::manual_seed(0);
-    auto options = torch::TensorOptions().dtype(torch::kFloat32).layout(torch::kStrided).device(torch::kCUDA, 0).requires_grad(false);
-    // torch::Tensor A = torch::randint(40, {M, K}, options);
-    // torch::Tensor B = torch::randint(40, {K, N}, options);
-    torch::Tensor A = torch::randn({M, K}, options);
-    torch::Tensor B = torch::randn({K, N}, options);
-    torch::Tensor C_torch = torch::zeros({M, N}, options);
-    torch::mm_out(C_torch, A, B);
+    double cutlass_distance = 0;
+    double torch_distance = 0;
 
-    torch::Tensor C_cutlass = torch::zeros({M, N}, options);
-    test_cutlass<M, N, K>(A, B, C_cutlass);
+    auto options_64 = torch::TensorOptions().dtype(torch::kFloat64).layout(torch::kStrided).device(torch::kCUDA, 0).requires_grad(false);
+    auto options_32 = torch::TensorOptions().dtype(torch::kFloat32).layout(torch::kStrided).device(torch::kCUDA, 0).requires_grad(false);
 
+    for (int i = 0; i < 100; i++) {
+        torch::Tensor A_64 = torch::randn({M, K}, options_64);
+        torch::Tensor B_64 = torch::randn({K, N}, options_64);
+        torch::Tensor C_64 = torch::zeros({M, N}, options_64);
+        torch::mm_out(C_64, A_64, B_64);
 
-    std::cout << " C_torch = \n" << C_torch << std::endl;
-    std::cout << " cutlass result C2 = \n" << C_cutlass << std::endl;
+        torch::Tensor A = A_64.to(torch::kFloat32);
+        torch::Tensor B = B_64.to(torch::kFloat32);
+        torch::Tensor C_torch = torch::zeros({M, N}, options_32);
+        torch::mm_out(C_torch, A, B);
 
-    std::cout << "distance = " << (C_cutlass - C_torch).abs().sum() << std::endl;
+        torch::Tensor C_cutlass = torch::zeros({M, N}, options_32);
+        test_cutlass<M, N, K>(A, B, C_cutlass);
+
+        cutlass_distance += (C_cutlass.to(torch::kFloat64) - C_64).abs().sum().item<double>();
+        torch_distance += (C_torch.to(torch::kFloat64) - C_64).abs().sum().item<double>();
+    }
+
+    std::cout << "cutlass distance = " << cutlass_distance << std::endl;
+    std::cout << "torch distance = " << torch_distance << std::endl;
 
     return 0;
 }

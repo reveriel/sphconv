@@ -1,12 +1,10 @@
+#include "debug_utils.h"
+#include "tensor.h"
+#include "timer.h"
 #include <cstdio>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <iostream>
-#include <torch/extension.h>
-#include <vector>
-
-#include "debug_utils.h"
-#include "timer.h"
 
 namespace sphconv
 {
@@ -21,41 +19,41 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
  */
 template <typename IType>
 __global__ void fillGridKernel(
-    const GpuTensor<IType, 2> indicesZYX, // [NNZ, 4], 4: b,z,y,x
-    GpuTensor<IType, 4> grid)             // [B, H, W, D]
+    const GpuTensor<IType, 2> indicesBZYX, // [NNZ, 4], 4: b,z,y,x
+    GpuTensor<IType, 4> grid)              // [B, H, W, D]
 {
-    int NNZ = indicesZYX.size(0);
+    int NNZ = indicesBZYX.size(0);
     int n = threadIdx.x + blockDim.x * blockIdx.x;
     if (n >= NNZ)
         return;
 
-    IType b = indicesZYX[n][0];
-    IType x = indicesZYX[n][1]; // this is convention disagreement..  not a bug
-    IType y = indicesZYX[n][2]; // this is convention disagreement..  not a bug
-    IType z = indicesZYX[n][3]; // this is convention disagreement..  not a bug
+    IType b = indicesBZYX[n][0];
+    IType x = indicesBZYX[n][1]; // this is convention disagreement..  not a bug
+    IType y = indicesBZYX[n][2]; // this is convention disagreement..  not a bug
+    IType z = indicesBZYX[n][3]; // this is convention disagreement..  not a bug
 
     grid[b][x][y][z] = IType(1);
 }
 
 template <typename IType, typename DType>
 __global__ void reorderFeatureKernel(
-    const GpuTensor<IType, 3> zPtr,       // [B, H, W]
-    const GpuTensor<IType, 2> indicesZYX, // [NNZ, 4], bzyx
-    const GpuTensor<DType, 2> feature,    // [NNZ ,C]
-    GpuTensor<IType, 3> fiberSize,        // [B, H, W]
-    GpuTensor<IType, 1> zIndices,         // [NNZ]
-    GpuTensor<DType, 2> outFeature)       // [NNZ, C]
+    const GpuTensor<IType, 3> zPtr,        // [B, H, W]
+    const GpuTensor<IType, 2> indicesBZYX, // [NNZ, 4], bzyx
+    const GpuTensor<DType, 2> feature,     // [NNZ ,C]
+    GpuTensor<IType, 3> fiberSize,         // [B, H, W]
+    GpuTensor<IType, 1> zIndices,          // [NNZ]
+    GpuTensor<DType, 2> outFeature)        // [NNZ, C]
 {
-    int NNZ = indicesZYX.size(0);
+    int NNZ = indicesBZYX.size(0);
     int C = feature.size(1);
     int n = threadIdx.x + blockDim.x * blockIdx.x;
     if (n >= NNZ)
         return;
 
-    IType b = indicesZYX[n][0];
-    IType x = indicesZYX[n][1]; // this is convention disagreement..  not a bug
-    IType y = indicesZYX[n][2]; // this is convention disagreement..  not a bug
-    IType z = indicesZYX[n][3]; // this is convention disagreement..  not a bug
+    IType b = indicesBZYX[n][0];
+    IType x = indicesBZYX[n][1]; // this is convention disagreement..  not a bug
+    IType y = indicesBZYX[n][2]; // this is convention disagreement..  not a bug
+    IType z = indicesBZYX[n][3]; // this is convention disagreement..  not a bug
 
     IType val_pos = zPtr[b][x][y];
     IType fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
@@ -74,28 +72,28 @@ __global__ void reorderFeatureKernel(
     CHECK_CUDA(x);     \
     CHECK_CONTIGUOUS(x)
 
-torch::Tensor
+std::vector<torch::Tensor>
 init_tensor(
-    const torch::Tensor feature,    // [NNZ, C]
-    const torch::Tensor indicesZYX, // [NNZ, 4]
+    const torch::Tensor feature,     // [NNZ, C]
+    const torch::Tensor indicesBZYX, // [NNZ, 4]
     int batchSize,
-    std::vector<int64_t> spatialShape, // H, W, D
-    torch::Tensor outFeature,          // [NNZ, C]
-    torch::Tensor zIndices)            //
+    std::vector<int64_t> spatialShape) // H, W, D
 {
-
     CHECK_INPUT(feature);
-    CHECK_INPUT(indicesZYX);
-    CHECK_INPUT(outFeature);
-    CHECK_INPUT(zIndices);
-
+    CHECK_INPUT(indicesBZYX);
     int NNZ = feature.size(0);
+    int C = feature.size(1);
+
+    torch::Tensor outFeature = torch::empty({NNZ, C},
+                                            torch::dtype(feature.dtype()).device(feature.device()));
+    torch::Tensor zIndices = torch::zeros({NNZ},
+                                          torch::dtype(indicesBZYX.dtype()).device(indicesBZYX.device()));
     torch::Tensor grid = torch::zeros({batchSize, spatialShape[0], spatialShape[1], spatialShape[2]},
-                                      torch::dtype(torch::kInt32).device(indicesZYX.device()));
+                                      torch::dtype(torch::kInt32).device(indicesBZYX.device()));
     // fill grid
     // set occupied voxels to 1
     fillGridKernel<int32_t><<<divUp(NNZ, 512), 512>>>(
-        indicesZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+        indicesBZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>());
 
     gpuErrchk(cudaPeekAtLastError());
@@ -108,7 +106,7 @@ init_tensor(
 
     reorderFeatureKernel<int32_t, float><<<divUp(NNZ, 512), 512>>>(
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        indicesZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+        indicesBZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         fiberSize.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
@@ -117,8 +115,9 @@ init_tensor(
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    return zPtr;
+    return {outFeature, zIndices, zPtr};
 }
+
 
 template <typename IType, typename DType>
 __global__ void toDenseKernel(
