@@ -8,6 +8,34 @@ import torch
 from sphconv.datagen import merge_batch_torch
 from sphconv.utils import out_spatial
 
+def d_torch_conv(
+    indice_bzyx: torch.Tensor,
+    feature_: torch.Tensor,
+    weight: torch.Tensor,
+    spatial_shape_DWH: List[int],
+    batch_size:int, ic, oc, kernel_size, stride, padding, dilation,
+    subm:bool, lib:str):
+    assert (subm == False)
+
+    feature:torch.Tensor = feature_.clone()
+
+    tensor_0 = sphconv.SparseConvTensor(
+        feature, spatial_shape_DWH, batch_size, indices=indice_bzyx).dense()
+    tensor_1 = spconv.SparseConvTensor(
+        feature, indice_bzyx, spatial_shape_DWH, batch_size).dense()
+    assert(torch.isclose(tensor_0, tensor_1).all())
+    tensor = tensor_0
+    tensor.requires_grad = True
+    conv = torch.nn.Conv3d(ic, oc, kernel_size, stride, padding, dilation, bias=False)
+
+    conv.weight = torch.nn.Parameter(weight.permute(3,4,0,1,2).contiguous().clone())
+
+    y = conv(tensor).sum()
+    y.backward()
+
+    return y, tensor.grad
+
+
 def d_feature_conv(
     indice_bzyx: torch.Tensor,
     feature_: torch.Tensor,
@@ -118,7 +146,14 @@ class TestClass:
         sph_y, sph_d_f = d_feature_conv(
             indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
             out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
+
+        t_y, t_d_dense = d_torch_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
+
+        # print("t_d_dense = ", t_d_dense)
         assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        assert(torch.isclose(t_y, sph_y, rtol=0.01).all())
         print("sp_d_f = ", sp_d_f[:,:])
         print("sph_d_f = ", sph_d_f[:,:])
         print("distance = ", (sp_d_f - sph_d_f).abs().sum())
