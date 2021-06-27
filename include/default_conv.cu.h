@@ -14,7 +14,8 @@ template <
     typename ThreadBlockShape_,
     /// GemmShape, V, oC, iC
     typename WarpShape_,
-    int VBLOCK>
+    int VBLOCK,
+    typename ThreadblockSwizzle>
 struct DefaultConv {
 
     using ElementA = float;
@@ -58,7 +59,7 @@ struct DefaultConv {
         kEpilogueElementsPerAccess
         >::Epilogue;
 
-    using ConvKernel = kernel::Conv<Mma, Epilogue, VBLOCK>;
+    using ConvKernel = kernel::Conv<Mma, Epilogue, VBLOCK, ThreadblockSwizzle>;
 
 };
 

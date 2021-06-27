@@ -24,7 +24,7 @@ def batch_real_test_inputs(
     feature, indices = example['voxels'], example['coordinates']
     # feature, [NNZ, 4]
     # original channel is 4, we extend it if needed
-    assert channel >= 4;
+    assert channel >= 4
     if channel > 4:
         feature = feature.repeat((1, (channel + 3) //4))
         feature = feature[:, :channel]

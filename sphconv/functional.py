@@ -63,7 +63,9 @@ class ConvFunction(torch.autograd.Function):
 
         # d_bias
         # TODO: split rules
+        print("rules = ", rules[:,:,:,:24])
         rule_reverse = torch.cat((rules[:,:,1:2,:], rules[:,:,0:1,:]), dim=2).contiguous()
+        print("rule reverse = ", rule_reverse[:,:,:,:24])
         # print("rule_reverse shape = ", rule_reverse.shape)
         # .contiguous()
         d_feature, d_weight = rule_conv_backward(

@@ -5,8 +5,33 @@ import spconv
 from torch.jit import load
 import sphconv
 import torch
-from sphconv.datagen import merge_batch_torch
+from sphconv.datagen import VoxelizationVFE, merge_batch_torch
 from sphconv.utils import out_spatial
+
+def batch_real_test_inputs(
+    channel: int,
+    batch_size: int,
+    spatial_shape_DWH: List[int]
+):
+    TEST_FILE_MAX = 4
+    vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_DWH[::-1])
+
+    example_list = []
+    for i in range(batch_size):
+        voxels, coords = vvfe.generate(
+            '{:06d}.bin'.format(i %  TEST_FILE_MAX),  torch.device('cuda:0'))
+        example_list.append({'voxels': voxels, 'coordinates': coords})
+    example = merge_batch_torch(example_list)
+
+    feature, indices = example['voxels'], example['coordinates']
+    # feature, [NNZ, 4]
+    # original channel is 4, we extend it if needed
+    assert channel >= 4
+    if channel > 4:
+        feature = feature.repeat((1, (channel + 3) //4))
+        feature = feature[:, :channel]
+    return feature, indices
+
 
 def d_torch_conv(
     indice_bzyx: torch.Tensor,
@@ -51,11 +76,14 @@ def d_feature_conv(
         tensor = spconv.SparseConvTensor(
             feature, indice_bzyx, spatial_shape_DWH, batch_size)
         conv_class = spconv.SubMConv3d if subm else spconv.SparseConv3d
+        conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False)
     elif lib == 'sphconv':
         tensor = sphconv.SparseConvTensor(
             feature, spatial_shape_DWH, batch_size, indices=indice_bzyx)
         conv_class = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
-    conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False)
+        conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False,
+            tile_size=[2,2])
+    # conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False)
 
     conv.weight = torch.nn.Parameter(weight.clone())
 
@@ -124,21 +152,21 @@ class TestClass:
             indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
 
         kernel_size = [3, 3, 3]
-        stride = [1, 1, 1]
+        stride = [2, 1, 1]
         padding = [1, 1, 1]
         dilation = [1, 1, 1]
 
         # convolution
         weight = torch.ones((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
 
-        sp_y, sp_d_f = d_feature_conv(
-            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
-            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
-        sph_y, sph_d_f = d_feature_conv(
-            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
-            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
-        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
-        assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+        # sp_y, sp_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        # sph_y, sph_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        # assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
 
         sp_y, sp_d_f = d_feature_conv(
             indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
@@ -151,7 +179,7 @@ class TestClass:
             indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
             out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
 
-        # print("t_d_dense = ", t_d_dense)
+        print("t_d_dense = ", t_d_dense)
         assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
         assert(torch.isclose(t_y, sph_y, rtol=0.01).all())
         print("sp_d_f = ", sp_d_f[:,:])
@@ -171,7 +199,37 @@ class TestClass:
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
 
+    def test_conv_d_feature(self):
 
+
+        spatial_shape_DWH = [40, 40, 40]
+        in_channels = 32
+        out_channels = 32
+        batch_size = 1
+
+        features, indices_bzyx = batch_real_test_inputs(
+            channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+
+        kernel_size = [3, 3, 3]
+        stride = [3, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        # convolution
+        weight = torch.ones((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        sp_y, sp_d_f = d_feature_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="spconv")
+        sph_y, sph_d_f = d_feature_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
+
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        print("sp_d_f = ", sp_d_f[:,:])
+        print("sph_d_f = ", sph_d_f[:,:])
+        print("distance = ", (sp_d_f - sph_d_f).abs().sum())
+        assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
 
 
 

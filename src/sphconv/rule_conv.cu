@@ -1,13 +1,12 @@
 #include "cutlass/gemm/gemm.h"
+#include "debug_utils.h"
+#include "default_conv.cu.h"
+#include "rule_conv_kernel.cu.h"
+#include "threadblock_swizzle.h"
+#include "timer.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <torch/extension.h>
-
-#include "default_conv.cu.h"
-#include "rule_conv_kernel.cu.h"
-
-#include "debug_utils.h"
-#include "timer.h"
 #include <vector>
 
 namespace sphconv
@@ -77,12 +76,15 @@ template <
     typename ThreadBlockShape_,
     /// GemmShape, V, oC, iC
     typename WarpShape_,
-    int VBLOCK>
+    int VBLOCK,
+    ///
+    typename ThreadblockSwizzle_ =
+        typename threadblock::IdentityThreadblockSwizzle>
 struct Conv : public ConvBase {
 
-    using ConvKernel = typename kernel::DefaultConv<ThreadBlockShape_,
-                                                    WarpShape_,
-                                                    VBLOCK>::ConvKernel;
+    using ThreadblockSwizzle = ThreadblockSwizzle_;
+    using ConvKernel = typename kernel::DefaultConv<
+        ThreadBlockShape_, WarpShape_, VBLOCK, ThreadblockSwizzle_>::ConvKernel;
 
     static size_t get_workspace_size()
     {
@@ -120,7 +122,9 @@ public:
 
     Status run(cudaStream_t stream = nullptr) override
     {
-        dim3 grid(NTile_);
+        ThreadblockSwizzle ts;
+
+        dim3 grid = ts.get_grid_shape(NTile_);
         dim3 block(ConvKernel::kThreadCount, 1, 1);
 
         cudaError_t result;
@@ -203,12 +207,7 @@ rule_conv(torch::Tensor feature,  // [NNZ, C]
         printf("unsupported oC = %d\n", oC);
     }
 
-    ConvBase::Arguments args(
-        feature,
-        weight,
-        rules,
-        ruleSize,
-        outFeature);
+    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature);
 
     conv->initialize(args);
 
@@ -216,6 +215,59 @@ rule_conv(torch::Tensor feature,  // [NNZ, C]
 
     return outFeature;
 }
+
+torch::Tensor
+rule_conv_d_feature(torch::Tensor feature,  // [NNZ, C]
+                    torch::Tensor weight,   // [kernelVolume, iC, oC]
+                    torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
+                    torch::Tensor ruleSize, // [Ntile, kernelVolume]
+                    int outNNZ)
+{
+    int iC = weight.size(1);
+    int oC = weight.size(2);
+
+    int IC_BLOCK = near2power(iC);
+    int OC_BLOCK = near2power(oC);
+
+    int NTile = ruleSize.size(0);
+
+    // allocate outFeature ?
+    torch::Tensor outFeature =
+        torch::zeros({outNNZ, oC},
+                     torch::dtype(feature.dtype()).device(feature.device()));
+
+    std::shared_ptr<ConvBase> conv;
+
+    switch (OC_BLOCK) {
+    case 8:
+        // if oc = 8
+        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        break;
+    case 16:
+        // if oc = 16
+        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        break;
+    case 32:
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        break;
+    case 64:
+        conv = std::make_shared<Conv<GemmShape<8, 64, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        break;
+    default:
+        printf("unsupported oC = %d\n", oC);
+    }
+
+    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature);
+
+    conv->initialize(args);
+
+    conv->run();
+
+    return outFeature;
+}
+
 
 std::vector<torch::Tensor>
 rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
@@ -237,11 +289,11 @@ rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
     // allocate d_feature
     // d_feature = d_featureOut * weight
     // TODO: weight [ic oc] to  [oc ic]
-    torch::Tensor d_feature = rule_conv(d_featureOut, weight,
-                                        rules, ruleSize, NNZ);
+    torch::Tensor d_feature = rule_conv_d_feature(
+        d_featureOut, weight, rules, ruleSize, NNZ);
 
-    torch::Tensor d_weight = torch::zeros({kernelVolume, iC, oC},
-                                          torch::dtype(feature.dtype()).device(feature.device()));
+    torch::Tensor d_weight = torch::zeros(
+        {kernelVolume, iC, oC}, torch::dtype(feature.dtype()).device(feature.device()));
 
     return {d_feature, d_weight};
 }

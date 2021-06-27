@@ -22,7 +22,8 @@ namespace kernel
 
 template <typename Mma_,      // threadblock level MMA
           typename Epilogue_, // threadblock level epilogue
-          int VBLOCK> //
+          int VBLOCK,
+          typename ThreadblockSwizzle> //
 struct Conv {
 
     using Mma = Mma_;
@@ -81,46 +82,24 @@ struct Conv {
     Conv() { }
 
     CUTLASS_DEVICE
-    void operator()(Params const& params, SharedStorage& shared_storage)
+    void tile_rule_conv(int tile, Params const&params, SharedStorage& shared_storage)
     {
-        int tile = blockIdx.x;
-
-        // Problem size is a function of threadblock index in the K dimension
-        // int problem_size_k = min(
-        // params.problem_size.k(),
-        // (threadblock_tile_offset.k() + 1) * params.gemm_k_size);
-
-        // Compute threadblock-scoped matrix multiply-add
-        // int gemm_k_iterations = (problem_size_k - tb_offset_A.column() + Mma::Shape::kK - 1) / Mma::Shape::kK;
         int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
-        // int gemm_k_iterations = 1;
-        // printf(" gemm k iterations = %d\n", gemm_k_iterations);
 
         for (int k = 0; k < params.kernel_volume_; k++) {
-
             // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);
             int kRuleSize = params.ruleSize_[tile][k];
-
             // printf(" rulesize [tile: %d] [k: %d] = %d\n",  tile, k, kRuleSize );
-
             if (kRuleSize == 0)
                 continue;
-
             for (int vbegin = 0; vbegin < kRuleSize; vbegin += VBLOCK) {
-
                 int thread_idx = threadIdx.x;
                 // Construct iterators
                 typename Mma::IteratorA iterator_A(
-                    params.params_A,
-                    thread_idx,
-                    tile,
-                    vbegin,
-                    k);
+                    params.params_A, thread_idx, tile, vbegin, k);
 
                 typename Mma::IteratorB iterator_B(
-                    params.params_B,
-                    thread_idx,
-                    k);
+                    params.params_B, thread_idx, k);
 
                 // Broadcast the warp_id computed by lane 0 to ensure dependent code
                 // is compiled as warp-uniform.
@@ -148,29 +127,32 @@ struct Conv {
 
                 // printf("&params.params_D = %p\n", &params.params_D);
                 typename Epilogue::OutputTileIterator iterator_D(
-                    params.params_D,
-                    tile,
-                    vbegin,
-                    thread_idx,
-                    k);
+                    params.params_D, tile, vbegin, thread_idx, k);
 
                 typename Epilogue::OutputTileIterator iterator_C(
-                    params.params_D,
-                    tile,
-                    vbegin,
-                    thread_idx,
-                    k);
+                    params.params_D, tile, vbegin, thread_idx, k);
 
                 Epilogue epilogue(
-                    shared_storage.epilogue,
-                    thread_idx,
-                    warp_id,
-                    lane_id);
+                    shared_storage.epilogue, thread_idx, warp_id, lane_id);
 
                 epilogue(output_op, iterator_D, accumulators, iterator_C);
 
             } // v block
         }     // k
+    }
+
+    CUTLASS_DEVICE
+    void operator()(Params const& params, SharedStorage& shared_storage)
+    {
+        int NTile = params.ruleSize_.size(0);
+        ThreadblockSwizzle ts;
+
+        for (int tile = ts.get_tile_offset();
+             tile != ts.end() && tile < NTile;
+             tile = ts.next(tile)) {
+            tile_rule_conv(tile, params, shared_storage);
+            ts.sync();
+        }
     }
 };
 
