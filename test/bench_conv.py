@@ -8,6 +8,7 @@ import spconv
 import sphconv
 import torch
 from sphconv.datagen import VoxelizationVFE, merge_batch_torch
+from common import batch_real_test_inputs
 from time import time
 
 
@@ -26,30 +27,6 @@ def batch_artifical_inputs(
     example = merge_batch_torch([one_example] * batch_size)
 
     return example['voxel'], example['coordinates']
-
-def batch_real_test_inputs(
-    channel: int,
-    batch_size: int,
-    spatial_shape_DWH: List[int]
-):
-    TEST_FILE_MAX = 4
-    vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_DWH[::-1])
-
-    example_list = []
-    for i in range(batch_size):
-        voxels, coords = vvfe.generate(
-            '{:06d}.bin'.format(i %  TEST_FILE_MAX),  torch.device('cuda:0'))
-        example_list.append({'voxels': voxels, 'coordinates': coords})
-    example = merge_batch_torch(example_list)
-
-    feature, indices = example['voxels'], example['coordinates']
-    # feature, [NNZ, 4]
-    # original channel is 4, we extend it if needed
-    assert channel >= 4;
-    if channel > 4:
-        feature = feature.repeat((1, (channel + 3) //4))
-        feature = feature[:, :channel]
-    return feature, indices
 
 
 def bench_against_spconv(

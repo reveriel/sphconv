@@ -1,6 +1,4 @@
-from hashlib import md5
 from typing import List
-
 import spconv
 from torch.jit import load
 import sphconv
@@ -8,32 +6,7 @@ import torch
 from sphconv.datagen import VoxelizationVFE, merge_batch_torch
 from sphconv.utils import out_spatial
 from sphconv.sphconv_cuda import rule_conv_d_feature, rule_conv_backward
-
-def batch_real_test_inputs(
-    channel: int,
-    batch_size: int,
-    spatial_shape_DWH: List[int]
-):
-    TEST_FILE_MAX = 4
-    vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_DWH[::-1])
-
-    example_list = []
-    for i in range(batch_size):
-        voxels, coords = vvfe.generate(
-            '{:06d}.bin'.format(i %  TEST_FILE_MAX),  torch.device('cuda:0'))
-        example_list.append({'voxels': voxels, 'coordinates': coords})
-    example = merge_batch_torch(example_list)
-
-    feature, indices = example['voxels'], example['coordinates']
-    torch.set_printoptions(edgeitems=200)
-    print("indices = ", indices)
-    # feature, [NNZ, 4]
-    # original channel is 4, we extend it if needed
-    assert channel >= 4
-    if channel > 4:
-        feature = feature.repeat((1, (channel + 3) //4))
-        feature = feature[:, :channel]
-    return feature, indices
+from common import batch_real_test_inputs
 
 
 def d_torch_conv(
@@ -43,6 +16,8 @@ def d_torch_conv(
     spatial_shape_DWH: List[int],
     batch_size:int, ic, oc, kernel_size, stride, padding, dilation,
     subm:bool, lib:str):
+    """ return y and tensor.grad """
+
     assert (subm == False)
 
     feature:torch.Tensor = feature_.clone()
@@ -409,24 +384,22 @@ class TestClass:
         # convolution
         weight = torch.ones((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
 
-        for i in range(100):
-            sp_y, sp_d_f = d_feature_conv(
-                indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
-                out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
-            sph_y, sph_d_f = d_feature_conv(
-                indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
-                out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        sp_y, sp_d_f = d_feature_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        sph_y, sph_d_f = d_feature_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
 
-            assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
-            # print("sp_d_f = ", sp_d_f[:,0])
-            # print("sph_d_f = ", sph_d_f[:,0])
-            print("feature shape = ", features.shape)
-            print("distance0 =", (sp_y - sph_y).abs().sum())
-            print("distance = ", (sp_d_f - sph_d_f).abs().sum())
-            print("distance2 = ", (sp_d_f - sph_d_f).sum())
-            print("diff = ", (sp_d_f - sph_d_f)[:,0])
-            assert(torch.isclose(sp_d_f[:,0], sph_d_f[:,0], rtol=0.01).all())
-        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # print("sp_d_f = ", sp_d_f[:,0])
+        # print("sph_d_f = ", sph_d_f[:,0])
+        print("distance0 =", (sp_y - sph_y).abs().sum())
+        print("distance = ", (sp_d_f - sph_d_f).abs().sum())
+        print("distance2 = ", (sp_d_f - sph_d_f).sum())
+        print("diff = ", (sp_d_f - sph_d_f)[:,0])
+        assert(torch.isclose(sp_d_f[:,0], sph_d_f[:,0], rtol=0.01).all())
+        assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
 
 
     def test_unit_df(self):
@@ -463,8 +436,6 @@ class TestClass:
         print("dist0 = ", (d_feature - d_feature_ref).abs().sum())
         print("dist1 = ", (d_feature - d_feature_ref).sum())
         assert(torch.isclose(d_feature, d_feature_ref).all())
-
-
 
 
 
