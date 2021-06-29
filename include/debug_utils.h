@@ -8,9 +8,46 @@
 #include <iostream>
 #include <vector>
 
-#define TILE_N_MAX 1024
+#define TILE_N_MAX 512
 
 static const int zeros[] = {0, 0, 0, 0, 0};
+
+#define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")
+#define CHECK_CONTIGUOUS(x) AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
+#define CHECK_INPUT(x) \
+    CHECK_CUDA(x);     \
+    CHECK_CONTIGUOUS(x)
+
+__host__ __device__ __forceinline__
+int getInTileSize(int outTileSize, int stride, int kernelSize)
+{
+    assert(stride <= kernelSize);
+    return stride * (outTileSize - 1) + kernelSize;
+}
+
+__host__ __device__ __forceinline__
+int linearIdx(int x0, int x1, int x2, int x3, int D1, int D2, int D3) {
+    return ((x0 * D1 + x1) * D2 + x2) * D3 + x3;
+}
+
+__host__ __device__ __forceinline__
+int linearIdx(int x0, int x1, int x2, int D1, int D2) {
+    return (x0 * D1 + x1) * D2 + x2;
+}
+
+__host__ __device__ __forceinline__
+int linearIdx(int x0, int x1, int D1) {
+    return x0 * D1 + x1;
+}
+
+
+__device__ __forceinline__
+int getLinearTileIdx(int TileSize0, int TileSize1, int x, int y, int TileGridW)
+{
+    int tileIdxX = x / TileSize0;
+    int tileIdxY = y / TileSize1;
+    return linearIdx(tileIdxX, tileIdxY, TileGridW);
+}
 
 #define DEBUG
 

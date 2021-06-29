@@ -46,6 +46,7 @@ struct ConvBase {
         torch::Tensor rules;      //  [NTile, kernelVolume, 2, NNZ ],
         torch::Tensor ruleSize;   // [Ntile, kernelVolume]
         torch::Tensor outFeature; // [outNNZ, oC]
+        std::vector<int64_t> tile_grid_shape;
 
         Arguments() {}
 
@@ -54,12 +55,14 @@ struct ConvBase {
             const torch::Tensor& weight_,
             const torch::Tensor& rules_,
             const torch::Tensor& ruleSize_,
-            const torch::Tensor& outFeature_)
+            const torch::Tensor& outFeature_,
+            const std::vector<int64_t>& tile_grid_shape)
             : feature(feature_),
               weight(weight_),
               rules(rules_),
               ruleSize(ruleSize_),
-              outFeature(outFeature_)
+              outFeature(outFeature_),
+              tile_grid_shape(tile_grid_shape)
         {
         }
     };
@@ -164,11 +167,124 @@ public:
     }
 };
 
+/**
+* partial specilization for d_feature
+*/
+template <
+    /// GemmShape, V, oC, iC
+    typename ThreadBlockShape_,
+    /// GemmShape, V, oC, iC
+    typename WarpShape_,
+    int VBLOCK>
+struct Conv<ThreadBlockShape_, WarpShape_, VBLOCK, threadblock::InterleavedThreadblockSwizzle>
+    : public ConvBase {
+
+    using ThreadblockSwizzle = threadblock::InterleavedThreadblockSwizzle;
+    using ConvKernel = typename kernel::DefaultConv<
+        ThreadBlockShape_, WarpShape_, VBLOCK, ThreadblockSwizzle>::ConvKernel;
+
+    static size_t get_workspace_size()
+    {
+        // TODO: use cudaMemsetAsync(workspace, 0, bytes, stream)
+        // might be useful when used in multiple streams
+        return 0;
+    }
+
+private:
+    typename ConvKernel::Params params_;
+    int NTile_;
+    int tile_grid_h_;
+    int tile_grid_w_;
+
+public:
+    /// Constructs the Conv
+    Conv()
+    {
+        // printf(" kWarpGemmIterations = %d \n", ConvKernel::Mma::kWarpGemmIterations);
+    }
+
+    Status initialize(Arguments const& args) override
+    {
+        NTile_ = args.ruleSize.size(0);
+        tile_grid_h_ = args.tile_grid_shape[0];
+        tile_grid_w_ = args.tile_grid_shape[1];
+        int kernelVolume = args.weight.size(0);
+
+        params_ = typename ConvKernel::Params(
+            args.feature.template packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+            args.weight.template packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
+            args.rules.template packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+            args.ruleSize.template packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
+            args.outFeature.template packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+            kernelVolume, tile_grid_h_, tile_grid_w_);
+
+        return Status::kSuccess;
+    }
+
+    Status run(cudaStream_t stream = nullptr) override
+    {
+        ThreadblockSwizzle ts;
+
+        dim3 grid = ts.get_grid_shape(NTile_, tile_grid_h_, tile_grid_w_);
+        dim3 block(ConvKernel::kThreadCount, 1, 1);
+
+        cudaError_t result;
+
+        int smem_size = int(sizeof(typename ConvKernel::SharedStorage));
+        // printf("smem_size = %d\n", smem_size);
+
+        if (smem_size >= (48 << 10)) {
+            printf("info: use 48KB more SMEM\n");
+            result = cudaFuncSetAttribute(cutlass::Kernel<ConvKernel>,
+                                          cudaFuncAttributeMaxDynamicSharedMemorySize,
+                                          smem_size);
+
+            if (result != cudaSuccess) {
+                printf(" error, cudaFuncSetAttribute, dynam");
+                return Status::kErrorInternal;
+            }
+
+            result = cudaFuncSetAttribute(cutlass::Kernel<ConvKernel>,
+                                          cudaFuncAttributePreferredSharedMemoryCarveout, 100);
+
+            if (result != cudaSuccess) {
+                printf(" error, cudaFuncSetAttribute, carveout");
+                return Status::kErrorInternal;
+            }
+        }
+
+        // int p = 0;
+        // for (int i = 0; i < 9; i++) {
+        //     params_.update_tile_idx(p % 9);
+        //     cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
+        //     gpuErrchk(cudaPeekAtLastError());
+        //     gpuErrchk(cudaDeviceSynchronize());
+        //     p += 5;
+        // }
+
+        for (int i = 0; i < NTile_; i++) {
+            params_.update_tile_idx(i);
+            cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
+            gpuErrchk(cudaDeviceSynchronize());
+            gpuErrchk(cudaPeekAtLastError());
+            gpuErrchk(cudaDeviceSynchronize());
+
+        }
+
+        // result = cudaGetLastError();
+
+        // return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
+        return Status::kSuccess;
+    }
+};
+
+
+
 torch::Tensor
-rule_conv(torch::Tensor feature,  // [NNZ, C]
-          torch::Tensor weight,   // [kernelVolume, iC, oC]
-          torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
-          torch::Tensor ruleSize, // [Ntile, kernelVolume]
+rule_conv(const torch::Tensor feature,  // [NNZ, C]
+          const torch::Tensor weight,   // [kernelVolume, iC, oC]
+          const torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
+          const torch::Tensor ruleSize, // [Ntile, kernelVolume]
           int outNNZ)
 {
     int iC = weight.size(1);
@@ -207,7 +323,7 @@ rule_conv(torch::Tensor feature,  // [NNZ, C]
         printf("unsupported oC = %d\n", oC);
     }
 
-    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature);
+    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature, {0,0});
 
     conv->initialize(args);
 
@@ -217,12 +333,18 @@ rule_conv(torch::Tensor feature,  // [NNZ, C]
 }
 
 torch::Tensor
-rule_conv_d_feature(torch::Tensor feature,  // [NNZ, C]
-                    torch::Tensor weight,   // [kernelVolume, iC, oC]
-                    torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
-                    torch::Tensor ruleSize, // [Ntile, kernelVolume]
+rule_conv_d_feature(const torch::Tensor feature,  // [NNZ, C]
+                    const torch::Tensor weight,   // [kernelVolume, iC, oC]
+                    const torch::Tensor rules,    // [NTile, kernelVolume, 2, nnz_max],
+                    const torch::Tensor ruleSize, // [Ntile, kernelVolume]
+                    std::vector<int64_t> tile_grid_shape,
                     int outNNZ)
 {
+    CHECK_INPUT(feature);
+    CHECK_INPUT(weight);
+    CHECK_INPUT(rules);
+    CHECK_INPUT(ruleSize);
+
     int iC = weight.size(1);
     int oC = weight.size(2);
 
@@ -242,24 +364,24 @@ rule_conv_d_feature(torch::Tensor feature,  // [NNZ, C]
     case 8:
         // if oc = 8
         // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::InterleavedThreadblockSwizzle>>();
         break;
     case 16:
         // if oc = 16
         // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
-        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::InterleavedThreadblockSwizzle>>();
         break;
     case 32:
-        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8, threadblock::InterleavedThreadblockSwizzle>>();
         break;
     case 64:
-        conv = std::make_shared<Conv<GemmShape<8, 64, 8>, GemmShape<8, 32, 8>, 8, threadblock::Identity2ThreadblockSwizzle>>();
+        conv = std::make_shared<Conv<GemmShape<8, 64, 8>, GemmShape<8, 32, 8>, 8, threadblock::InterleavedThreadblockSwizzle>>();
         break;
     default:
         printf("unsupported oC = %d\n", oC);
     }
 
-    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature);
+    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature, tile_grid_shape);
 
     conv->initialize(args);
 
@@ -270,11 +392,12 @@ rule_conv_d_feature(torch::Tensor feature,  // [NNZ, C]
 
 
 std::vector<torch::Tensor>
-rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
-                   torch::Tensor feature,      // [NNZ, iC]
-                   torch::Tensor weight,       // [kernelVolume, iC, oC]
-                   torch::Tensor rules,        // [NTile, kernelVolume, 2, nnz_max],
-                   torch::Tensor ruleSize)     // [Ntile, kernelVolume]
+rule_conv_backward(const torch::Tensor d_featureOut, // [outNNZ, oC]
+                   const torch::Tensor feature,      // [NNZ, iC]
+                   const torch::Tensor weight,       // [kernelVolume, iC, oC]
+                   const torch::Tensor rules,        // [NTile, kernelVolume, 2, nnz_max],
+                   const torch::Tensor ruleSize,     // [Ntile, kernelVolume]
+                   std::vector<int64_t> tile_grid_shape)
 {
     int kernelVolume = weight.size(0);
     int iC = weight.size(1);
@@ -290,7 +413,7 @@ rule_conv_backward(torch::Tensor d_featureOut, // [outNNZ, oC]
     // d_feature = d_featureOut * weight
     // TODO: weight [ic oc] to  [oc ic]
     torch::Tensor d_feature = rule_conv_d_feature(
-        d_featureOut, weight, rules, ruleSize, NNZ);
+        d_featureOut, weight, rules, ruleSize, tile_grid_shape, NNZ);
 
     torch::Tensor d_weight = torch::zeros(
         {kernelVolume, iC, oC}, torch::dtype(feature.dtype()).device(feature.device()));

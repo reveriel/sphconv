@@ -442,6 +442,7 @@ get_rules(torch::Tensor zIndices, //  [NNZ]
     grid += exclusiveScan.unsqueeze(-1); // now grid is filled with global output index
     // std::cout << "grid(3) = " << grid << std::endl;
 
+    printf(" c++, grid shape = %d, %d\n", divUp(outSpatialShape[0], tileSize[0]) , divUp(outSpatialShape[1], tileSize[1]));
     int NTile = divUp(outSpatialShape[0], tileSize[0]) * divUp(outSpatialShape[1], tileSize[1]);
 
     // TODO: rules is allocated larger, to be trimed lalter

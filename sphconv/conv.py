@@ -26,6 +26,18 @@ def save_rule_size(rule_size: torch.Tensor, tile_size: List[int]):
     save_rule_size_count += 1
     torch.save(rule_size, DIR + filename)
 
+def divUp(x, y):
+    return  (x + y - 1) // y
+
+def get_tile_grid_shape(out_spatial_shape_DWH: List[int], tile_size: List[int]) -> List[int]:
+    oH = out_spatial_shape_DWH[0]
+    oW = out_spatial_shape_DWH[1]
+    tile_grid_h = divUp(oH, tile_size[0])
+    tile_grid_w = divUp(oW, tile_size[1])
+    res =  [tile_grid_h, tile_grid_w]
+    print("tile_grid shape = ", res)
+    return res
+
 class Convolution(SphModule):
     """Base class for all convolutions."""
 
@@ -148,7 +160,7 @@ class Conv3d(Convolution):
         if self.indice_key is not None:
             datas = input.find_rule(self.indice_key)
             if datas is not None:
-                oz_idx, oz_ptr, rules, rule_size = datas
+                oz_idx, oz_ptr, rules, rule_size, tile_grid_shape = datas
             else:
                 oz_idx, oz_ptr, rules, rule_size = get_rule_func(
                     input.z_idx, input.z_ptr,
@@ -156,20 +168,22 @@ class Conv3d(Convolution):
                     self.kernel_size, self.stride, self.padding, self.dilation,
                     self.tile_size)
 
-                input.rule_cache[self.indice_key] = (oz_idx, oz_ptr, rules, rule_size)
+                tile_grid_shape = get_tile_grid_shape(out_spatial_shape_DWH, self.tile_size)
+                input.rule_cache[self.indice_key] = (oz_idx, oz_ptr, rules, rule_size, tile_grid_shape)
         else:
             oz_idx, oz_ptr, rules, rule_size = get_rule_func(
                 input.z_idx, input.z_ptr,
                 batch_size, in_spatial_shape_DWH, out_spatial_shape_DWH,
                 self.kernel_size, self.stride, self.padding, self.dilation,
                 self.tile_size)
+            tile_grid_shape = get_tile_grid_shape(out_spatial_shape_DWH, self.tile_size)
 
         self.rule_size = rule_size
 
         out_feature = ConvFunction.apply(
             input.feature, self.weight.view(
                 (-1, in_channels, out_channels)),
-            rules, rule_size, oz_idx.shape[0])
+            rules, rule_size, tile_grid_shape, oz_idx.shape[0])
 
         # torch.cuda.synchronize()
         # print("time: time = {:.3f}\n".format((time.time() - start_time) * 1000

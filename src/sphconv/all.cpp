@@ -24,6 +24,7 @@ PYBIND11_MODULE(sphconv_cuda, m)
 
   m.def("rule_conv", &sphconv::device::rule_conv, "");
   m.def("rule_conv_backward", &sphconv::device::rule_conv_backward, "");
+  m.def("rule_conv_d_feature", &sphconv::device::rule_conv_d_feature, "");
 
   m.def("init_tensor", &sphconv::init_tensor, "");
   m.def("init_tensor_backward", &sphconv::init_tensor_backward, "");

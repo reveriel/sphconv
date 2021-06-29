@@ -1,6 +1,7 @@
 from sphconv.utils import out_spatial
 from typing import List
 from torch.autograd.function import NestedIOFunction
+from hashlib import md5
 
 import torch
 
@@ -51,8 +52,11 @@ class ConvFunction(torch.autograd.Function):
                 weight: torch.Tensor,  # [KKK, iC, oC]
                 rules: torch.Tensor,  # [NTile, kernelVolume, 2, NNZ]
                 rule_size: torch.Tensor,
+                tile_grid_shape: List[int],
                 outNNZ: int):
         ctx.save_for_backward(feature, weight, rules, rule_size)
+        ctx.tile_grid_shape = tile_grid_shape
+        print("forward rules.sum = ", rules.sum())
         return rule_conv(feature, weight, rules, rule_size, outNNZ)
 
     @staticmethod
@@ -63,15 +67,18 @@ class ConvFunction(torch.autograd.Function):
 
         # d_bias
         # TODO: split rules
-        print("rules = ", rules[:,:,:,:24])
-        rule_reverse = torch.cat((rules[:,:,1:2,:], rules[:,:,0:1,:]), dim=2).contiguous()
-        print("rule reverse = ", rule_reverse[:,:,:,:24])
-        # print("rule_reverse shape = ", rule_reverse.shape)
+        # print("rules = ", rules[:,:,:,:10])
         # .contiguous()
+
+        rule_reverse = torch.cat((rules[:,:,1:2,:], rules[:,:,0:1,:]), dim=2).contiguous()
+
+        print("rules.sum = ", rules.sum())
+
         d_feature, d_weight = rule_conv_backward(
-            d_featureOut, feature,  # bias,
+            d_featureOut,
+            feature,  # bias,
             weight.permute(0, 2, 1).contiguous(),
-            rule_reverse, rule_size)
+            rule_reverse, rule_size, ctx.tile_grid_shape)
 
         # TODO: no bias now
         # should match the input of forward
