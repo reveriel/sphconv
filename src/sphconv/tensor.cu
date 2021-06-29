@@ -12,11 +12,6 @@ namespace sphconv
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 
-#define CHECK_CUDA(x) AT_ASSERTM(x.type().is_cuda(), #x " must be a CUDA tensor")
-#define CHECK_CONTIGUOUS(x) AT_ASSERTM(x.is_contiguous(), #x " must be contiguous")
-#define CHECK_INPUT(x) \
-    CHECK_CUDA(x);     \
-    CHECK_CONTIGUOUS(x)
 
 /**
  * @brief fill grid = 1 at non empty voxels
@@ -48,7 +43,8 @@ __global__ void reorderFeatureKernel(
     const GpuTensor<DType, 2> feature,     // [NNZ ,C]
     GpuTensor<IType, 3> fiberSize,         // [B, H, W]
     GpuTensor<IType, 1> zIndices,          // [NNZ]
-    GpuTensor<DType, 2> outFeature)        // [NNZ, C]
+    GpuTensor<DType, 2> outFeature,        // [NNZ, C]
+    GpuTensor<IType, 1> permutation)       // [NNZ]
 {
     int NNZ = indicesBZYX.size(0);
     int C = feature.size(1);
@@ -63,13 +59,14 @@ __global__ void reorderFeatureKernel(
 
     IType val_pos = zPtr[b][x][y];
     IType fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
+    int new_pos = val_pos - fiber_pos;
 
     for (int c = 0; c < C; c++) {
-        outFeature[val_pos - fiber_pos][c] = feature[n][c];
+        outFeature[new_pos][c] = feature[n][c];
     }
-
-    zIndices[val_pos - fiber_pos] = z;
-    // fiberSize[b][x][y] = fiber_pos - 1;
+    // record the permutation, for backward
+    permutation[n] = new_pos;
+    zIndices[new_pos] = z;
 }
 
 std::vector<torch::Tensor>
@@ -104,7 +101,9 @@ init_tensor(
     torch::Tensor fiberSize = torch::sum(grid, 3, false, torch::kInt32);
     torch::Tensor zPtr = torch::cumsum(fiberSize.view({-1}), 0, torch::kInt32)
                              .view({batchSize, spatialShape[0], spatialShape[1]});
-    torch::Tensor fiberSizeCopy = fiberSize.clone();
+
+    torch::Tensor permutation = torch::empty(
+        {NNZ}, torch::dtype(torch::kInt32).device(feature.device()));
 
     reorderFeatureKernel<int32_t, float><<<divUp(NNZ, 512), 512>>>(
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
@@ -112,46 +111,36 @@ init_tensor(
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         fiberSize.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
-        outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>());
+        outFeature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+        permutation.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>());
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
 
-    return {outFeature, zIndices, zPtr, fiberSizeCopy};
+    return {outFeature, zIndices, zPtr, permutation};
 }
 
 template <typename IType, typename DType>
 __global__ void reorderFeatureBackwardKernel(
     const GpuTensor<DType, 2> d_featureOut, // [NNZ, C]
-    const GpuTensor<IType, 3> zPtr,         // [B,H,W]
-    const GpuTensor<IType, 2> indicesBZYX,  // [NNZ, 4]
-    GpuTensor<IType, 3> fiberSize,          // [B,H,W]
+    const GpuTensor<IType, 1> permutation,  // [NNZ]
     GpuTensor<DType, 2> d_feature)          // [NNZ, C]
 {
-    int NNZ = indicesBZYX.size(0);
+    int NNZ = d_feature.size(0);
     int C = d_feature.size(1);
     int n = threadIdx.x + blockDim.x * blockIdx.x;
     if (n >= NNZ)
         return;
-
-    IType b = indicesBZYX[n][0];
-    IType x = indicesBZYX[n][1]; // this is convention disagreement..  not a bug
-    IType y = indicesBZYX[n][2]; // this is convention disagreement..  not a bug
-    IType z = indicesBZYX[n][3]; // this is convention disagreement..  not a bug
-
-    IType val_pos = zPtr[b][x][y];
-    IType fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
+    int new_pos = permutation[n];
 
     for (int c = 0; c < C; c++) {
-        d_feature[n][c] = d_featureOut[val_pos - fiber_pos][c];
+        d_feature[n][c] = d_featureOut[new_pos][c];
     }
 }
 
 torch::Tensor init_tensor_backward(
     const torch::Tensor d_featureOut, // [NNZ, C]
-    const torch::Tensor zPtr,         // [B,H,W]
-    torch::Tensor fiberSize,          // [B,H,W]
-    const torch::Tensor indicesBZYX)  // [NNZ, 4]
+    const torch::Tensor permutation)  // [NNZ]
 {
     int NNZ = d_featureOut.size(0);
     int C = d_featureOut.size(1);
@@ -160,9 +149,7 @@ torch::Tensor init_tensor_backward(
 
     reorderFeatureBackwardKernel<int32_t, float><<<divUp(NNZ, 512), 512>>>(
         d_featureOut.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-        zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        indicesBZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-        fiberSize.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
+        permutation.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         d_feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>());
 
     return d_feature;

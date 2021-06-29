@@ -1,7 +1,6 @@
 from sphconv.utils import out_spatial
 from typing import List
 from torch.autograd.function import NestedIOFunction
-from hashlib import md5
 
 import torch
 
@@ -120,9 +119,9 @@ class InitTensorFunction(torch.autograd.Function):
                 indices_bzyx: torch.Tensor, # [NNZ, 4]
                 batchsize: int,
                 spatial_shape_HWD: List[int]):
-        feature_out, zidx, zptr, fiber_size = init_tensor(
+        feature_out, zidx, zptr, permutation = init_tensor(
             raw_feature, indices_bzyx, batchsize, spatial_shape_HWD)
-        ctx.save_for_backward(zptr, fiber_size, indices_bzyx)
+        ctx.save_for_backward(permutation)
         ctx.mark_non_differentiable(zidx, zptr)
         return feature_out, zidx, zptr
 
@@ -132,8 +131,7 @@ class InitTensorFunction(torch.autograd.Function):
                  d_zidx: torch.Tensor,
                  d_zptr: torch.Tensor):
         # import pdb; pdb.set_trace()
-        zptr, fiber_size, indices_bzyx = ctx.saved_tensors
-
+        permutation,  = ctx.saved_tensors
         d_feature = init_tensor_backward(
-            d_featureOut, zptr, fiber_size, indices_bzyx)
+            d_featureOut, permutation)
         return d_feature, None, None, None

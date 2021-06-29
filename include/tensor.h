@@ -14,10 +14,7 @@ std::vector<torch::Tensor> init_tensor(
 
 torch::Tensor init_tensor_backward(
     const torch::Tensor d_featureOut, // [NNZ, C]
-    const torch::Tensor zPtr,         // [B,H,W]
-    torch::Tensor fiberSize,    // [B,H,W]
-    const torch::Tensor indicesBZYX   // [NNZ, 4]
-);
+    const torch::Tensor permutation); // [NNZ]
 
 torch::Tensor to_dense(
     const torch::Tensor feature,  // [NNZ, C]
@@ -30,4 +27,5 @@ torch::Tensor to_dense_backward(
     const torch::Tensor d_featureOut,
     const torch::Tensor zIndices,
     const torch::Tensor zPtr);
+
 } // namespace sphconv

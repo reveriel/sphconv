@@ -141,7 +141,7 @@ __global__ void prepareGridKernel(
     for (int b = 0; b < B; b++)
     {
         int zEnd = zPtr[b][x][y];
-        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
 
         // diverge here, but we assume it's quick
         for (int pos = zStart; pos < zEnd; pos++)
@@ -323,8 +323,8 @@ __global__ void getSubMRulesKernel(
  * ref:   getIndicePair
  */
 std::vector<torch::Tensor>
-get_rules_subm(torch::Tensor zIndices, //  [NNZ]
-               torch::Tensor zPtr,     // [B, H, W]
+get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
+               const torch::Tensor zPtr,     // [B, H, W]
                int batchSize,
                std::vector<int64_t> spatialShape,    // H, W, D
                std::vector<int64_t> outSpatialShape, // H, W, D
@@ -401,8 +401,8 @@ get_rules_subm(torch::Tensor zIndices, //  [NNZ]
  * ref:   getIndicePair
  */
 std::vector<torch::Tensor>
-get_rules(torch::Tensor zIndices, //  [NNZ]
-          torch::Tensor zPtr,     // [B, H, W]
+get_rules(const torch::Tensor zIndices, //  [NNZ]
+          const torch::Tensor zPtr,     // [B, H, W]
           int batchSize,
           std::vector<int64_t> spatialShape,    // H, W, D
           std::vector<int64_t> outSpatialShape, // oH, oW, oD

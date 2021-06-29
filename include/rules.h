@@ -6,8 +6,8 @@
 namespace sphconv
 {
     std::vector<torch::Tensor>
-    get_rules_subm(torch::Tensor zIndices, //  [NNZ]
-                   torch::Tensor zPtr,     // [B, H, W]
+    get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
+                   const torch::Tensor zPtr,     // [B, H, W]
                 //    torch::Tensor grid,     // [B, H, W, D]
                    int batchSize,
                    std::vector<int64_t> spatialShape,    // H, W, D
@@ -19,8 +19,8 @@ namespace sphconv
                    std::vector<int64_t> tileSize);
 
     std::vector<torch::Tensor>
-    get_rules(torch::Tensor zIndices, //  [NNZ]
-              torch::Tensor zPtr,     // [B, H, W]
+    get_rules(const torch::Tensor zIndices, //  [NNZ]
+              const torch::Tensor zPtr,     // [B, H, W]
             //   torch::Tensor grid,     // [B, oH, oW, oD]
               int batchSize,
               std::vector<int64_t> spatialShape,    // H, W, D
