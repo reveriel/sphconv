@@ -253,26 +253,13 @@ public:
             }
         }
 
-        // int p = 0;
-        // for (int i = 0; i < 9; i++) {
-        //     params_.update_tile_idx(p % 9);
-        //     cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
-        //     gpuErrchk(cudaPeekAtLastError());
-        //     gpuErrchk(cudaDeviceSynchronize());
-        //     p += 5;
-        // }
-
-        for (int i = 0; i < NTile_; i++) {
+        for (int i = 0; i < 9; i++) {
             params_.update_tile_idx(i);
             cutlass::Kernel<ConvKernel><<<grid, block, smem_size, stream>>>(params_);
-            gpuErrchk(cudaDeviceSynchronize());
             gpuErrchk(cudaPeekAtLastError());
             gpuErrchk(cudaDeviceSynchronize());
-
         }
-
         // result = cudaGetLastError();
-
         // return result == cudaSuccess ? Status::kSuccess : Status::kErrorInternal;
         return Status::kSuccess;
     }

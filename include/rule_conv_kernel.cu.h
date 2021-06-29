@@ -308,9 +308,6 @@ struct Conv<Mma_, Epilogue_, VBLOCK, threadblock::InterleavedThreadblockSwizzle>
         ThreadblockSwizzle ts;
 
         int tile = ts.get_tile_offset(params.tile_idx_, NTile, params.tile_grid_h_, params.tile_grid_w_);
-        if (threadIdx.x == 0) {
-            // printf(" idx = %d, tile = %d, gridW = %d \n", params.tile_idx_, tile, params.tile_grid_w_);
-        }
         if (tile < NTile) {
             tile_rule_conv(tile, params, shared_storage);
         }

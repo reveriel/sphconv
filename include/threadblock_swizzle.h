@@ -119,7 +119,6 @@ struct InterleavedThreadblockSwizzle {
     CUTLASS_DEVICE
     int get_tile_offset(int i, int NTile, int tile_grid_h, int tile_grid_w) const
     {
-        return i;
         int x, y;
         switch (i) {
         case 0:
@@ -171,7 +170,6 @@ struct InterleavedThreadblockSwizzle {
     CUTLASS_HOST_DEVICE
     dim3 get_grid_shape(int NTile, int tile_grid_h, int tile_grid_w)
     {
-        return dim3(1, 1, 1);
         return dim3(((tile_grid_h + 2) / 3), (tile_grid_w + 2) / 3, 1);
     }
 };
