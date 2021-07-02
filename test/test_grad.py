@@ -12,15 +12,17 @@ from common import batch_real_test_inputs
 def d_torch_conv(
     indice_bzyx: torch.Tensor,
     feature_: torch.Tensor,
-    weight: torch.Tensor,
+    weight_: torch.Tensor,
     spatial_shape_DWH: List[int],
     batch_size:int, ic, oc, kernel_size, stride, padding, dilation,
     subm:bool, lib:str):
     """ return y and tensor.grad """
 
+    # torch only support non subm conv
     assert (subm == False)
 
     feature:torch.Tensor = feature_.clone()
+    weight = weight_.clone()
 
     tensor_0 = sphconv.SparseConvTensor(
         feature, spatial_shape_DWH, batch_size, indices=indice_bzyx).dense()
@@ -31,12 +33,48 @@ def d_torch_conv(
     tensor.requires_grad = True
     conv = torch.nn.Conv3d(ic, oc, kernel_size, stride, padding, dilation, bias=False)
 
-    conv.weight = torch.nn.Parameter(weight.permute(3,4,0,1,2).contiguous().clone())
+    conv.weight = torch.nn.Parameter(weight.permute(4,3,0,1,2).contiguous())
 
     y = conv(tensor).sum()
     y.backward()
 
-    return y, tensor.grad
+    return y, tensor.grad, conv.weight.grad.permute(2,3,4,1,0)
+
+
+def d_weight_conv(
+    indice_bzyx: torch.Tensor,
+    feature_: torch.Tensor,
+    weight: torch.Tensor,
+    spatial_shape_DWH: List[int],
+    batch_size:int, ic, oc, kernel_size, stride, padding, dilation,
+    subm:bool, lib:str):
+
+    feature:torch.Tensor = feature_.detach().clone()
+    feature.requires_grad = True #! ??, this affects the final y.
+
+    if lib == 'spconv':
+        tensor = spconv.SparseConvTensor(
+            feature, indice_bzyx, spatial_shape_DWH, batch_size)
+        conv_class = spconv.SubMConv3d if subm else spconv.SparseConv3d
+        conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False)
+    elif lib == 'sphconv':
+        tensor = sphconv.SparseConvTensor(
+            feature, spatial_shape_DWH, batch_size, indices=indice_bzyx)
+        conv_class = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
+        conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False,
+            tile_size=[2,2])
+    # conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False)
+
+    conv.weight = torch.nn.Parameter(weight.detach().clone())
+    conv.weight.requires_grad = True
+
+    y = conv(tensor).dense().sum()
+    y.backward()
+
+    # if lib == 'sphconv':
+    #     torch.save(tensor.feature.grad, "d_feature_ref.pt")
+
+    return y, conv.weight.grad
 
 
 def d_feature_conv(
@@ -47,7 +85,7 @@ def d_feature_conv(
     batch_size:int, ic, oc, kernel_size, stride, padding, dilation,
     subm:bool, lib:str):
 
-    feature:torch.Tensor = feature_.clone()
+    feature:torch.Tensor = feature_.detach().clone()
     feature.requires_grad = True
 
     if lib == 'spconv':
@@ -58,7 +96,7 @@ def d_feature_conv(
     elif lib == 'sphconv':
         tensor = sphconv.SparseConvTensor(
             feature, spatial_shape_DWH, batch_size, indices=indice_bzyx)
-        tensor.feature.retain_grad()
+        # tensor.feature.retain_grad()
         conv_class = sphconv.SubMConv3d if subm else sphconv.SparseConv3d
         conv = conv_class(ic, oc, kernel_size, stride, padding, dilation, bias=False,
             tile_size=[2,2])
@@ -139,14 +177,14 @@ class TestClass:
         # print("features.grad = ", sph_features.grad)
         assert(torch.isclose(sph_y, sp_y).all())
 
-    def test_conv(self):
+    def test_conv_dfeature1(self):
         indices_bzyx = torch.tensor([
             [0, 0, 0, 0],
             [0, 0, 0, 1],
             [0, 0, 1, 0],
             [0, 1, 1, 1],
         ], dtype=torch.int).cuda()
-        spatial_shape_DWH = [3, 3, 3]
+        spatial_shape_DWH = [4, 4, 4]
         in_channels = 16
         out_channels = 16
         batch_size = 1
@@ -154,8 +192,8 @@ class TestClass:
         features = torch.ones((
             indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
 
-        kernel_size = [3, 3, 3]
-        stride = [2, 1, 1]
+        kernel_size = [2, 2, 1]
+        stride = [1, 1, 1]
         padding = [1, 1, 1]
         dilation = [1, 1, 1]
 
@@ -178,11 +216,11 @@ class TestClass:
             indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
             out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
 
-        t_y, t_d_dense = d_torch_conv(
+        t_y, t_d_dense, _ = d_torch_conv(
             indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
             out_channels, kernel_size, stride, padding, dilation, subm=False, lib="")
 
-        print("t_d_dense = ", t_d_dense)
+        print("sp, sph, t  output y = ", sp_y, sph_y, t_y)
         assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
         assert(torch.isclose(t_y, sph_y, rtol=0.01).all())
         print("sp_d_f = ", sp_d_f[:,:])
@@ -202,7 +240,7 @@ class TestClass:
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
         # assert(sp_conv.weight.grad.sum().isclose(sph_conv.weight.grad.sum()))
 
-    def test_conv_d_feature1(self):
+    def test_conv_dfeature2(self):
         spatial_shape_DWH = [20, 20, 20]
         in_channels = 32
         out_channels = 32
@@ -231,6 +269,276 @@ class TestClass:
         print("sph_d_f = ", sph_d_f[:,0])
         print("distance = ", (sp_d_f - sph_d_f).abs().sum())
         assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+
+    def test_conv_dweight1(self):
+        indices_bzyx = torch.tensor([
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 1, 1, 1],
+        ], dtype=torch.int).cuda()
+        spatial_shape_DWH = [3, 3, 3]
+        in_channels = 32
+        out_channels = 32
+        batch_size = 1
+        torch.manual_seed(0)
+        features = torch.ones((
+            indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        kernel_size = [3, 3, 3]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        # convolution
+        weight = torch.ones((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        # sp_y, sp_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        # sph_y, sph_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        # assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+
+        sp_y, sp_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        sph_y, sph_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+
+        # t_y, t_d_dense, t_d_w = d_torch_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="")
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        print("sph_d_w = ", sph_d_w[:,:,:,0,0])
+
+        print("sp_d_w ci = ", sp_d_w[0,0,0,:,0])
+        print("sph_d_w ci = ", sph_d_w[0,0,0,:,0])
+
+        print("sp_d_w co = ", sp_d_w[0,0,0,0,:])
+        print("sph_d_w co = ", sph_d_w[0,0,0,0,:])
+
+        print("distance = ", (sp_d_w - sph_d_w).abs().sum())
+        assert(torch.isclose(sp_d_w, sph_d_w, rtol=0.01).all())
+
+
+    def test_conv_dweight2(self):
+        indices_bzyx = torch.tensor([
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 1, 1, 1],
+        ], dtype=torch.int).cuda()
+
+        spatial_shape_DWH = [3, 3, 3]
+        in_channels = 32
+        out_channels = 32
+        batch_size = 1
+        torch.manual_seed(0)
+        features = torch.randn((
+            indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        kernel_size = [3, 3, 3]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        # convolution
+        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        # sp_y, sp_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        # sph_y, sph_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        # assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+
+        sp_y, sp_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        sph_y, sph_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+
+        # t_y, t_d_dense, t_d_w = d_torch_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="")
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        print("sph_d_w = ", sph_d_w[:,:,:,0,0])
+
+        print("sp_d_w ci = ", sp_d_w[0,0,0,:,0])
+        print("sph_d_w ci = ", sph_d_w[0,0,0,:,0])
+
+        print("sp_d_w co = ", sp_d_w[0,0,0,0,:])
+        print("sph_d_w co = ", sph_d_w[0,0,0,0,:])
+
+        print("distance = ", (sp_d_w - sph_d_w).abs().sum())
+        assert(torch.isclose(sp_d_w, sph_d_w, rtol=0.01).all())
+
+
+    def test_conv_dweight3(self):
+        in_channels = 32
+        out_channels = 32
+        batch_size = 1
+        spatial_shape_DWH = [5, 8, 5]
+
+        features, indices_bzyx = batch_real_test_inputs(
+            channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+
+        # features = torch.arange(indices_bzyx.shape[0],
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(in_channels).reshape((indices_bzyx.shape[0], in_channels))
+        # features = torch.arange( in_channels,
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
+        # features = torch.arange( indices_bzyx.shape[0] * in_channels,
+        #                   dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], in_channels)) / 2
+        # features = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
+        features = torch.randint(1, 555, (indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) / 2
+        torch.manual_seed(0)
+
+        kernel_size = [3, 3, 3]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        # convolution
+        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        # sp_y, sp_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        # sph_y, sph_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        # assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+
+        sp_y, sp_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        sph_y, sph_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+
+        # t_y, t_d_dense, t_d_w = d_torch_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="")
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        print("sph_d_w = ", sph_d_w[:,:,:,0,0])
+
+        print("sp_d_w ci = ", sp_d_w[0,0,0,:,0])
+        print("sph_d_w ci = ", sph_d_w[0,0,0,:,0])
+
+        print("sp_d_w co = ", sp_d_w[0,0,0,0,:])
+        print("sph_d_w co = ", sph_d_w[0,0,0,0,:])
+
+        print("distance = ", (sp_d_w - sph_d_w).abs().sum())
+        print("distance0 = ", (sp_d_w - sph_d_w).sum())
+        print("distance = ", (sp_d_w - sph_d_w).reshape(-1, in_channels,out_channels)[13] )
+        assert(torch.isclose(sp_d_w, sph_d_w, rtol=0.1).all())
+
+
+
+    def test_conv_dweight4(self):
+        in_channels = 16
+        out_channels = 16
+        batch_size = 1
+        spatial_shape_DWH = [4, 4, 4]
+
+        indices_bzyx = torch.tensor([
+            [0, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+            [0, 1, 1, 1],
+        ], dtype=torch.int).cuda()
+
+        # features, indices_bzyx = batch_real_test_inputs(
+        #     channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+
+        # features = torch.arange(indices_bzyx.shape[0],
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(in_channels).reshape((indices_bzyx.shape[0], in_channels))
+        # features = torch.arange( in_channels,
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
+        # features = torch.arange( indices_bzyx.shape[0] * in_channels,
+        #                   dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], in_channels)) / 2
+        features = torch.randn((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) * 1
+        # features = torch.randint(1, 555, (indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) / 2
+        torch.manual_seed(0)
+
+        kernel_size = [2, 2, 1]
+        stride = [1, 1, 1]
+        padding = [1, 1, 1]
+        dilation = [1, 1, 1]
+
+        # convolution
+        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
+
+        # sp_y, sp_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="spconv")
+        # sph_y, sph_d_f = d_feature_conv(
+        #     indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+        #     out_channels, kernel_size, stride, padding, dilation, subm=True, lib="sphconv")
+        # assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        # assert(torch.isclose(sp_d_f, sph_d_f, rtol=0.01).all())
+
+        sp_y, sp_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="spconv")
+        sph_y, sph_d_w = d_weight_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="sphconv")
+
+        t_y, t_d_dense, t_d_w = d_torch_conv(
+            indices_bzyx, features, weight, spatial_shape_DWH, batch_size, in_channels,
+            out_channels, kernel_size, stride, padding, dilation, subm=False, lib="")
+
+        print("t_d_w = ", t_d_w[:,:,:,0,0])
+        print("sp, sph, t  output y = ", sp_y, sph_y, t_y)
+        assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
+        assert(torch.isclose(t_y, sp_y, rtol=0.01).all())
+        assert(torch.isclose(t_y, sph_y, rtol=0.01).all())
+
+        print("sp_d_w = ", sp_d_w[:,:,:,0,0])
+        print("sph_d_w = ", sph_d_w[:,:,:,0,0])
+
+        print("sp_d_w ci = ", sp_d_w[1,1,0,:,0])
+        print("sph_d_w ci = ", sph_d_w[1,1,0,:,0])
+
+        print("sp_d_w co = ", sp_d_w[1,1,0,0,:])
+        print("sph_d_w co = ", sph_d_w[1,1,0,0,:])
+
+        print("distance = ", (sp_d_w - sph_d_w).abs().sum())
+        print("distance0 = ", (sp_d_w - sph_d_w).sum())
+        print("distance[13] = ", (sp_d_w - sph_d_w).reshape(-1, in_channels,out_channels)[:]  )
+        print("spdw = ", (sp_d_w).reshape(-1, in_channels,out_channels)[:]  )
+        print("sphdw = ", (sph_d_w).reshape(-1, in_channels,out_channels)[:]  )
+        assert(torch.isclose(t_d_w, sph_d_w, rtol=0.01).all())
+
+
+        # print("distance = ", (t_d_w - sp_d_w).abs().sum())
+        # print("distance0 = ", (t_d_w - sp_d_w).sum())
+        # print("distance = ", (t_d_w - sp_d_w).reshape(-1, in_channels,out_channels)[13] )
+        # assert(torch.isclose(t_d_w, sp_d_w, rtol=0.01).all())
 
 
 

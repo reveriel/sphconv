@@ -554,7 +554,7 @@ class TestClass:
         #     spatial_shape_DWH=[15, 16, 18], kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
 
     def test_rule_submconv(self):
-        indices_zyx = torch.tensor([
+        indices_bzyx = torch.tensor([
             # [0, 0, 0, 0],
             # [0, 0, 0, 1],
             # [0, 0, 1, 0],
@@ -577,16 +577,16 @@ class TestClass:
         W = 8
         H = 8
         spatial_shape_DWH = [D, W, H]
-        inChannel = 16
+        in_channels = 16
         outChannel = 16
         batch_size = 1
-        voxel_features = torch.arange( indices_zyx.shape[0],
-                          dtype=torch.float, device=indices_zyx.device).repeat(inChannel).reshape((indices_zyx.shape[0], inChannel))
-        voxel_features = torch.arange( inChannel,
-                          dtype=torch.float, device=indices_zyx.device).repeat(indices_zyx.shape[0], 1)
-        voxel_features = torch.arange( indices_zyx.shape[0] * inChannel,
-                          dtype=torch.float, device=indices_zyx.device).reshape((indices_zyx.shape[0], inChannel))
-        voxel_features = torch.ones((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
+        features = torch.arange( indices_bzyx.shape[0],
+                          dtype=torch.float, device=indices_bzyx.device).repeat(in_channels).reshape((indices_bzyx.shape[0], in_channels))
+        features = torch.arange( in_channels,
+                          dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
+        features = torch.arange( indices_bzyx.shape[0] * in_channels,
+                          dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], in_channels))
+        features = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
         # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / l
         # voxel_features[0,0] = 1.
@@ -596,7 +596,7 @@ class TestClass:
         # voxel_features[2,:] = 1.0
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, spatial_shape_DWH, batch_size, indices=indices_zyx)
+            features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         kernel_size = 3
         stride = 1
@@ -626,7 +626,7 @@ class TestClass:
         print("ruleSize = ", rule_size)
 
         outids, indice_pairs, indice_pair_num = spconv.ops.get_indice_pairs(
-            indices_zyx, batch_size, spatial_shape_DWH, kernel_size, stride, padding, dilation,
+            indices_bzyx, batch_size, spatial_shape_DWH, kernel_size, stride, padding, dilation,
             out_padding=0, subm=True, transpose=False, use_hash=False)
 
         print("indice_pairs = ", indice_pairs)
@@ -634,19 +634,19 @@ class TestClass:
 
         # convolution
         weight = torch.zeros((kernel_size, kernel_size, kernel_size,
-                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+                             in_channels, outChannel), dtype=torch.float, device=indices_bzyx.device)
         weight[0,0,0,1,1] = 888.0
         weight[0,0,1,1,1] = 8.0
         weight = torch.randn((kernel_size, kernel_size, kernel_size,
-                             inChannel, outChannel), dtype=torch.float, device=indices_zyx.device)
+                             in_channels, outChannel), dtype=torch.float, device=indices_bzyx.device)
 
         out_features = spconv.ops.indice_conv(
-            voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
+            features, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
         spconv_dense = spconv.SparseConvTensor(out_features, outids, spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
         sph_out_features = rule_conv(
-            tensor.feature, weight.reshape((-1, inChannel, outChannel)),
+            tensor.feature, weight.reshape((-1, in_channels, outChannel)),
             rules, rule_size, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
