@@ -35,7 +35,6 @@ def get_tile_grid_shape(out_spatial_shape_DWH: List[int], tile_size: List[int]) 
     tile_grid_h = divUp(oH, tile_size[0])
     tile_grid_w = divUp(oW, tile_size[1])
     res =  [tile_grid_h, tile_grid_w]
-    print("tile_grid shape = ", res)
     return res
 
 class Convolution(SphModule):

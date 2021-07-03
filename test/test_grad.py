@@ -1,13 +1,8 @@
 from typing import List
 import spconv
-from torch.jit import load
 import sphconv
 import torch
-from sphconv.datagen import VoxelizationVFE, merge_batch_torch
-from sphconv.utils import out_spatial
-from sphconv.sphconv_cuda import rule_conv_d_feature, rule_conv_backward
 from common import batch_real_test_inputs
-
 
 def d_torch_conv(
     indice_bzyx: torch.Tensor,
@@ -539,9 +534,3 @@ class TestClass:
         # print("distance0 = ", (t_d_w - sp_d_w).sum())
         # print("distance = ", (t_d_w - sp_d_w).reshape(-1, in_channels,out_channels)[13] )
         # assert(torch.isclose(t_d_w, sp_d_w, rtol=0.01).all())
-
-
-
-
-
-

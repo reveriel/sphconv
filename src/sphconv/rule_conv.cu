@@ -485,8 +485,6 @@ rule_conv_d_weight(
     int IC_BLOCK = near2power(iC);
     int OC_BLOCK = near2power(oC);
 
-    printf("NTile, kv, ic, oc = %d,%d,%d,%d\n", NTile, kernelVolume, iC, oC);
-
     torch::Tensor d_weight = torch::zeros(
         {NTile, kernelVolume, iC, oC}, torch::dtype(feature.dtype()).device(feature.device()));
 
@@ -515,11 +513,7 @@ rule_conv_d_weight(
 
     conv->run();
 
-    std::cout << "d_weight = " << d_weight << std::endl;
-
-
     return torch::sum(d_weight, 0, false);
-
 }
 
 

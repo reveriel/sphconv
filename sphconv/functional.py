@@ -55,7 +55,6 @@ class ConvFunction(torch.autograd.Function):
                 outNNZ: int):
         ctx.save_for_backward(feature, weight, rules, rule_size)
         ctx.tile_grid_shape = tile_grid_shape
-        print("forward rules.sum = ", rules.sum())
         return rule_conv(feature, weight, rules, rule_size, outNNZ)
 
     @staticmethod
@@ -63,17 +62,6 @@ class ConvFunction(torch.autograd.Function):
                  d_featureOut: torch.Tensor):  # [NNC, oC]
         # print("d_featureOut.shape = ", d_featureOut.shape)
         feature, weight, rules, rule_size = ctx.saved_tensors
-
-        # d_bias
-        # TODO: split rules
-        # print("rules = ", rules[:,:,:,:10])
-        # .contiguous()
-
-        # rule_reverse = torch.cat((rules[:,:,1:2,:], rules[:,:,0:1,:]), dim=2).contiguous()
-
-        print("rules.sum = ", rules.sum())
-        print(" d_featureOut = ", d_featureOut)
-        print(" feature = ", feature)
 
         d_feature, d_weight = rule_conv_backward(
             d_featureOut,

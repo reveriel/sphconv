@@ -14,25 +14,9 @@ import spconv
 import sphconv
 import torch
 from sphconv.datagen import VoxelizationVFE, merge_batch_torch
+from common import batch_artifical_inputs
 
 POINTS_FILE = "000003.bin"
-
-
-def batch_artifical_inputs(
-    indices_zyx: torch.Tensor,
-    channel: int,
-    batch_size: int
-):
-    """
-    create batched inputs from indices_zyx
-    """
-    features = torch.randn(
-        (indices_zyx.shape[0], channel), dtype=torch.float, device=indices_zyx.device)
-
-    one_example = {'voxel': features, 'coordinates': indices_zyx}
-    example = merge_batch_torch([one_example] * batch_size)
-
-    return example['voxel'], example['coordinates']
 
 
 def assert_dense_eq(
