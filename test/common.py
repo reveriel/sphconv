@@ -18,10 +18,10 @@ def batch_artifical_inputs(
     create batched inputs from indices_zyx
     return, features, and indices_bzyx
     """
-    features = torch.randn(
+    feature = torch.randn(
         (indices_zyx.shape[0], channel), dtype=torch.float, device=indices_zyx.device)
 
-    one_example = {'voxel': features, 'coordinates': indices_zyx}
+    one_example = {'voxel': feature, 'coordinates': indices_zyx}
     example = merge_batch_torch([one_example] * batch_size)
 
     return example['voxel'], example['coordinates']

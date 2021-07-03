@@ -20,7 +20,7 @@ POINTS_FILE = "000003.bin"
 
 
 def assert_dense_eq(
-        features: torch.Tensor,
+        feature: torch.Tensor,
         indices_zyx: torch.Tensor,
         batch_size: int = 1,
         spatial_shape_DWH: List[int] = []):
@@ -28,16 +28,16 @@ def assert_dense_eq(
     assert dense is coorect
     """
 
-    assert features.dim() == 2
+    assert feature.dim() == 2
     assert indices_zyx.shape[1] == 4  # four coodinates
     assert indices_zyx.dim() == 2
 
     spconv_tensor = spconv.SparseConvTensor(
-        features, indices_zyx, spatial_shape_DWH, batch_size)
+        feature, indices_zyx, spatial_shape_DWH, batch_size)
     spconv_dense = spconv_tensor.dense()
 
     sphconv_tensor = sphconv.SparseConvTensor(
-        features, spatial_shape_DWH, batch_size, indices=indices_zyx)
+        feature, spatial_shape_DWH, batch_size, indices=indices_zyx)
 
     sphconv_dense = sphconv_tensor.dense().cuda()
     # print("sphconv_tensor.z_ptr =", sphconv_tensor.z_ptr)
@@ -52,16 +52,16 @@ class TestClass:
     def test_todense(self):
         spatial_shape_HWD = [2, 2, 2]
         vvfe = VoxelizationVFE(resolution_HWD=spatial_shape_HWD)
-        features, coords = vvfe.generate(POINTS_FILE, torch.device('cuda:0'))
-        assert features.shape[1] == 4
+        feature, coords = vvfe.generate(POINTS_FILE, torch.device('cuda:0'))
+        assert feature.shape[1] == 4
         assert coords.shape[1] == 3  # zyx
         example = merge_batch_torch(
-            [{'voxels': features, 'coordinates': coords}])
+            [{'voxels': feature, 'coordinates': coords}])
         indices = example['coordinates']
-        features = example['voxels']
+        feature = example['voxels']
 
         spconv_tensor = spconv.SparseConvTensor(
-            features, indices, vvfe.resolution_HWD[::-1], 1)
+            feature, indices, vvfe.resolution_HWD[::-1], 1)
         spconv_dense = spconv_tensor.dense()  # torch
         # N C D W H
         assert spconv_dense.shape[0] == 1
@@ -70,12 +70,9 @@ class TestClass:
         assert spconv_dense.shape[3] == vvfe.resolution_HWD[1]  # W
         assert spconv_dense.shape[4] == vvfe.resolution_HWD[0]  # H
 
-        # print("features = ", features)
-        # print("feautures.dtype = ", features.dtype)
-        # print("indices = ", indices)
 
         sphconv_tensor = sphconv.SparseConvTensor(
-            features, vvfe.resolution_HWD[::-1], 1, indices=indices)
+            feature, vvfe.resolution_HWD[::-1], 1, indices=indices)
         # print("sphconv_tensor.feature = ", sphconv_tensor.feature)
         # print("sphconv_tensor.z_ptr = ", sphconv_tensor.z_ptr)
 

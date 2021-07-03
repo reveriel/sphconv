@@ -95,22 +95,22 @@ class TestClass:
         inChannel = 64
         outChannel = 64
         batch_size = 1
-        # voxel_features = torch.arange( indices_bzyx.shape[0],
+        # voxel_feature = torch.arange( indices_bzyx.shape[0],
         #                   dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
-        # voxel_features = torch.arange( inChannel,
+        # voxel_feature = torch.arange( inChannel,
         #                   dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
-        # voxel_features = torch.arange( indices_bzyx.shape[0] * inChannel,
+        # voxel_feature = torch.arange( indices_bzyx.shape[0] * inChannel,
         #                   dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], inChannel))
-        # voxel_features = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        # voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # voxel_feature = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # voxel_feature = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
 
         torch.manual_seed(0)
-        voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device) * 100
-        voxel_features[0,:] = 8.0
-        voxel_features[3,:] = 16.0
+        voxel_feature = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device) * 100
+        voxel_feature[0,:] = 8.0
+        voxel_feature[3,:] = 16.0
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+            voxel_feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         kernel_size = [3, 3, 3]
         stride = [2, 2, 2]
@@ -157,24 +157,24 @@ class TestClass:
         weight[-1, :,:] = 100.
         weight[1,2,0, :5,:] = 1/64
 
-        out_features_gpu = spconv.ops.indice_conv(
-            voxel_features, weight, indice_pairs,
+        out_feature_gpu = spconv.ops.indice_conv(
+            voxel_feature, weight, indice_pairs,
             indice_pair_num, outids.shape[0])
 
-        out_features_cpu = spconv.ops.indice_conv(
-            voxel_features.cpu(), weight.cpu(), indice_pairs.cpu(),
+        out_feature_cpu = spconv.ops.indice_conv(
+            voxel_feature.cpu(), weight.cpu(), indice_pairs.cpu(),
             indice_pair_num.cpu(), outids.shape[0])
 
         spconv_dense_gpu = spconv.SparseConvTensor(
-            out_features_gpu, outids, out_spatial_shape_DWH, batch_size).dense()
+            out_feature_gpu, outids, out_spatial_shape_DWH, batch_size).dense()
         spconv_dense_cpu = spconv.SparseConvTensor(
-            out_features_cpu, outids, out_spatial_shape_DWH, batch_size).dense()
+            out_feature_cpu, outids, out_spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
-        sph_out_features = rule_conv(
+        sph_out_feature = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
             rules, rule_size, oz_idx.shape[0])
 
-        sph_out_features_1 = sph_out_features
+        sph_out_feature_1 = sph_out_feature
         # for i in range(20):
         #     sph_out_features_new = rule_conv(
         #             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
@@ -183,7 +183,7 @@ class TestClass:
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
-            sph_out_features, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
+            sph_out_feature, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
         sphconv_dense_1 = sphconv_dense
 
         spconv_dense = spconv_dense_cpu

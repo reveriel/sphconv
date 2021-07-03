@@ -24,10 +24,10 @@ def assert_correct_cmp_with_torch(
 
     indices_bzyx = dup_with_batch_idx(indices_zyx, batch_size)
 
-    voxel_features = torch.ones((indices_bzyx.shape[0], 1), device=indices_bzyx.device)
+    feature = torch.ones((indices_bzyx.shape[0], 1), device=indices_bzyx.device)
     test_func = get_rules_subm if subm else get_rules
     tensor = sphconv.SparseConvTensor(
-        voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+        feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
     out_spatial_shape = spatial_shape_DWH
     if not subm:
         out_spatial_shape = out_spatial(
@@ -71,14 +71,14 @@ def assert_correct_cmp_with_spconv(
         subm: bool = False):
 
     if indices_zyx is None:
-        voxel_features, indices_bzyx  = batch_real_test_inputs(
+        feature, indices_bzyx  = batch_real_test_inputs(
             spatial_shape_DWH=spatial_shape_DWH)
     else:
         if (indices_zyx.size(1) == 3):
             indices_bzyx = dup_with_batch_idx(indices_zyx, batch_size)
         else:
             indices_bzyx = indices_zyx
-        voxel_features = torch.ones((indices_bzyx.shape[0], 1), device=indices_bzyx.device)
+        feature = torch.ones((indices_bzyx.shape[0], 1), device=indices_bzyx.device)
 
     if subm:
         assert dilation == [1, 1, 1] and stride == [1, 1, 1]
@@ -88,7 +88,7 @@ def assert_correct_cmp_with_spconv(
     test_func = get_rules_subm if subm else get_rules
 
     tensor = sphconv.SparseConvTensor(
-        voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+        feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
     out_spatial_shape_DWH = spatial_shape_DWH
     if not subm:
@@ -580,13 +580,13 @@ class TestClass:
         in_channels = 16
         outChannel = 16
         batch_size = 1
-        features = torch.arange( indices_bzyx.shape[0],
+        feature = torch.arange( indices_bzyx.shape[0],
                           dtype=torch.float, device=indices_bzyx.device).repeat(in_channels).reshape((indices_bzyx.shape[0], in_channels))
-        features = torch.arange( in_channels,
+        feature = torch.arange( in_channels,
                           dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
-        features = torch.arange( indices_bzyx.shape[0] * in_channels,
+        feature = torch.arange( indices_bzyx.shape[0] * in_channels,
                           dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], in_channels))
-        features = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
+        feature = torch.ones((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
         # voxel_features = torch.randn((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device)
         # voxel_features = torch.zeros((indices_zyx.shape[0], inChannel), dtype=torch.float, device=indices_zyx.device) / l
         # voxel_features[0,0] = 1.
@@ -596,7 +596,7 @@ class TestClass:
         # voxel_features[2,:] = 1.0
 
         tensor = sphconv.SparseConvTensor(
-            features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+            feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         kernel_size = 3
         stride = 1
@@ -640,21 +640,21 @@ class TestClass:
         weight = torch.randn((kernel_size, kernel_size, kernel_size,
                              in_channels, outChannel), dtype=torch.float, device=indices_bzyx.device)
 
-        out_features = spconv.ops.indice_conv(
-            features, weight, indice_pairs, indice_pair_num, outids.shape[0])
+        out_feature = spconv.ops.indice_conv(
+            feature, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
-        spconv_dense = spconv.SparseConvTensor(out_features, outids, spatial_shape_DWH, batch_size).dense()
+        spconv_dense = spconv.SparseConvTensor(out_feature, outids, spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
-        sph_out_features = rule_conv(
+        sph_out_feature = rule_conv(
             tensor.feature, weight.reshape((-1, in_channels, outChannel)),
             rules, rule_size, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
-            sph_out_features, spatial_shape_DWH, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
+            sph_out_feature, spatial_shape_DWH, batch_size, z_ptr=tensor.z_ptr, z_idx=tensor.z_idx).dense(tensor.device)
 
-        print("spconv out_features = ", out_features)
-        print("sphconv out_features = ", sph_out_features)
+        print("spconv out_feature = ", out_feature)
+        print("sphconv out_feature = ", sph_out_feature)
 
         print("spconv_dense = ", spconv_dense[0,0,:,:,:])
         print("spconv_dense shape = ", spconv_dense.shape)
@@ -747,22 +747,22 @@ class TestClass:
         W = 6
         H = 20
         spatial_shape_DWH = [D, W, H]
-        inChannel = 64
-        outChannel = 64
+        in_channels = 64
+        out_channels = 64
         batch_size = 1
-        voxel_features = torch.arange( indices_bzyx.shape[0],
-                          dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
-        voxel_features = torch.arange( inChannel,
+        feature = torch.arange( indices_bzyx.shape[0],
+                          dtype=torch.float, device=indices_bzyx.device).repeat(in_channels).reshape((indices_bzyx.shape[0], in_channels))
+        feature = torch.arange( in_channels,
                           dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
-        voxel_features = torch.arange( indices_bzyx.shape[0] * inChannel,
-                          dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], inChannel))
-        voxel_features = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        # voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        # voxel_features = torch.randn((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        voxel_features[0,:] = 1.0
+        feature = torch.arange( indices_bzyx.shape[0] * in_channels,
+                          dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], in_channels))
+        feature = torch.zeros((indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device)
+        # feature = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # feature = torch.randn((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        feature[0,:] = 1.0
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+            feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         kernel_size = [3, 3, 3]
         stride = [2, 2, 2]
@@ -805,23 +805,23 @@ class TestClass:
         print("indice_pair_num = ", indice_pair_num)
 
         # convolution
-        weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device)
+        weight = torch.randn((*kernel_size, in_channels, out_channels), dtype=torch.float, device=indices_bzyx.device)
 
-        out_features = spconv.ops.indice_conv(
-            voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
+        out_feature = spconv.ops.indice_conv(
+            feature, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
         spconv_dense = spconv.SparseConvTensor(
-            out_features, outids, out_spatial_shape_DWH, batch_size).dense()
+            out_feature, outids, out_spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
-        sph_out_features = rule_conv(
-            tensor.feature, weight.reshape((-1, inChannel, outChannel)),
+        sph_out_feature = rule_conv(
+            tensor.feature, weight.reshape((-1, in_channels, out_channels)),
             rules, rule_size, oz_idx.shape[0])
 
         # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
-            sph_out_features, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
+            sph_out_feature, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
 
-        print("sphconv out_features = ", sph_out_features)
+        print("sphconv out_feature = ", sph_out_feature)
 
         print("spconv_dense = ", spconv_dense[0,0,:,:,:])
         print("spconv_dense shape = ", spconv_dense.shape)
@@ -852,19 +852,19 @@ class TestClass:
         inChannel = 32
         outChannel = 32
         batch_size = 1
-        voxel_features = torch.arange( indices_bzyx.shape[0],
-                          dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
-        voxel_features = torch.arange( inChannel,
-                          dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
-        voxel_features = torch.arange( indices_bzyx.shape[0] * inChannel,
-                          dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], inChannel))
-        voxel_features = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        # voxel_features = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        # voxel_features = torch.randn((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
-        voxel_features[3,:] = 1.0
+        # feature = torch.arange( indices_bzyx.shape[0],
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(inChannel).reshape((indices_bzyx.shape[0], inChannel))
+        # feature = torch.arange( inChannel,
+        #                   dtype=torch.float, device=indices_bzyx.device).repeat(indices_bzyx.shape[0], 1)
+        # feature = torch.arange( indices_bzyx.shape[0] * inChannel,
+        #                   dtype=torch.float, device=indices_bzyx.device).reshape((indices_bzyx.shape[0], inChannel))
+        # feature = torch.zeros((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        # feature = torch.ones((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        feature = torch.randn((indices_bzyx.shape[0], inChannel), dtype=torch.float, device=indices_bzyx.device)
+        feature[3,:] = 1.0
 
         tensor = sphconv.SparseConvTensor(
-            voxel_features, spatial_shape_DWH, batch_size, indices=indices_bzyx)
+            feature, spatial_shape_DWH, batch_size, indices=indices_bzyx)
 
         kernel_size = [3, 3, 3]
         stride = [1, 1, 1]
@@ -922,23 +922,22 @@ class TestClass:
         # convolution
         weight = torch.randn((*kernel_size, inChannel, outChannel), dtype=torch.float, device=indices_bzyx.device)
 
-        out_features = spconv.ops.indice_conv(
-            voxel_features, weight, indice_pairs, indice_pair_num, outids.shape[0])
+        out_feature = spconv.ops.indice_conv(
+            feature, weight, indice_pairs, indice_pair_num, outids.shape[0])
 
         spconv_dense = spconv.SparseConvTensor(
-            out_features, outids, out_spatial_shape_DWH, batch_size).dense()
+            out_feature, outids, out_spatial_shape_DWH, batch_size).dense()
         # print("spconv out_features = ", out_features)
-        sph_out_features = rule_conv(
+        sph_out_feature = rule_conv(
             tensor.feature, weight.reshape((-1, inChannel, outChannel)),
             rules, rule_size, oz_idx.shape[0])
 
-        print("early distance =", sph_out_features.sum() - out_features.sum())
+        print("early distance =", sph_out_feature.sum() - out_feature.sum())
 
-        # print("sph_out_features 's type is ", type(sph_out_features))
         sphconv_dense = sphconv.SparseConvTensor(
-            sph_out_features, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
+            sph_out_feature, out_spatial_shape_DWH, batch_size, z_ptr=oz_ptr, z_idx=oz_idx).dense(tensor.device)
 
-        print("sphconv out_features = ", sph_out_features)
+        print("sphconv out_feature = ", sph_out_feature)
 
         print("spconv_dense = ", spconv_dense[0,0,:,:,:])
         print("spconv_dense shape = ", spconv_dense.shape)
