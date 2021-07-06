@@ -91,7 +91,7 @@ struct Conv {
     CUTLASS_DEVICE
     void tile_rule_conv(int tile, Params const& params, SharedStorage& shared_storage)
     {
-        int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
+        int gemm_k_iterations = divUp(params.in_channel_, Mma::Shape::kK);
 
         for (int k = 0; k < params.kernel_volume_; k++) {
             // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);
@@ -246,7 +246,7 @@ struct Conv<Mma_, Epilogue_, VBLOCK, threadblock::InterleavedThreadblockSwizzle>
     CUTLASS_DEVICE
     void tile_rule_conv(int tile, Params const& params, SharedStorage& shared_storage)
     {
-        int gemm_k_iterations = params.in_channel_ / Mma::Shape::kK;
+        int gemm_k_iterations = divUp(params.in_channel_, Mma::Shape::kK);
 
         for (int k = 0; k < params.kernel_volume_; k++) {
             // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);

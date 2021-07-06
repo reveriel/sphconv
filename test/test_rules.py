@@ -577,7 +577,7 @@ class TestClass:
         W = 8
         H = 8
         spatial_shape_DWH = [D, W, H]
-        in_channels = 16
+        in_channels = 4
         outChannel = 16
         batch_size = 1
         feature = torch.arange( indices_bzyx.shape[0],

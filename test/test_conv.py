@@ -141,6 +141,10 @@ class TestClass:
         #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
         assert_correct_cmp_with_spconv(
+            indices_zyx, batch_size=1, in_channels=4, out_channels=16, spatial_shape_DWH=[3, 3, 3],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+
+        assert_correct_cmp_with_spconv(
             indices_zyx, batch_size=1, in_channels=16, out_channels=16, spatial_shape_DWH=[3, 3, 3],
             kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
@@ -181,9 +185,9 @@ class TestClass:
         #     indices, batch_size=1, in_channels=4, out_channels=5, spatial_shape_DWH=[9, 9, 9],
         #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
-        # assert_correct_cmp_with_spconv(
-        #     indices, batch_size=1, in_channels=4, out_channels=8, spatial_shape_DWH=[8, 8, 8],
-        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=1, in_channels=4, out_channels=16, spatial_shape_DWH=[8, 8, 8],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
         assert_correct_cmp_with_spconv(
             indices, batch_size=8, in_channels=16, out_channels=32, spatial_shape_DWH=[9, 8, 8],
@@ -237,6 +241,9 @@ class TestClass:
         [4, 1, 0]
         ], dtype=torch.int).cuda()
 
+        assert_correct_cmp_with_spconv(
+            indices, batch_size=8, in_channels=4, out_channels=16, spatial_shape_DWH=[5, 5, 5],
+            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
         assert_correct_cmp_with_spconv(
             indices, batch_size=8, in_channels=16, out_channels=32, spatial_shape_DWH=[5, 5, 5],

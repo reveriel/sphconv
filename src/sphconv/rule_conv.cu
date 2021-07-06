@@ -20,6 +20,8 @@ using torch::indexing::Slice;
 
 int near2power(int num)
 {
+    if (num <= 4)
+        return 4;
     if (num <= 8)
         return 8;
     if (num <= 16)
@@ -307,14 +309,13 @@ rule_conv(const torch::Tensor feature,  // [NNZ, C]
     std::shared_ptr<ConvBase> conv;
 
     switch (OC_BLOCK) {
+    case 4:
+        conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
+        break;
     case 8:
-        // if oc = 8
-        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
         conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 16:
-        // if oc = 16
-        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
         conv = std::make_shared<Conv<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 32:
@@ -492,6 +493,9 @@ rule_conv_d_weight(
 
     // NOTE: VBLOCK should equqck Gemmshape's,  M
     switch (OC_BLOCK) {
+    case 4:
+        conv = std::make_shared<ConvD<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
+        break;
     case 8:
         conv = std::make_shared<ConvD<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
@@ -551,14 +555,13 @@ rule_conv_d_feature(const torch::Tensor feature,  // [NNZ, C]
 
     switch (OC_BLOCK)
     {
+    case 4:
+        conv = std::make_shared<ConvDF<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
+        break;
     case 8:
-        // if oc = 8
-        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
         conv = std::make_shared<ConvDF<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 16:
-        // if oc = 16
-        // error: static assertion failed with "ThreadMap::Iterations::kColumn must be > 0"
         conv = std::make_shared<ConvDF<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
     case 32:

@@ -563,14 +563,14 @@ class TestClass:
         assert(torch.isclose(t_d_w, sph_d_w, rtol=0.01).all())
 
     def test_conv_dweight5(self):
-        in_channels = 16
+        in_channels = 4
         out_channels = 16
         batch_size = 1
-        spatial_shape_DWH = [3, 3, 4]
+        spatial_shape_DWH = [30, 30, 8]
 
 
-        features, indices_bzyx = batch_real_test_inputs(
-            channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+        # features, indices_bzyx = batch_real_test_inputs(
+        #     channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
 
         indices_bzyx = torch.tensor([
              [0, 0, 0, 0],
@@ -594,7 +594,7 @@ class TestClass:
         subm = True
 
         # convolution
-        weight = torch.ones((*kernel_size, in_channels, out_channels),
+        weight = torch.randn((*kernel_size, in_channels, out_channels),
                             dtype=torch.float, device=indices_bzyx.device)
 
         # sp_y, sp_d_f = d_feature_conv(
