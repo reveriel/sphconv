@@ -63,6 +63,10 @@ class ConvFunction(torch.autograd.Function):
         # print("d_featureOut.shape = ", d_featureOut.shape)
         feature, weight, rules, rule_size = ctx.saved_tensors
 
+        # print("rule_size = ", rule_size)
+        # print("rules.shape = ", rules.shape)
+        # print("rules = ", rules[:,:,:,:10])
+
         d_feature, d_weight = rule_conv_backward(
             d_featureOut,
             feature,  # bias,

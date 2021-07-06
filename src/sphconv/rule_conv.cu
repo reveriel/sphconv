@@ -15,6 +15,8 @@ namespace sphconv
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 using cutlass::gemm::GemmShape;
+using torch::indexing::Slice;
+
 
 int near2power(int num)
 {
@@ -384,14 +386,12 @@ struct ConvD : public ConvDBase {
     ;
     using WarpShape = WarpShape_;
 
-    using ConvKernel = typename kernel::DefaultConvReduction<
+    using ConvKernel = typename kernel::DefaultConvDW<
         ThreadblockShape, WarpShape, VBLOCK,
         ThreadblockSwizzle>::ConvKernel;
 
     // using ReductionKernel = kernel::Reduce<
     //     EpilogueOutputOp, ReductionOp>;
-
-
 
 private:
     typename ConvKernel::Params conv_params_;
@@ -490,6 +490,7 @@ rule_conv_d_weight(
 
     std::shared_ptr<ConvDBase> conv;
 
+    // NOTE: VBLOCK should equqck Gemmshape's,  M
     switch (OC_BLOCK) {
     case 8:
         conv = std::make_shared<ConvD<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
@@ -512,6 +513,8 @@ rule_conv_d_weight(
     conv->initialize(args);
 
     conv->run();
+
+    // std::cout << d_weight.index({Slice(), Slice(), 0, 0}) << std::endl;
 
     return torch::sum(d_weight, 0, false);
 }

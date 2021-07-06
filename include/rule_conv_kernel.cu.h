@@ -99,6 +99,10 @@ struct Conv {
             // printf(" rulesize [tile: %d] [k: %d] = %d\n",  tile, k, kRuleSize );
             if (kRuleSize == 0)
                 continue;
+
+            // if (threadIdx.x == 0)
+            //     printf(" rulesize [tile: %d] [k: %d] = %d\n",  tile, k, kRuleSize );
+
             for (int vbegin = 0; vbegin < kRuleSize; vbegin += VBLOCK) {
                 int thread_idx = threadIdx.x;
                 // Construct iterators
@@ -319,7 +323,7 @@ template <typename Mma_,      // threadblock level MMA
           typename Epilogue_, // threadblock level epilogue
           int VBLOCK,
           typename ThreadblockSwizzle> //
-struct ConvDWeight {
+struct ConvDW {
 
     using Mma = Mma_;
     using Epilogue = Epilogue_;
@@ -356,7 +360,7 @@ struct ConvDWeight {
                const GpuTensor<int32_t, 4>& rules,
                const GpuTensor<int32_t, 2>& ruleSize,
                int kernel_volume,
-               typename OutputOp::Params output_op = typename OutputOp::Params(1, 1)) // acumulate on result, beta = 1
+               typename OutputOp::Params output_op = typename OutputOp::Params(1)) // no acumulate on result, beta = 0
             : params_A(feature, rules, ruleSize),
               params_B(d_featureOut, rules, ruleSize),
               params_D(d_weight),
@@ -374,7 +378,7 @@ struct ConvDWeight {
     };
 
     CUTLASS_HOST_DEVICE
-    ConvDWeight() {}
+    ConvDW() {}
 
     CUTLASS_DEVICE
     void tile_rule_conv(int tile, Params const& params, SharedStorage& shared_storage)
@@ -385,21 +389,24 @@ struct ConvDWeight {
 
         for (int k = 0; k < params.kernel_volume_; k++) {
 
-            // printf(" rulesize [tile: %d] [k: %d] = ?\n", tile, k);
             int kRuleSize = params.ruleSize_[tile][k];
 
-            // printf(" rulesize [tile: %d] [k: %d] = %d\n",  tile, k, kRuleSize );
             if (kRuleSize == 0)
                 continue;
 
+            // if (threadIdx.x == 0)
+            //     printf(" rulesize [tile: %d] [k: %d] = %d\n", tile, k, kRuleSize);
+
             int gemm_k_iterations = divUp(kRuleSize, Mma::Shape::kK);
 
-            for (int vbegin = 0; vbegin < params.in_channel_ ;  vbegin += VBLOCK) {
+            for (int cbegin = 0; cbegin < params.in_channel_; cbegin += VBLOCK) {
+                // if (threadIdx.x == 0)
+                    // printf("cbegin++\n");
 
                 int thread_idx = threadIdx.x;
                 // Construct iterators
                 typename Mma::IteratorA iterator_A(
-                    params.params_A, thread_idx, tile, vbegin, k);
+                    params.params_A, thread_idx, tile, cbegin, k);
 
                 typename Mma::IteratorB iterator_B(
                     params.params_B, thread_idx, tile, 0, k);
@@ -431,10 +438,10 @@ struct ConvDWeight {
                 // NKernel
                 // printf("&params.params_D = %p\n", &params.params_D);
                 typename Epilogue::OutputTileIterator iterator_D(
-                    params.params_D, tile, vbegin, thread_idx, k);
+                    params.params_D, tile, cbegin, thread_idx, k);
 
                 typename Epilogue::OutputTileIterator iterator_C(
-                    params.params_D, tile, vbegin, thread_idx, k);
+                    params.params_D, tile, cbegin, thread_idx, k);
 
                 Epilogue epilogue(
                     shared_storage.epilogue, thread_idx, warp_id, lane_id);

@@ -53,5 +53,8 @@ def batch_real_test_inputs(
     if channel > 4:
         feature = feature.repeat((1, (channel + 3) //4))
         feature = feature[:, :channel]
+
+    # print("indices_bzyx = ", indices_bzyx)
+
     return feature, indices_bzyx
 

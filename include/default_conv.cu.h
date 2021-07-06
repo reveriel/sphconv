@@ -71,7 +71,7 @@ template <
     typename WarpShape_,
     int VBLOCK,
     typename ThreadblockSwizzle>
-struct DefaultConvReduction {
+struct DefaultConvDW {
 
     using ElementA = float;
     using ElementB = float;
@@ -112,7 +112,7 @@ struct DefaultConvReduction {
         EpilogueOutputOp,
         kEpilogueElementsPerAccess>::Epilogue;
 
-    using ConvKernel = kernel::ConvDWeight<Mma, Epilogue, VBLOCK, ThreadblockSwizzle>;
+    using ConvKernel = kernel::ConvDW<Mma, Epilogue, VBLOCK, ThreadblockSwizzle>;
 };
 
 } // namespace kernel
