@@ -19,6 +19,16 @@ namespace sphconv
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 
+
+int huristic_tile_n_max(int inTileSizeH, int inTileSizeW, int B, int H, int W, int D, int NNZ)
+{
+    double sparsity = (double)NNZ / (double)(B * H * W * D);
+
+    double size = B * inTileSizeH * inTileSizeW * D * sparsity * 2;
+
+    return (int)(size + 64) & (-1 << 4);
+}
+
 __host__ __device__ __forceinline__
 int getInTileSize(int outTileSize, int stride, int kernelSize)
 {
@@ -63,11 +73,15 @@ int getLinearTileIdx(int TileSize0, int TileSize1, int x, int y, int TileGridW)
  */
 template <typename IType>
 __global__ void prepareSubMGridKernel(
-    const GpuTensor<IType, 1> zIndices,
-    const GpuTensor<IType, 3> zPtr, // TODO replace zPtr with exclusiveScan
-    GpuTensor<IType, 4> grid,
-    int B, int H, int W)
+    const GpuTensor<IType, 1> zIndices, // [NNZ]
+    const GpuTensor<IType, 3> zPtr,     // [B, H, W]
+    // TODO replace zPtr with exclusiveScan
+    GpuTensor<IType, 4> grid) // [B, H, W, D]
 {
+    int B = zPtr.size(0);
+    int H = zPtr.size(1);
+    int W = zPtr.size(2);
+
     int x = threadIdx.x + blockDim.x * blockIdx.x;
     int y = threadIdx.y + blockDim.y * blockIdx.y;
     if (x >= H || y >= W)
@@ -104,15 +118,17 @@ __global__ void prepareSubMGridKernel(
  */
 template <typename IType>
 __global__ void prepareGridKernel(
-    const GpuTensor<IType, 1> zIndices,
-    const GpuTensor<IType, 3> zPtr,
-    GpuTensor<IType, 4> grid, // [B, oH, oW, oD]
-    int B, int H, int W,
+    const GpuTensor<IType, 1> zIndices, // [NNZ]
+    const GpuTensor<IType, 3> zPtr,     // [B, H, W]
+    GpuTensor<IType, 4> grid,           // [B, oH, oW, oD]
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
     int dH, int dW, int dD)
 {
+    int B = zPtr.size(0);
+    int H = zPtr.size(1);
+    int W = zPtr.size(2);
     int oH = grid.size(1);
     int oW = grid.size(2);
     int oD = grid.size(3);
@@ -166,16 +182,19 @@ __global__ void getOzIndicesAndRulesKernel(
     GpuTensor<IType, 1> ozIndices,      // [NNZ']
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
     const GpuTensor<IType, 3> ozPtr,    // [B, oH, oW]
-    const GpuTensor<IType, 4> grid,
-    GpuTensor<IType, 4> rules,  // [NTile, KKK, 2, DMax]
-    GpuTensor<IType, 2> ruleSize,    // number active index, [NTile, KKK]
-    int B, int H, int W, int D,  // TODO, cleanup unnaccesary
+    const GpuTensor<IType, 4> grid,     // [B, oH, oW, oD]
+    GpuTensor<IType, 4> rules,          // [NTile, KKK, 2, DMax]
+    GpuTensor<IType, 2> ruleSize,       // number active index, [NTile, KKK]
+    int D,
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
     int dH, int dW, int dD,
     int outTileH, int outTileW)
 {
+    int B = zPtr.size(0);
+    int H = zPtr.size(1);
+    int W = zPtr.size(2);
     int oH = grid.size(1);
     int oW = grid.size(2);
     int oD = grid.size(3);
@@ -203,6 +222,8 @@ __global__ void getOzIndicesAndRulesKernel(
     // printf("nTile(%d), oxy(%d,%d)\n", nTile, oX, oY);
     // nTile = 1;
 
+    int tile_n_max = rules.size(3);
+
     for (int b = 0; b < B; b++) {
         int zEnd = zPtr[b][x][y];
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
@@ -216,12 +237,12 @@ __global__ void getOzIndicesAndRulesKernel(
             int globalOutIdx = grid[b][oX][oY][oZ] - 1;
             int counter = atomicAdd(&ruleSize[nTile][k], 1);
 
-            if (counter < TILE_N_MAX) {
+            if (counter < tile_n_max) {
                 rules[nTile][k][0][counter] = globalInIdx;
                 rules[nTile][k][1][counter] = globalOutIdx;
             } else {
                 printf("overflow counter:(%d/%d), global i/o:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), oShape(%d,%d,%d), std\n",
-                       counter, TILE_N_MAX, globalInIdx, globalOutIdx,
+                       counter, tile_n_max, globalInIdx, globalOutIdx,
                        nTile, x, y, k, outTileH, outTileW, oH, oW, oD);
             }
             ozIndices[globalOutIdx] = oZ;
@@ -235,18 +256,22 @@ __global__ void getOzIndicesAndRulesKernel(
  */
 template <typename IType>
 __global__ void getSubMRulesKernel(
-    const GpuTensor<IType, 1> zIndices,
-    const GpuTensor<IType, 3> zPtr,
-    const GpuTensor<IType, 4> grid,
-    GpuTensor<IType, 4> rules,
-    GpuTensor<IType, 2> ruleSize, // number active index, [NTile, KKK]
-    int B, int H, int W, int D,
+    const GpuTensor<IType, 1> zIndices, // [NNZ]
+    const GpuTensor<IType, 3> zPtr,     // [B, H, W]
+    const GpuTensor<IType, 4> grid,     // [B, oH, oW, oD]
+    GpuTensor<IType, 4> rules,          // [NTile, KKK, 2, DMax]
+    GpuTensor<IType, 2> ruleSize,       // number active index, [NTile, KKK]
+    int D,
     int KH, int KW, int KD,
     int sH, int sW, int sD,
     int padH, int padW, int padD,
     int dH, int dW, int dD,
     int outTileH, int outTileW)
 {
+    int tile_n_max = rules.size(3);
+    int B = zPtr.size(0);
+    int H = zPtr.size(1);
+    int W = zPtr.size(2);
     int oH = grid.size(1);
     int oW = grid.size(2);
     int oD = grid.size(3);
@@ -261,7 +286,7 @@ __global__ void getSubMRulesKernel(
     int k_W = (k / KD) % KW;
     int k_D = k % KD;
 
-    int oX = OutSpatial(k_H, x, sH, dH, padH); // TODO, iterative
+    int oX = OutSpatial(k_H, x, sH, dH, padH);
     if (oX < 0 || oX >= oH)
         return;
     int oY = OutSpatial(k_W, y, sW, dW, padW);
@@ -296,12 +321,12 @@ __global__ void getSubMRulesKernel(
 
             int counter = atomicAdd(&ruleSize[nTile][k], 1);
 
-            if (counter < TILE_N_MAX) {
+            if (counter < tile_n_max) {
                 rules[nTile][k][0][counter] = globalInIdx;
                 rules[nTile][k][1][counter] = globalOutIdx;
             } else {
                 printf("overflow counter:(%d/%d), global i/o:%d/%d, nTile:%d, x:%d, y:%d, k:%d, Tile(%d,%d), inShape(%d,%d,%d), std\n",
-                       counter, TILE_N_MAX, globalInIdx, globalOutIdx,
+                       counter, tile_n_max, globalInIdx, globalOutIdx,
                        nTile, x, y, k, outTileH, outTileW, oH, oW, oD);
             }
         }
@@ -343,9 +368,7 @@ get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
     prepareSubMGridKernel<int32_t><<<gridSize, blockSize>>>(
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
-        grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-        batchSize,
-        spatialShape[0], spatialShape[1]);
+        grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>());
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -356,14 +379,18 @@ get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
     int NTile = divUp(outSpatialShape[0], tileSize[0]) * divUp(outSpatialShape[1], tileSize[1]);
 
     // allocate rules and indice Num
-    torch::Tensor rules =
-        torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed, not elegent
-                    /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
-    // TODO: rules is allocated larger, to be trimed lalter
+    int tile_n_max = huristic_tile_n_max(
+        getInTileSize(tileSize[0], stride[0], kernelSize[0]),
+        getInTileSize(tileSize[1], stride[1], kernelSize[1]),
+        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],  zIndices.size(0));
+    // printf("tile_n_max = %d\n", tile_n_max);
 
-    torch::Tensor ruleSize =
-        torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
+    torch::Tensor rules = torch::full(
+        {NTile, kernelVolume, 2, tile_n_max},
+        /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
 
+    torch::Tensor ruleSize = torch::zeros(
+        {NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
 
     gridSize = dim3(divUp(spatialShape[0], 4), divUp(spatialShape[1], 8), kernelVolume);
     blockSize = dim3(4, 8, 1);
@@ -373,8 +400,7 @@ get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-        batchSize,
-        spatialShape[0], spatialShape[1], spatialShape[2],
+        spatialShape[2],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
@@ -422,7 +448,6 @@ get_rules(const torch::Tensor zIndices, //  [NNZ]
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-        batchSize, spatialShape[0], spatialShape[1],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],
@@ -444,12 +469,17 @@ get_rules(const torch::Tensor zIndices, //  [NNZ]
 
     int NTile = divUp(outSpatialShape[0], tileSize[0]) * divUp(outSpatialShape[1], tileSize[1]);
 
-    // TODO: rules is allocated larger, to be trimed lalter
-    torch::Tensor rules = torch::full({NTile, kernelVolume, 2, TILE_N_MAX}, // TODO: TILE_N_MAX is fixed
-                                      /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
+    int tile_n_max = huristic_tile_n_max(
+        getInTileSize(tileSize[0], stride[0], kernelSize[0]),
+        getInTileSize(tileSize[1], stride[1], kernelSize[1]),
+        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],  zIndices.size(0));
 
-    torch::Tensor ruleSize =
-        torch::zeros({NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
+    torch::Tensor rules = torch::full(
+        {NTile, kernelVolume, 2, tile_n_max},
+        /*value=*/-1, torch::dtype(torch::kInt32).device(zIndices.device()));
+
+    torch::Tensor ruleSize = torch::zeros(
+        {NTile, kernelVolume}, torch::dtype(torch::kInt32).device(zIndices.device()));
     // PRINT_SHAPE(ruleSize);
 
     int outNNZ = ozPtr.view({-1}).index({-1}).item<int>();
@@ -466,7 +496,7 @@ get_rules(const torch::Tensor zIndices, //  [NNZ]
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         rules.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
         ruleSize.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],
+        spatialShape[2],
         kernelSize[0], kernelSize[1], kernelSize[2],
         stride[0], stride[1], stride[2],
         padding[0], padding[1], padding[2],

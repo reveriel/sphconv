@@ -563,33 +563,33 @@ class TestClass:
         assert(torch.isclose(t_d_w, sph_d_w, rtol=0.01).all())
 
     def test_conv_dweight5(self):
-        in_channels = 4
-        out_channels = 16
-        batch_size = 1
-        spatial_shape_DWH = [30, 30, 8]
+        in_channels = 64
+        out_channels = 64
+        batch_size = 8
+        spatial_shape_DWH = [12, 12, 12]
 
 
-        # features, indices_bzyx = batch_real_test_inputs(
-        #     channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
+        features, indices_bzyx = batch_real_test_inputs(
+            channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
 
-        indices_bzyx = torch.tensor([
-             [0, 0, 0, 0],
-             [0, 0, 0, 1],
-             [0, 0, 1, 0],
-             [0, 1, 0, 0],
-             [0, 1, 0, 1],
-             [0, 1, 1, 0],
-             [0, 1, 1, 1],
-             [0, 0, 0, 2],
-             [0, 0, 1, 2],
-             ],
-              dtype=torch.int).cuda()
-        features = torch.ones(
-            (indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) * 1
+        # indices_bzyx = torch.tensor([
+        #      [0, 0, 0, 0],
+        #      [0, 0, 0, 1],
+        #      [0, 0, 1, 0],
+        #      [0, 1, 0, 0],
+        #      [0, 1, 0, 1],
+        #      [0, 1, 1, 0],
+        #      [0, 1, 1, 1],
+        #      [0, 0, 0, 2],
+        #      [0, 0, 1, 2],
+        #      ],
+        #       dtype=torch.int).cuda()
+        # features = torch.ones(
+        #     (indices_bzyx.shape[0], in_channels), dtype=torch.float, device=indices_bzyx.device) * 1
 
-        kernel_size = [2, 3, 2]
+        kernel_size = [3, 3, 3]
         stride = [1, 1, 1]
-        padding = [1, 1, 1]
+        padding = [0, 1, 0]
         dilation = [1, 1, 1]
         subm = True
 
@@ -616,20 +616,21 @@ class TestClass:
 
 
         print("sp, sph   output y = ", sp_y, sph_y)
+        print("distance = ", (sp_y - sph_y).abs().sum())
         assert(torch.isclose(sp_y, sph_y, rtol=0.01).all())
 
-        print("sp_d_w = ", sp_dw[:,:,:,0,0])
-        print("sph_d_w = ", sph_dw[:,:,:,0,0])
+        # print("sp_d_w = ", sp_dw[:,:,:,0,0])
+        # print("sph_d_w = ", sph_dw[:,:,:,0,0])
 
-        print("sp_d_w ci = ", sp_dw[1,0,1,:,0])
-        print("sph_d_w ci = ", sph_dw[1,0,1,:,0])
+        # print("sp_d_w ci = ", sp_dw[1,0,1,:,0])
+        # print("sph_d_w ci = ", sph_dw[1,0,1,:,0])
 
-        print("sp_d_w co = ", sp_dw[1,0,1,0,:])
-        print("sph_d_w co = ", sph_dw[1,0,1,0,:])
+        # print("sp_d_w co = ", sp_dw[1,0,1,0,:])
+        # print("sph_d_w co = ", sph_dw[1,0,1,0,:])
 
-        print("distance = ", (sp_dw - sph_dw).abs().sum())
-        print("distance0 = ", (sp_dw - sph_dw).sum())
-        print("distance[] = ", (sp_dw - sph_dw).reshape(-1, in_channels, out_channels)[:])
+        # print("distance = ", (sp_dw - sph_dw).abs().sum())
+        # print("distance0 = ", (sp_dw - sph_dw).sum())
+        # print("distance[] = ", (sp_dw - sph_dw).reshape(-1, in_channels, out_channels)[:])
         # print("spdw = ", sp_dw.reshape(-1, in_channels,out_channels)[:]  )
         # print("sphdw = ", sph_dw.reshape(-1, in_channels,out_channels)[:]  )
         assert(torch.isclose(sp_dw, sph_dw, rtol=0.01).all())

@@ -8,7 +8,10 @@
 #include <iostream>
 #include <vector>
 
-#define TILE_N_MAX 512
+// TODO:  make a good default value
+// this is related to tile_size and batchsize, and input data
+#define TILE_N_MAX 128
+// #define TILE_N_MAX 2048
 
 static const int zeros[] = {0, 0, 0, 0, 0};
 
@@ -103,7 +106,7 @@ template <typename IType>
 __device__ __inline__ IType OutSpatial(IType k, IType x, IType s, IType d,
                                        IType pad) {
   // forgive me. do nothing with the dillation
-  // TODO
+  // TODO: dilation
   if ((x + pad - k) % s == 0)
     return (x + pad - k) / s;
   return -1;
