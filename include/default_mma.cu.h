@@ -211,8 +211,6 @@ struct DefaultMmaDW<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB,
         kThreads,
         kElementsPerAccess>;
 
-
-    //TODO:  parameterize the 0 here
     // Define iterators over tiles from the A operand
     using IteratorA =
         sphconv::threadblock::InputTileIterator<

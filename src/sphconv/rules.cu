@@ -12,13 +12,11 @@
 using namespace std;
 using namespace torch::indexing;
 
-
 namespace sphconv
 {
 
 template <typename T, int N>
 using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
-
 
 int huristic_tile_n_max(int inTileSizeH, int inTileSizeW, int B, int H, int W, int D, int NNZ)
 {
@@ -29,45 +27,28 @@ int huristic_tile_n_max(int inTileSizeH, int inTileSizeW, int B, int H, int W, i
     return (int)(size + 64) & (-1 << 4);
 }
 
-__host__ __device__ __forceinline__
-int getInTileSize(int outTileSize, int stride, int kernelSize)
+__host__ __device__ __forceinline__ int getInTileSize(int outTileSize, int stride, int kernelSize)
 {
     assert(stride <= kernelSize);
     return stride * (outTileSize - 1) + kernelSize;
 }
 
-__host__ __device__ __forceinline__
-int linearIdx(int x0, int x1, int x2, int x3, int D1, int D2, int D3) {
-    return ((x0 * D1 + x1) * D2 + x2) * D3 + x3;
-}
-
-__host__ __device__ __forceinline__
-int linearIdx(int x0, int x1, int x2, int D1, int D2) {
-    return (x0 * D1 + x1) * D2 + x2;
-}
-
-__host__ __device__ __forceinline__
-int linearIdx(int x0, int x1, int D1) {
-    return x0 * D1 + x1;
-}
-
-
-__device__ __forceinline__
-int getLinearTileIdx(int TileSize0, int TileSize1, int x, int y, int TileGridW)
+template <typename IType>
+__device__ __forceinline__ IType OutSpatial(IType k, IType x, IType s, IType d,
+                                            IType pad)
 {
-    int tileIdxX = x / TileSize0;
-    int tileIdxY = y / TileSize1;
-    return linearIdx(tileIdxX, tileIdxY, TileGridW);
+    // forgive me. do nothing with the dillation
+    // TODO: dilation
+    if ((x + pad - k) % s == 0)
+        return (x + pad - k) / s;
+    return -1;
 }
-
 
 /**
  * @brief init the grid[B, H, W, D],
  *  grid is a mapping from spatial location to its target glaobal physical location
  *
  * fill grid with global indices
- *
- * TODO: fill local indices
  *
  * @return __global__
  */
@@ -88,14 +69,12 @@ __global__ void prepareSubMGridKernel(
         return;
 
     // for each voxel
-    for (int b = 0; b < B; b++)
-    {
+    for (int b = 0; b < B; b++) {
         int zEnd = zPtr[b][x][y];
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
 
         // diverge here, but we assume it's quick
-        for (int pos = zStart; pos < zEnd; pos++)
-        {
+        for (int pos = zStart; pos < zEnd; pos++) {
             int z = zIndices[pos];
             grid[b][x][y][z] = pos;
         }
@@ -154,14 +133,12 @@ __global__ void prepareGridKernel(
         return;
 
     /// for each input voxel, fill its output to 1
-    for (int b = 0; b < B; b++)
-    {
+    for (int b = 0; b < B; b++) {
         int zEnd = zPtr[b][x][y];
         int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
 
         // diverge here, but we assume it's quick
-        for (int pos = zStart; pos < zEnd; pos++)
-        {
+        for (int pos = zStart; pos < zEnd; pos++) {
             int z = zIndices[pos];
             int oZ = OutSpatial(k_D, z, sD, dD, padD);
             if (oZ < 0 || oZ >= oD)
@@ -333,7 +310,6 @@ __global__ void getSubMRulesKernel(
     } // b
 }
 
-
 /**
  *  tile_size: tile_size is on the output feature map.
  *
@@ -382,7 +358,7 @@ get_rules_subm(const torch::Tensor zIndices, //  [NNZ]
     int tile_n_max = huristic_tile_n_max(
         getInTileSize(tileSize[0], stride[0], kernelSize[0]),
         getInTileSize(tileSize[1], stride[1], kernelSize[1]),
-        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],  zIndices.size(0));
+        batchSize, spatialShape[0], spatialShape[1], spatialShape[2], zIndices.size(0));
     // printf("tile_n_max = %d\n", tile_n_max);
 
     torch::Tensor rules = torch::full(
@@ -472,7 +448,7 @@ get_rules(const torch::Tensor zIndices, //  [NNZ]
     int tile_n_max = huristic_tile_n_max(
         getInTileSize(tileSize[0], stride[0], kernelSize[0]),
         getInTileSize(tileSize[1], stride[1], kernelSize[1]),
-        batchSize, spatialShape[0], spatialShape[1], spatialShape[2],  zIndices.size(0));
+        batchSize, spatialShape[0], spatialShape[1], spatialShape[2], zIndices.size(0));
 
     torch::Tensor rules = torch::full(
         {NTile, kernelVolume, 2, tile_n_max},

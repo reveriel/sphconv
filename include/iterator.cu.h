@@ -65,9 +65,9 @@ struct InputTileIterator<Element_, ThreadMap_, Alignment, In, false, 1> {
     static_assert(kAccessesPerVector == 1, "accesse per vector must be 1");
 
     struct Params {
-        GpuTensor<Element, 2> inFeature_;
-        GpuTensor<int32_t, 4> Rule_;
-        GpuTensor<int32_t, 2> ruleSize_;
+        GpuTensor<Element, 2> inFeature_;  // [NNZ, C]
+        GpuTensor<int32_t, 4> Rule_;       // [Ntile, KKK, 2, tile_n_max]
+        GpuTensor<int32_t, 2> ruleSize_;   // [Ntile, KKK]
 
         Params() : inFeature_(0, zeros, zeros),
                    Rule_(0, zeros, zeros),
@@ -183,15 +183,6 @@ public:
     CUTLASS_HOST_DEVICE InputTileIterator& operator++()
     {
         thread_start_c_ += Shape::kContiguous;
-
-        // update mask
-        // CUTLASS_PRAGMA_UNROLL
-        // for (int s = 0; s < ThreadMap::Iterations::kStrided; ++s) {
-        //     int v = thread_start_v_ + s * ThreadMap::Delta::kStrided;
-        //     mask_.global_offset[s] = (v < rule_size_)
-        //                                  ? params_.Rule_[tile_idx_][kernel_offset_][In][v]
-        //                                  : -1;
-        // }
         return *this;
     }
 
@@ -216,12 +207,6 @@ public:
             CUTLASS_PRAGMA_UNROLL
             for (int c = 0; c < ThreadMap::Iterations::kContiguous; ++c) {
 
-                // assume kAccessesPerVector = 1
-                //             int idx = c + s * ThreadMap::Iterations::kContiguous;
-
-                // iteration_contiguous_ = idx % ThreadMap::Iterations::kContiguous;
-                // iteration_strided_ = idx / ThreadMap::Iterations::kContiguous;
-                //     int channel = c;
                 int idx = c + s * ThreadMap::Iterations::kContiguous;
 
                 int channel = thread_start_c_ + c * ThreadMap::Delta::kContiguous;
@@ -425,6 +410,7 @@ public:
         // TODO: remove this clear;
         // why do I need this?
         // because!, cutlass's mma compute the cast fragment first !
+        // this cuases a bug
         frag.clear();
 
         CUTLASS_PRAGMA_UNROLL
@@ -1069,77 +1055,9 @@ public:
     // loads a fragment from memory
     CUTLASS_DEVICE void load(Fragment& frag)
     {
-        int offset = offset_;
-        int oC = params_.weight_.size(3);
 
-        AccessType* frag_ptr = reinterpret_cast<AccessType*>(&frag);
-
-        CUTLASS_PRAGMA_UNROLL
-        for (int cluster = 0; cluster < ThreadMap::Iterations::kCluster; ++cluster) {
-
-            CUTLASS_PRAGMA_UNROLL
-            for (int group = 0; group < ThreadMap::Iterations::kGroup; ++group) {
-
-                CUTLASS_PRAGMA_UNROLL
-                for (int row = 0; row < ThreadMap::Iterations::kRow; ++row) {
-
-                    int frag_row_idx =
-                        (row + ThreadMap::Iterations::kRow *
-                                   (group + ThreadMap::Iterations::kGroup * cluster));
-
-                    int row_offset =
-                        row * ThreadMap::Delta::kRow +
-                        group * ThreadMap::Delta::kGroup +
-                        cluster * ThreadMap::Delta::kCluster;
-
-                    bool row_guard = mask_.row_guard[frag_row_idx];
-
-                    // TODO optimize out these division
-                    int ic = offset / Shape::kColumn;
-                    int oc = offset % Shape::kColumn;
-
-                    CUTLASS_PRAGMA_UNROLL
-                    for (int column = 0; column < ThreadMap::Iterations::kColumn; ++column) {
-
-                        bool is_valid = (oc + column * ThreadMap::Delta::kColumn < oC) &&
-                                        row_guard;
-
-                        // if (is_valid)
-                        //     printf("out T%03d, read icoc(%d, %d), row_offset:%d, thread_start_ic_:%d,  column:%02d, kcolumn:%02d, offset%d   :%d\n",
-                        //         threadIdx.x,
-                        //         ic, oc,
-                        //         row_offset,
-                        //         thread_start_ci_,
-                        //         column, ThreadMap::Delta::kColumn,
-                        //         offset,
-                        //         is_valid);
-
-                        AccessType* memory_pointer =
-                            const_cast<AccessType*>(
-                                reinterpret_cast<const AccessType*>(
-                                    &(params_.weight_[tile_idx_][kernel_offset_][ic][oc])));
-
-                        cutlass::arch::global_load<AccessType, sizeof(AccessType)>(
-                            frag_ptr[frag_row_idx * ThreadMap::Iterations::kColumn + column],
-                            (void*)&memory_pointer[column * ThreadMap::Delta::kColumn / kElementsPerAccess],
-                            is_valid);
-                    }
-
-                    if (row + 1 < ThreadMap::Iterations::kRow) {
-                        offset += params_.increment_row;
-                    }
-                }
-
-                if (group + 1 < ThreadMap::Iterations::kGroup) {
-                    offset += params_.increment_group;
-                }
-            }
-
-            if (cluster + 1 < ThreadMap::Iterations::kCluster) {
-                offset += params_.increment_cluster;
-            }
-        }
     }
+
 
     CUTLASS_DEVICE
     void store(Fragment const& frag)
@@ -1572,8 +1490,6 @@ public:
                         group * ThreadMap::Delta::kGroup +
                         cluster * ThreadMap::Delta::kCluster;
 
-                    // TODO: this row_guard is redundent, we tested it in mask
-                    bool row_guard = (row_offset + thread_start_v_) < rule_size_;
                     // printf("T:%03d  row_offset:%02d, thread_start_v:%02d \n",
                     //        threadIdx.x, row_offset, thread_start_v_);
 
@@ -1592,8 +1508,7 @@ public:
                         // bool guard = row_guard && mask_.predicates[column];
 
                         bool is_valid = (global_offset >= 0) &&
-                                        (c + column * ThreadMap::Delta::kColumn < channel_size) &&
-                                        row_guard;
+                                        (c + column * ThreadMap::Delta::kColumn < channel_size);
 
                         // if (is_valid)
                         //     printf("out T%03d, read vc(%02d - %02d,%02d),  column:%02d, kcolumn:%02d, offset:%d   :%d\n",
@@ -1657,8 +1572,6 @@ public:
                         group * ThreadMap::Delta::kGroup +
                         cluster * ThreadMap::Delta::kCluster;
 
-                    bool row_guard = (row_offset + thread_start_v_) < rule_size_;
-
                     int global_offset = mask_.global_offset[frag_row_idx];
 
                     // int v = offset / Shape::kColumn;
@@ -1674,8 +1587,7 @@ public:
                         // printf("output channel = %d\n", channel);
                         // printf("mem ptr = %p\n", memory_pointer);
                         bool is_valid = (global_offset >= 0) &&
-                                        (c + column * ThreadMap::Delta::kColumn < channel_size) &&
-                                        row_guard;
+                                        (c + column * ThreadMap::Delta::kColumn < channel_size);
 
                         // if (is_valid)
                         //     printf("out T%03d, writeto vc(%02d - %02d,%02d), column:%02d, kcolumn:%02d\n",

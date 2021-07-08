@@ -300,7 +300,7 @@ struct Conv<Mma_, Epilogue_, VBLOCK, threadblock::InterleavedThreadblockSwizzle>
                 epilogue(output_op, iterator_D, accumulators, iterator_C);
 
             } // v block
-        }  // k
+        }     // k
     }
 
     CUTLASS_DEVICE
@@ -315,9 +315,6 @@ struct Conv<Mma_, Epilogue_, VBLOCK, threadblock::InterleavedThreadblockSwizzle>
         }
     }
 };
-
-
-
 
 template <typename Mma_,      // threadblock level MMA
           typename Epilogue_, // threadblock level epilogue
@@ -401,7 +398,7 @@ struct ConvDW {
 
             for (int cbegin = 0; cbegin < params.in_channel_; cbegin += VBLOCK) {
                 // if (threadIdx.x == 0)
-                    // printf("cbegin++\n");
+                // printf("cbegin++\n");
 
                 int thread_idx = threadIdx.x;
                 // Construct iterators
@@ -464,42 +461,6 @@ struct ConvDW {
         }
     }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 } // namespace kernel
 } // namespace sphconv

@@ -17,7 +17,6 @@ using GpuTensor = torch::PackedTensorAccessor32<T, N, torch::RestrictPtrTraits>;
 using cutlass::gemm::GemmShape;
 using torch::indexing::Slice;
 
-
 int near2power(int num)
 {
     if (num <= 4)
@@ -285,7 +284,6 @@ public:
 template <typename ThreadblockShape, typename WarpShape, int VBLOCK>
 using ConvDF = Conv<ThreadblockShape, WarpShape, VBLOCK, threadblock::InterleavedThreadblockSwizzle, 1>;
 
-
 torch::Tensor
 rule_conv(const torch::Tensor feature,  // [NNZ, C]
           const torch::Tensor weight,   // [kernelVolume, iC, oC]
@@ -328,7 +326,7 @@ rule_conv(const torch::Tensor feature,  // [NNZ, C]
         printf("unsupported oC = %d\n", oC);
     }
 
-    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature, {0,0});
+    ConvBase::Arguments args(feature, weight, rules, ruleSize, outFeature, {0, 0});
 
     // TODO: use operator() to combine intilize and run;
     conv->initialize(args);
@@ -337,7 +335,6 @@ rule_conv(const torch::Tensor feature,  // [NNZ, C]
 
     return outFeature;
 }
-
 
 ///===========================================
 // backward
@@ -374,7 +371,6 @@ struct ConvDBase {
     virtual Status run(cudaStream_t stream = nullptr) { return Status::kSuccess; };
 
     virtual ~ConvDBase() = default;
-
 };
 
 template <
@@ -417,8 +413,7 @@ public:
             args.d_weight.template packed_accessor32<float, 4, torch::RestrictPtrTraits>(),
             args.rules.template packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
             args.ruleSize.template packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
-            kernelVolume
-        );
+            kernelVolume);
 
         // reduction_params_ = typename ConvKernel::Params()(
         //     args.d_weight.template packed_accessor32<float, 3, torch::RestrictPtrTraits>()
@@ -523,7 +518,6 @@ rule_conv_d_weight(
     return torch::sum(d_weight, 0, false);
 }
 
-
 torch::Tensor
 rule_conv_d_feature(const torch::Tensor feature,  // [NNZ, C]
                     const torch::Tensor weight,   // [kernelVolume, iC, oC]
@@ -552,9 +546,7 @@ rule_conv_d_feature(const torch::Tensor feature,  // [NNZ, C]
 
     std::shared_ptr<ConvBase> conv;
 
-
-    switch (OC_BLOCK)
-    {
+    switch (OC_BLOCK) {
     case 4:
         conv = std::make_shared<ConvDF<GemmShape<8, 32, 8>, GemmShape<8, 32, 8>, 8>>();
         break;
@@ -582,7 +574,6 @@ rule_conv_d_feature(const torch::Tensor feature,  // [NNZ, C]
 
     return outFeature;
 }
-
 
 std::vector<torch::Tensor>
 rule_conv_backward(const torch::Tensor d_featureOut, // [outNNZ, oC]
