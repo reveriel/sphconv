@@ -10,9 +10,6 @@ pybind11_add_module(sphconv_cuda
     rules.cu
     rule_conv.cu
     tensor.cu
-    # indice_conv.cu
-    # indice.cu
-    # to_dense.cu
 )
 # target_compile_options(sphconv_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
 # target_compile_options(sphconv_cuda PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler -rdynamic>)

@@ -1,8 +1,7 @@
 #include "cutlass/gemm/gemm.h"
-#include "debug_utils.h"
-#include "default_conv.cu.h"
-#include "rule_conv_kernel.cu.h"
-#include "threadblock_swizzle.h"
+#include "sphconv/debug_utils.h"
+#include "sphconv/default_conv.cu.h"
+#include "sphconv/threadblock_swizzle.h"
 #include "timer.h"
 #include <cuda.h>
 #include <cuda_runtime.h>

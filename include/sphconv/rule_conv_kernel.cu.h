@@ -11,8 +11,8 @@
 #include "cutlass/transform/pitch_linear_thread_map.h"
 #include "cutlass/wmma_array.h"
 
-#include "debug_utils.h"
-#include "threadblock_swizzle.h"
+#include "sphconv/debug_utils.h"
+#include "sphconv/threadblock_swizzle.h"
 #include "timer.h"
 
 namespace sphconv

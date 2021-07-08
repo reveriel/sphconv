@@ -1,6 +1,6 @@
 #pragma once
 
-#include "iterator.cu.h"
+#include "sphconv/iterator.cu.h"
 
 #include "cutlass/cutlass.h"
 #include "cutlass/device_kernel.h"

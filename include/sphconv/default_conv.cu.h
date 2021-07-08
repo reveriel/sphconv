@@ -1,8 +1,8 @@
 #pragma once
 
-#include "default_mma.cu.h"
-#include "default_epilogue.cu.h"
-#include "rule_conv_kernel.cu.h"
+#include "sphconv/default_mma.cu.h"
+#include "sphconv/default_epilogue.cu.h"
+#include "sphconv/rule_conv_kernel.cu.h"
 
 namespace sphconv
 {

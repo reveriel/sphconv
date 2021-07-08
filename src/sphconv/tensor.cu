@@ -1,5 +1,4 @@
-#include "debug_utils.h"
-#include "tensor.h"
+#include "sphconv/debug_utils.h"
 #include "timer.h"
 #include <cstdio>
 #include <cuda.h>

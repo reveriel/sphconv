@@ -45,7 +45,7 @@ def d_weight_conv(
     subm:bool, lib:str):
 
     feature:torch.Tensor = feature_.detach().clone()
-    feature.requires_grad = True #! ??, this affects the final y.
+    feature.requires_grad = True
 
     if lib == 'spconv':
         tensor = spconv.SparseConvTensor(

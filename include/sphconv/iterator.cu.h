@@ -10,7 +10,7 @@
 
 // https://github.com/NVIDIA/cutlass/blob/master/media/docs/tile_iterator_concept.md
 
-#include "debug_utils.h"
+#include "sphconv/debug_utils.h"
 
 namespace sphconv
 {

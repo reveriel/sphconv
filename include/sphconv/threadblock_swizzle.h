@@ -1,11 +1,9 @@
 #pragma once
 
 #include "cutlass/cutlass.h"
-#include "debug_utils.h"
-// #include "cutlass/layout/matrix.h"
-// #include "cutlass/platform/platform.h"
-// #include "cutlass/gemm/gemm.h"
+#include "sphconv/rule_conv.h"
 
+// TODO: be smarter here
 namespace sphconv
 {
 namespace threadblock

@@ -6,7 +6,7 @@
 #include <torch/extension.h>
 
 #include "timer.h"
-#include "debug_utils.h"
+#include "sphconv/debug_utils.h"
 #include "assert.h"
 
 using namespace std;

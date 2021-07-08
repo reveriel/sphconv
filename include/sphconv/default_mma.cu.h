@@ -3,8 +3,8 @@
 #include "cutlass/gemm/threadblock/default_mma_core_simt.h"
 #include "cutlass/gemm/threadblock/mma_pipelined.h"
 
-#include "iterator.cu.h"
-#include "debug_utils.h"
+#include "sphconv/iterator.cu.h"
+#include "sphconv/debug_utils.h"
 
 namespace sphconv
 {
