@@ -1,4 +1,4 @@
-# Usage
+# A Tiled (submanifold) Sparse Convolution library for PyTorch
 
 ## install
 
@@ -11,9 +11,8 @@ pip install .
 <!-- - Run output and gradient checks on the code by running `python check.py `. -->
 ```
 cd test
-pytest -s .
+pytest [-s] [test_file_name.py | .]
 ```
-
 
 ## prepare dataset
 
@@ -51,43 +50,6 @@ python create_data.py create_reduced_point_cloud --data_path=KITTI_DATASET_ROOT
 ```
 
 
-### Coordinate
-
-RangeVoxel
-
-```
-    x  ▲          z
-       │       /
-       │      /
-       │     /
-┌────┐ │    /   ┌────┐
-│ H  │ │   /    │ D  │
-└────┘ │  /     └────┘
-       │ /
-       │/
-       *──────────▶
-                     y
-           ┌────┐
-           │ W  │
-           └────┘
-```
-
-lidar coordinate
-
-```
-        z  ▲          x
-           │       /
-           │      /
-           │     /
-           │    /
-           │   /
-           │  /
-           │ /
-           │/
-◀──────────*
-  y
-```
-
 ## reference
 
 - [Peter Goldsborough](https://github.com/goldsborough) for pytorch extension
@@ -96,9 +58,4 @@ lidar coordinate
 - [Pytorch Extension with a Makefile](https://chrischoy.github.io/research/pytorch-extension-with-makefile/)
 
 
-## TODO
-
-- [ ] Tiled
-- [x] to_dense, optimize
-- [ ] multi GPU support
 
