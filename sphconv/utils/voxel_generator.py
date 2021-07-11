@@ -33,7 +33,7 @@ class VoxelGeneratorV3:
 
         voxelmap_shape = tuple(np.round(grid_size).astype(np.int32).tolist())
         voxelmap_shape = voxelmap_shape[::-1]
-        print("voxelmap_shape = ", voxelmap_shape)
+        # print("voxelmap_shape = ", voxelmap_shape)
 
         self._max_voxels = max_voxels
         self._max_ponts = max_num_points
@@ -48,7 +48,7 @@ class VoxelGeneratorV3:
         # self._full_mean = full_mean
         self._resolution_HWD = resolution_HWD
         self._coord_system = coord_system
-        print("self._coord_system =", coord_system)
+        # print("self._coord_system =", coord_system)
         self._append_mode = append_mode
 
     def generate(self, points, max_voxels=None):

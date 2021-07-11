@@ -30,7 +30,7 @@ def bench_against_spconv(
         channel=in_channels, batch_size=batch_size, spatial_shape_DWH=spatial_shape_DWH)
 
     # torch.set_printoptions(edgeitems=8000)
-    print ("indices shape = ", indices.shape)
+    # print ("indices shape = ", indices.shape)
     if (indices.shape[0] == 0) :
         print("error")
     spconv_tensor = spconv.SparseConvTensor(
@@ -116,22 +116,29 @@ class TestClass:
         # bench_against_spconv(
         #     loop=10, batch_size=1, in     _channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
         #     kernel_size=[2, 2, 2], stride=[1, 1, 1], padding=[1, 1, 1], subm=False)
-
+        # bench_against_spconv(
+        #     loop=1000, batch_size=8, in_channels=4, out_channels=4, spatial_shape_DWH=[64, 512, 512],
+        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+        # bench_against_spconv(
+        #     loop=1000, batch_size=8, in_channels=8, out_channels=8, spatial_shape_DWH=[64 , 512, 512],
+        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+        # bench_against_spconv(
+        #     loop=1000, batch_size=8, in_channels=16, out_channels=16, spatial_shape_DWH=[64, 512, 512],
+        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+        # bench_against_spconv(
+        #     loop=1000, batch_size=8, in_channels=32, out_channels=32, spatial_shape_DWH=[64, 512, 512],
+        #     kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
         bench_against_spconv(
-            loop=100, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[40, 512, 400],
+            loop=1, batch_size=8, in_channels=64, out_channels=64, spatial_shape_DWH=[64, 512, 512],
             kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
 
-        bench_against_spconv(
-            loop=100, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[40, 512, 400],
-            kernel_size=[3, 3, 3], stride=[2, 2, 2], padding=[1, 1, 1], subm=False)
+        # bench_against_spconv(
+        #     loop=100, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 256, 256],
+        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
-        bench_against_spconv(
-            loop=100, batch_size=1, in_channels=32, out_channels=32, spatial_shape_DWH=[32, 256, 256],
-            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
-
-        bench_against_spconv(
-            loop=100, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[32, 256, 256],
-            kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
+        # bench_against_spconv(
+        #     loop=100, batch_size=1, in_channels=64, out_channels=64, spatial_shape_DWH=[32, 256, 256],
+        #     kernel_size=[3, 3, 3], stride=[1, 1, 1], padding=[1, 1, 1], subm=True)
 
 
 if __name__ == '__main__':

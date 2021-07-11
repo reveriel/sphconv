@@ -47,7 +47,7 @@ __global__ void reorderFeatureKernel(
 {
     int NNZ = indicesBZYX.size(0);
     int C = feature.size(1);
-    int n = threadIdx.x + blockDim.x * blockIdx.x;
+    int n = threadIdx.y + blockDim.y * blockIdx.x;
     if (n >= NNZ)
         return;
 
@@ -57,15 +57,22 @@ __global__ void reorderFeatureKernel(
     IType z = indicesBZYX[n][3]; // this is convention disagreement..  not a bug
 
     IType val_pos = zPtr[b][x][y];
-    IType fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
+    IType fiber_pos;
+    if (threadIdx.x == 0) {
+        fiber_pos = atomicAdd(&fiberSize[b][x][y], -1);
+    }
+    fiber_pos = __shfl_sync(0xffffffff, fiber_pos, 0, blockDim.x);
     int new_pos = val_pos - fiber_pos;
 
-    for (int c = 0; c < C; c++) {
+    for (int c = threadIdx.x; c < C; c += blockDim.x) {
         outFeature[new_pos][c] = feature[n][c];
     }
+
     // record the permutation, for backward
-    permutation[n] = new_pos;
-    zIndices[new_pos] = z;
+    if (threadIdx.x == 0) {
+        permutation[n] = new_pos;
+        zIndices[new_pos] = z;
+    }
 }
 
 std::vector<torch::Tensor>
@@ -89,7 +96,7 @@ init_tensor(
         torch::dtype(torch::kInt32).device(indicesBZYX.device()));
     // fill grid
     // set occupied voxels to 1
-    fillGridKernel<int32_t><<<divUp(NNZ, 512), 512>>>(
+    fillGridKernel<int32_t><<<divUp(NNZ, 64), 64>>>(
         indicesBZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         grid.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>());
 
@@ -104,7 +111,7 @@ init_tensor(
     torch::Tensor permutation = torch::empty(
         {NNZ}, torch::dtype(torch::kInt32).device(feature.device()));
 
-    reorderFeatureKernel<int32_t, float><<<divUp(NNZ, 512), 512>>>(
+    reorderFeatureKernel<int32_t, float><<<divUp(NNZ, 64), dim3(8, 64)>>>(
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         indicesBZYX.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>(),
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
@@ -127,12 +134,12 @@ __global__ void reorderFeatureBackwardKernel(
 {
     int NNZ = d_feature.size(0);
     int C = d_feature.size(1);
-    int n = threadIdx.x + blockDim.x * blockIdx.x;
+    int n = threadIdx.y + blockDim.y * blockIdx.x;
     if (n >= NNZ)
         return;
     int new_pos = permutation[n];
 
-    for (int c = 0; c < C; c++) {
+    for (int c = threadIdx.x; c < C; c += blockDim.x) {
         d_feature[n][c] = d_featureOut[new_pos][c];
     }
 }
@@ -146,7 +153,7 @@ torch::Tensor init_tensor_backward(
     torch::Tensor d_feature = torch::empty(
         {NNZ, C}, torch::dtype(d_featureOut.dtype()).device(d_featureOut.device()));
 
-    reorderFeatureBackwardKernel<int32_t, float><<<divUp(NNZ, 512), 512>>>(
+    reorderFeatureBackwardKernel<int32_t, float><<<divUp(NNZ, 64), dim3(8, 64)>>>(
         d_featureOut.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         permutation.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
         d_feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>());
@@ -159,25 +166,24 @@ __global__ void toDenseKernel(
     const GpuTensor<DType, 2> feature,  // [NNZ ,C]
     const GpuTensor<IType, 3> zPtr,     // [B, H, W]
     const GpuTensor<IType, 1> zIndices, // [NNZ]
-    GpuTensor<DType, 5> out,            // [B, H, W, D, C]
-    int C_BLOCK)
+    GpuTensor<DType, 5> out)            // [B, H, W, D, C]
 {
     int B = zPtr.size(0);
     int H = zPtr.size(1);
     int W = zPtr.size(2);
     int C = feature.size(1);
-    int x = threadIdx.x + blockDim.x * blockIdx.x;
-    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    int x = threadIdx.y + blockDim.y * blockIdx.x;
+    int y = threadIdx.z + blockDim.z * blockIdx.y;
     if (x >= H || y >= W)
         return;
 
     for (int b = 0; b < B; b++) {
         int zEnd = zPtr[b][x][y];
-        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
         for (int pos = zStart; pos < zEnd; pos++) {
             IType z = zIndices[pos];
             // grid[b][x][y][z] = pos;
-            for (int c = threadIdx.z; c < C; c += C_BLOCK) {
+            for (int c = threadIdx.x; c < C; c += blockDim.x) {
                 out[b][x][y][z][c] = feature[pos][c];
             }
         }
@@ -189,25 +195,24 @@ __global__ void toDenseBackwardKernel(
     const GpuTensor<DType, 5> d_featureOut, // [B H W D C]
     const GpuTensor<IType, 3> zPtr,
     const GpuTensor<IType, 1> zIndices,
-    GpuTensor<DType, 2> d_feature, // [NNZ, C]
-    int C_BLOCK)
+    GpuTensor<DType, 2> d_feature) // [NNZ, C]
 {
     int B = zPtr.size(0);
     int H = zPtr.size(1);
     int W = zPtr.size(2);
     int C = d_feature.size(1);
-    int x = threadIdx.x + blockDim.x * blockIdx.x;
-    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    int x = threadIdx.y + blockDim.y * blockIdx.x;
+    int y = threadIdx.z + blockDim.z * blockIdx.y;
     if (x >= H || y >= W)
         return;
 
     for (int b = 0; b < B; b++) {
         int zEnd = zPtr[b][x][y];
-        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : *(&zPtr[b][x][y] - 1);
+        int zStart = (b == 0 && x == 0 && y == 0) ? 0 : zPtr[b][x][y - 1];
         for (int pos = zStart; pos < zEnd; pos++) {
             IType z = zIndices[pos];
             // grid[b][x][y][z] = pos;
-            for (int c = threadIdx.z; c < C; c += C_BLOCK) {
+            for (int c = threadIdx.x; c < C; c += blockDim.x) {
                 d_feature[pos][c] = d_featureOut[b][x][y][z][c];
             }
         }
@@ -226,7 +231,7 @@ torch::Tensor to_dense(
     CHECK_INPUT(zPtr);
     CHECK_INPUT(out);
 
-    int H_BLOCK = 1;
+    int H_BLOCK = 2;
     int W_BLOCK = 16;
     int C_BLOCK = 16;
 
@@ -243,17 +248,14 @@ torch::Tensor to_dense(
         C_BLOCK = 16;
     }
 
-    W_BLOCK = 512 / C_BLOCK;
-
     dim3 gridSize = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
-    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+    dim3 blockSize = dim3(C_BLOCK, H_BLOCK, W_BLOCK);
 
     toDenseKernel<int32_t, float><<<gridSize, blockSize>>>(
         feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
-        out.packed_accessor32<float, 5, torch::RestrictPtrTraits>(),
-        C_BLOCK);
+        out.packed_accessor32<float, 5, torch::RestrictPtrTraits>());
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());
@@ -270,7 +272,7 @@ torch::Tensor to_dense_backward(
     CHECK_INPUT(zIndices);
     CHECK_INPUT(zPtr);
 
-    int H_BLOCK = 1;
+    int H_BLOCK = 2;
     int W_BLOCK = 16;
     int C_BLOCK = 16;
 
@@ -291,17 +293,14 @@ torch::Tensor to_dense_backward(
         C_BLOCK = 16;
     }
 
-    W_BLOCK = 512 / C_BLOCK;
-
     dim3 gridSize = dim3(divUp(H, H_BLOCK), divUp(W, W_BLOCK), 1);
-    dim3 blockSize = dim3(H_BLOCK, W_BLOCK, C_BLOCK);
+    dim3 blockSize = dim3(C_BLOCK, H_BLOCK, W_BLOCK);
 
     toDenseBackwardKernel<int32_t, float><<<gridSize, blockSize>>>(
         d_featureOut.packed_accessor32<float, 5, torch::RestrictPtrTraits>(),
         zPtr.packed_accessor32<int32_t, 3, torch::RestrictPtrTraits>(),
         zIndices.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>(),
-        d_feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-        C_BLOCK);
+        d_feature.packed_accessor32<float, 2, torch::RestrictPtrTraits>());
 
     gpuErrchk(cudaPeekAtLastError());
     gpuErrchk(cudaDeviceSynchronize());

@@ -78,8 +78,8 @@ class TestClass:
 
         sphconv_dense = sphconv_tensor.dense()
         # print("distance = ", (spconv_dense - sphconv_dense).abs().sum())
-        # print("sphconv = ", sphconv_dense)
-        # print("spconv = ", spconv_dense)
+        print("sphconv = ", sphconv_dense)
+        print("spconv = ", spconv_dense)
         assert spconv_dense.shape == sphconv_dense.shape
         assert torch.all(torch.isclose(spconv_dense, sphconv_dense))
 
